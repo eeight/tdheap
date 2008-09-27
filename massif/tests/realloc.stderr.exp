@@ -1,0 +1,40 @@
+Massif: alloc-fns:
+Massif:   0: malloc
+Massif:   1: __builtin_new
+Massif:   2: operator new(unsigned)
+Massif:   3: operator new(unsigned long)
+Massif:   4: __builtin_vec_new
+Massif:   5: operator new[](unsigned)
+Massif:   6: operator new[](unsigned long)
+Massif:   7: calloc
+Massif:   8: realloc
+Massif:   9: memalign
+Massif:   10: operator new(unsigned, std::nothrow_t const&)
+Massif:   11: operator new[](unsigned, std::nothrow_t const&)
+Massif:   12: operator new(unsigned long, std::nothrow_t const&)
+Massif:   13: operator new[](unsigned long, std::nothrow_t const&)
+Massif: startup S.  0 (t:0, hp:0, ex:0, st:0)
+Massif:   alloc S.  1 (t:400, hp:400, ex:0, st:0)
+Massif: realloc S.  2 (t:400, hp:400, ex:0, st:0)
+Massif: re-PEAK Sp  3 (t:400, hp:400, ex:0, st:0)
+Massif: realloc S.  4 (t:400, hp:200, ex:200, st:0)
+Massif: realloc S.  5 (t:600, hp:600, ex:0, st:0)
+Massif: de-PEAK Sp  6 (t:600, hp:600, ex:0, st:0)
+Massif: dealloc S.  7 (t:1200, hp:0, ex:0, st:0)
+Massif: heap allocs:          1
+Massif: heap reallocs:        3
+Massif: heap frees:           1
+Massif: stack allocs:         0
+Massif: stack frees:          0
+Massif: XPts:                 ...
+Massif: top-XPts:             ...
+Massif: XPt init expansions:  ...
+Massif: XPt later expansions: ...
+Massif: SXPt allocs:          ...
+Massif: SXPt frees:           ...
+Massif: skipped snapshots:    0
+Massif: real snapshots:       8
+Massif: detailed snapshots:   2
+Massif: peak snapshots:       2
+Massif: cullings:             0
+Massif: XCon redos:           ...

@@ -1,0 +1,2 @@
+prereq: ./supported_libpthread
+prog: hg01_all_ok

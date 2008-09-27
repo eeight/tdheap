@@ -1,0 +1,196 @@
+
+---------- Legend --------------------------------------------------
+
+n-i-bz  = not in bugzilla
+pending = is scheduled to be fixed (or at least considered) on this branch
+wontfix = will not fix on this branch
+many    = fix composed of many commits
+WF      = waiting for feedback from bug reporter
+
+PRI: 33  = fix this for 3.3.1
+     Vfd = fix has been verified on 3.3.X branch
+
+
+---------- Bugs reported after (in) 3.3.0 --------------------------
+
+*** definitely fix
+### merge fix to 3.3 branch
+??? marginal
+NNN won't fix
+Vfd fix has been verified on 3.3.X branch
+
+-- Last updated 9 May 08
+
+get rid of pointless constraint !(--db-attach=yes &&
+--trace-children=yes) (users, 14 feb)
+
+Consider potential space/time effects of r7383 (see reply to
+the commit message).
+
+Either back out r7353, or fix the resulting signedness problem
+properly (see replies to the commit message).  (now fixed ...)
+
+re Keller vpath bug, don't use attached patch; use Ashley's one
+instead (on @dev ?)
+
+***
+disInstr(ppc): unhandled instruction: 0x7D295F1E (users@, 29 Feb)
+(0x7D295F1E == isel r9,r9,r11,28)
+
+64 bit tweak ("Solomon, Bernard", user@, 25 Mar, > 1 post the same day)
+FIXED r8048.  (don't merge)
+
+NNN
+disInstr(ppc): unhandled instruction: 0x7C1F42A6
+                 primary 31(0x1F), secondary 678(0x2A6)
+ "Gupta Richa", users@, 3 Apr 08
+ dis_proc_ctl(ppc)(mfspr,SPR)(0x11F)
+ (0x7C1F42A6 == mfsprg  r0,7)
+
+--- start 27 March 08 ---
+
+149878  add (proper) check for calloc integer overflow
+***     (possibly with a viable patch now)
+        FIXME
+
+156065  VALGRIND_MEMPOOL_ALLOC vs. zero-size allocs triggers false
+***     "overlapping" error
+        FIXME
+
+156404  Unable to start oocalc under memcheck on openSUSE 10.3 (64-bit)
+???     openoffice on suse 10.3 readlink stack problem
+        POTENTIALLY SERIOUS (need to extend root stack before syscall)
+
+158042  --db-attach at invalid free() gives broken stack trace on
+        x86_64
+
+158730  ppc: illegal opcode crash on instruction fctiwz
+???     Not sure this does have anything to do with fctiwz.
+        VEX generates code that doesn't run on e500
+
+159285  unhandled syscall:25
+???     (no test case provided)
+
+159452  unhandled ioctl 0x8B01 on "valgrind iwconfig"
+???     (queried user on documentation for this ioctl)
+
+159501  incorrect handling of ALSA ioctls
+***     (has two patches, looks reasonable, checking for update)
+
+159659  scas does not use ES segment selector
+NNN
+
+159720  Opcode 0xFF 0x58 0xEB 0x5 unhandled on x86
+NNN     (this is a "lcall" or callf -- far call)
+        (no test case)
+
+160595  Why my program hang-up when work with valgrind ?
+NNN     (no info so far, probably a threading bug in client)
+
+160872  race errors reported where libpthread.so
+???     (might be a problem with pthread_setspecific)
+
+
+160954  ppc build of valgrind crashes with illegal instruction
+***     0x7D6B4F9E == isel r11,r11,r9,30
+        == 161251
+
+161374  SYS_readdir syscall not implemented
+???     readdir is pretty prehistoric
+
+161609  Results returned by VG_(get_StackTrace)() do not match
+***     its documentation
+
+--- end 8 May 08 ---
+
+--- start 28 May 08 ---
+
+--- end 28 May 08 ---
+
+r1816 (x86 CondNS after SUBB)
+r1817 (amd64 CondNS after SUBB)
+r1833 (both, CondNZ after SUBW)
+merged; 1847
+
+r7795 (handle r-x mapped .bss sections - merge to trunk)
+
+
+TRUNK   33BRANCH  PRI    BUG#  WHAT
+
+r8058   r8059     Vfd  n-i-bz  Massif segfaults at exit
+
+vx1832  vx1839    Vfd  n-i-bz  Memcheck asserts on Altivec code
+
+r7299   r8081     Mgd  n-i-bz  fix sizeof bug in Helgrind
+r7322   r8073     Mgd  n-i-bz  check fd on sys_llseek
+r7323   r8082     Mgd  n-i-bz  update syscall lists to kernel 2.6.23.1
+r7324   r8076     Mgd  n-i-bz  support sys_sync_file_range
+
+r7334   r8078     Mgd  n-i-bz  handle sys_sysinfo, sys_getresuid,
+                               sys_getresgid on ppc64-linux
+
+r7350   r8080     Mgd  n-i-bz  intercept memcpy in 64-bit ld.so's
+
+r8047   r8148     Mgd  n-i-bz  Fix wrappers for sys_{futimesat,utimensat}
+
+many    wontfix   Vfd   92456  Tracing the origin of uninitialised memory
+
+vx1836/7 vx1845   Vfd  126389  vex x86->IR: 0xF 0xAE (FXRSTOR)
+                       == 158525
+
+vx1838  vx1846    Vfd  152818  vex x86->IR: 0xF3 0xAC (repz lodsb) 
+
+vx1834  vx1843    Vfd  153196  vex x86->IR: 0xF2 0xA6 (repnz cmpsb) 
+
+vx1807  vx1840    Mgd  155011  vex x86->IR: 0xCF (iret)
+
+r7347   r8085     Mgd  155091  Warning [...] unhandled DW_OP_ opcode 0x23
+                       ==156960
+
+vx1808/9/10,r7384/5/7/9
+        vx1841,r8056
+                  Vfd  155528  support Core2/SSSE3 insns on x86/amd64
+
+r7355   r7356     Mgd  155929  ms_print fails on massif outputs 
+                               containing long lines
+
+r7399   r8083     Mgd  157665  valgrind fails on shmdt(0) after shmat to 0
+
+vx1835  vx1844    Vfd  157748  support x86 PUSHFW/POPFW
+
+r7454   r8084     Mgd  158212  hg: handle pthread_rwlock_try{rd,wr}lock.
+
+r8049   r8086     Vfd  158425  sys_poll incorrectly emulated when RES==0
+
+vx1848  vx1849    Vfd  158744  vex amd64->IR: 0xF0 0x41 0xF 0xC0 (xaddb)
+
+r7917,8051 OR r7942,r7983,r8051
+        r8148     Mgd  160907  Support for a couple of recent Linux syscalls
+
+r7888   pending    33  160956  PATCH: mallinfo implementation
+
+r7917   r8148     Mgd  161285  Patch -- support for eventfd() syscall
+
+vx1826  vx1842    Vfd  161378  illegal opcode in debug libm (FUCOMPP)
+                       == 160136
+
+r8065/8 r8069     Mgd  161487  number of suppressions files is limited to 10
+
+r7361   r7362     Mgd  162386  ms_print typo in milliseconds time unit for
+                               massif
+
+r7895   r8063     Mgd  161036  exp-drd: client allocated memory was never freed
+
+r8092   r8143     Mgd  n-i-bz  libmpiwrap.c: add a wrapper for MPI_Waitany
+
+r8140   r8145     Mgd  n-i-bz  helgrind support for glibc-2.8
+
+r8144   r8146     Vfd  n-i-bz  partial fix for mc_leakcheck.c:698 assert:
+                               'lc_shadows[i]->data + lc_shadows[i] ...
+
+various r8148     Mgd  162663  signalfd_wrapper fails on 64bit linux
+
+r8154   r8155     Mgd  n-i-bz  Massif/Cachegrind output corruption when
+                               programs fork
+
+vx1853  vx1854     33  n-i-bz  regalloc: don't incorrectly omit spill stores
