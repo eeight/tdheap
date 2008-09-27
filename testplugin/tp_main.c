@@ -30,6 +30,12 @@
 
 #include "pub_tool_basics.h"
 #include "pub_tool_tooliface.h"
+#include "pub_tool_mallocfree.h"
+#include "pub_tool_libcprint.h"
+#include "pub_tool_replacemalloc.h"
+
+ULong clo_allocations_count;
+ULong clo_frees_count;
 
 static void tp_post_clo_init(void)
 {
@@ -47,6 +53,72 @@ IRSB* tp_instrument ( VgCallbackClosure* closure,
 
 static void tp_fini(Int exitcode)
 {
+   VG_(printf)("mallocs: %lld\nfrees: %lld\n", clo_allocations_count, clo_frees_count);
+}
+
+static
+void *tc_malloc_common(SizeT align, SizeT n) {
+   ++clo_allocations_count;
+   if (align != 0) {
+      return VG_(cli_malloc)(align, n);
+   } else {
+      return VG_(cli_malloc)(VG_(clo_alignment), n);
+   }
+}
+
+static
+void tc_free_common(void *p) {
+   ++clo_frees_count;
+   VG_(cli_free)(p);
+}
+
+static
+void *tc_malloc(ThreadId tid, SizeT n) {
+   return tc_malloc_common(0, n);
+}
+
+static
+void *tc_builtin_new(ThreadId tid, SizeT n) {
+   return tc_malloc(tid, n);
+}
+
+static
+void *tc_builtin_vec_new(ThreadId tid, SizeT n) {
+   return tc_malloc(tid, n);
+}
+
+static
+void *tc_memalign(ThreadId tid, SizeT align, SizeT n) {
+   return tc_malloc_common(align, n);
+}
+
+static
+void *tc_calloc(ThreadId tid, SizeT nmemb, SizeT size1) {
+   void *result = tc_malloc_common(0, nmemb*size1);
+   memset(result, 0, nmemb*size1);
+   return result;
+}
+
+static
+void tc_free(ThreadId tid, void *p) {
+   return tc_free_common(p);
+}
+
+static
+void tc_builtin_delete(ThreadId tid, void *p) {
+   return tc_free(tid, p);
+}
+
+static
+void tc_builtin_vec_delete(ThreadId tid, void *p) {
+   return tc_free(tid, p);
+}
+
+// This is dumb, but what to do?
+static
+void *tc_realloc(ThreadId tid, void *p, SizeT new_size) {
+   tc_free_common(p);
+   return tc_malloc_common(0, new_size);
 }
 
 static void tp_pre_clo_init(void)
@@ -61,8 +133,20 @@ static void tp_pre_clo_init(void)
    VG_(basic_tool_funcs)        (tp_post_clo_init,
                                  tp_instrument,
                                  tp_fini);
-
-   /* No needs, no core events to track */
+   VG_(needs_malloc_replacement)(
+      &tc_malloc,
+      &tc_builtin_new,
+      &tc_builtin_vec_new,
+      &tc_memalign,
+      &tc_calloc,
+      &tc_free,
+      &tc_builtin_delete,
+      &tc_builtin_vec_delete,
+      &tc_realloc,
+      0
+   );
+   clo_allocations_count = 0;
+   clo_frees_count = 0;
 }
 
 VG_DETERMINE_INTERFACE_VERSION(tp_pre_clo_init)
