@@ -13,7 +13,8 @@ TOOLS =		memcheck \
 		drd
 
 EXP_TOOLS = 	exp-omega \
-		exp-ptrcheck
+		exp-ptrcheck \
+		testplugin
 
 # Put docs last because building the HTML is slow and we want to get
 # everything else working before we try it.
