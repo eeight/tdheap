@@ -32,28 +32,80 @@
 #include "pub_tool_tooliface.h"
 #include "pub_tool_mallocfree.h"
 #include "pub_tool_libcprint.h"
+#include "pub_tool_libcbase.h"
+#include "pub_tool_libcassert.h"
 #include "pub_tool_replacemalloc.h"
+#include "pub_tool_machine.h" // VG_(fnptr_to_fnentry)
 
 ULong clo_allocations_count;
 ULong clo_frees_count;
+ULong clo_memreads;
+ULong clo_memwrites;
 
 static void tp_post_clo_init(void)
 {
 }
 
 static
+void ReadHook(Addr addr, SizeT size) {
+    ++clo_memreads;
+}
+
+static
+void WriteHook(Addr addr, SizeT size) {
+    ++clo_memwrites;
+}
+
+static
 IRSB* tp_instrument ( VgCallbackClosure* closure,
-                      IRSB* bb,
+                      IRSB* code_in,
                       VexGuestLayout* layout, 
                       VexGuestExtents* vge,
                       IRType gWordTy, IRType hWordTy )
 {
-    return bb;
+    IRSB *code_out;
+    IRDirty *di;
+    IRType type;
+    Int i;
+
+    code_out = deepCopyIRSBExceptStmts(code_in);
+
+    for (i = 0; i < code_in->stmts_used; ++i) {
+        IRStmt *st = code_in->stmts[i];
+        // If statement writes to tmp variable
+        if (st->tag == Ist_WrTmp) {
+            IRExpr *expr = st->Ist.WrTmp.data;
+            type = typeOfIRExpr(code_out->tyenv, expr);
+            tl_assert(type != Ity_INVALID);
+            if (expr->tag == Iex_Load) {
+                IRExpr **argv;
+                argv = mkIRExprVec_2(
+                        expr->Iex.Load.addr,
+                        mkIRExpr_HWord((HWord)sizeofIRType(type)));
+                di = unsafeIRDirty_0_N(1, "ReadHook",
+                        VG_(fnptr_to_fnentry)(&ReadHook), argv);
+                addStmtToIRSB(code_out, IRStmt_Dirty(di));
+            }
+        } else if (st->tag == Ist_Store) {
+            IRExpr **argv;
+            type = typeOfIRExpr(code_out->tyenv, st->Ist.Store.data);
+            argv = mkIRExprVec_2(st->Ist.Store.addr,
+                    mkIRExpr_HWord((HWord)sizeofIRType(type)));
+            di = unsafeIRDirty_0_N(1, "WriteHook",
+                    VG_(fnptr_to_fnentry)(&WriteHook), argv);
+            addStmtToIRSB(code_out, IRStmt_Dirty(di));
+        }
+        addStmtToIRSB(code_out, st);
+    }
+    return code_out;
 }
 
 static void tp_fini(Int exitcode)
 {
-   VG_(printf)("mallocs: %lld\nfrees: %lld\n", clo_allocations_count, clo_frees_count);
+   VG_(printf)("mallocs: %lld\nfrees: %lld\n",
+           clo_allocations_count, clo_frees_count);
+   VG_(printf)("Memory reads: %lld\nMemory writes: %lld\n",
+           clo_memreads, clo_memwrites);
 }
 
 static
@@ -95,7 +147,7 @@ void *tc_memalign(ThreadId tid, SizeT align, SizeT n) {
 static
 void *tc_calloc(ThreadId tid, SizeT nmemb, SizeT size1) {
    void *result = tc_malloc_common(0, nmemb*size1);
-   memset(result, 0, nmemb*size1);
+   VG_(memset)(result, 0, nmemb*size1);
    return result;
 }
 
@@ -147,6 +199,8 @@ static void tp_pre_clo_init(void)
    );
    clo_allocations_count = 0;
    clo_frees_count = 0;
+   clo_memreads = 0;
+   clo_memwrites = 0;
 }
 
 VG_DETERMINE_INTERFACE_VERSION(tp_pre_clo_init)
