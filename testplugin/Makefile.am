@@ -68,7 +68,7 @@ vgpreload_testplugin_ppc64_aix5_so_LDFLAGS      = \
 	$(PRELOAD_LDFLAGS_PPC64_AIX5) \
 	$(LIBREPLACEMALLOC_LDFLAGS_PPC64_AIX5)
 
-NONE_SOURCES_COMMON = tp_main.c
+NONE_SOURCES_COMMON = tp_main.c mem_tracer.c
 
 testplugin_x86_linux_SOURCES      = $(NONE_SOURCES_COMMON)
 testplugin_x86_linux_CPPFLAGS     = $(AM_CPPFLAGS_X86_LINUX)
@@ -111,3 +111,5 @@ testplugin_ppc64_aix5_CFLAGS       = $(AM_CFLAGS_PPC64_AIX5)
 testplugin_ppc64_aix5_DEPENDENCIES = $(COREGRIND_LIBS_PPC64_AIX5)
 testplugin_ppc64_aix5_LDADD        = $(TOOL_LDADD_PPC64_AIX5)
 testplugin_ppc64_aix5_LDFLAGS      = $(TOOL_LDFLAGS_PPC64_AIX5)
+
+noinst_headers = mem_tracer.h
