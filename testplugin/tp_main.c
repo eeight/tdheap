@@ -50,11 +50,21 @@ static void tp_post_clo_init(void)
 
 static
 void MemReadHook(Addr addr, SizeT size) {
+    MemBlock *block = FindBlockByAddress(addr);
+    if (block != NULL) {
+        ++block->reads_count;
+        VG_(printf)("read: %llu", block->reads_count);
+    }
     ++clo_memreads;
 }
 
 static
 void MemWriteHook(Addr addr, SizeT size) {
+    MemBlock *block = FindBlockByAddress(addr);
+    if (block != NULL) {
+        ++block->writes_count;
+        VG_(printf)("write: %llu", block->writes_count);
+    }
     ++clo_memwrites;
 }
 
@@ -108,6 +118,7 @@ static void tp_fini(Int exitcode)
            clo_allocations_count, clo_frees_count);
    VG_(printf)("Memory reads: %lld\nMemory writes: %lld\n",
            clo_memreads, clo_memwrites);
+   ShutdownMemTracer();
 }
 
 static
@@ -123,6 +134,7 @@ void *tp_malloc_common(SizeT align, SizeT n) {
 
     RegisterMemoryBlock(result, n);
 
+    VG_(printf)("alloc: %llu\n", (Addr)result);
     return result;
 }
 
