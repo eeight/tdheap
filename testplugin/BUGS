@@ -1,3 +1,0 @@
-Tool gets killed with SIGSEGV when runnning certain programs, namely find. Other tools work with them normally.
-
-There is a suspicion that not all accesses to memory are counted.

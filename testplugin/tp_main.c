@@ -156,7 +156,7 @@ static void tp_fini(Int exitcode)
         // VG_(printf) does not support float values :(
         VG_(printf)(
                 "Each allocated memory block is accessed "
-                "from %llu addresses mean\n", (ULong)addresses_count);
+                "from %llu addresses on average\n", (ULong)addresses_count);
     } else {
         VG_(printf)("No malloc'd blocks used\n");
     }
@@ -175,16 +175,20 @@ void *tp_malloc_common(SizeT align, SizeT n) {
     } else {
       result = VG_(cli_malloc)(VG_(clo_alignment), n);
     }
+    //VG_(printf)("malloc(%lu) = %lu;\n", n, (Addr)result);
 
-    RegisterMemoryBlock((Addr)result, n);
+    if (n > 0) {
+        RegisterMemoryBlock((Addr)result, n);
+    }
 
-    VG_(printf)("malloc(%lu) = %lu;\n", n, (Addr)result);
     return result;
 }
 
 static
 void tp_free_common(void *p) {
    ++clo_frees_count;
+   //VG_(printf)("free(%lu);\n", (Addr)p);
+   UnregisterMemoryBlock((Addr)p);
    VG_(cli_free)(p);
 }
 
@@ -230,33 +234,31 @@ void tp_builtin_vec_delete(ThreadId tid, void *p) {
    return tp_free_common(p);
 }
 
-// This is dumb, but what to do?
 static
 void *tp_realloc(ThreadId tid, void *p, SizeT new_size) {
-    void *result = NULL;
-    if (new_size > 0) {
-        void *result = tp_malloc_common(0, new_size);
+    SizeT old_size;
 
-        VG_(printf)("realloc(%lu, %lu);\n", (Addr)p, new_size);
-
-        if (p != NULL) {
-            SizeT copy_size;
-            MemBlock *block = FindBlockByAddress((Addr)p);
-            if (block == NULL) {
-                VG_(tool_panic)("Cannot realloc not malloc'd block");
-            }
-            VG_(printf)("\told size: %lu\n", block->size);
-            if (block->size < new_size) {
-                copy_size = block->size;
-            } else {
-                copy_size = new_size;
-            }
-            VG_(memcpy)(result, p, copy_size);
-        }
+    MemBlock *block = FindBlockByAddress((Addr)p);
+    if (block == NULL) {
+        VG_(tool_panic)("Cannot realloc not malloc'd block");
+    } else {
+        old_size = block->size;
     }
+    //VG_(printf)("realloc(%lu, %lu);\t old size: %lu\n", (Addr)p, new_size, old_size);
 
-    tp_free_common(p);
-    return result;
+    if (old_size == new_size) {
+        return p;
+    } else {
+        void *result = tp_malloc_common(0, new_size);
+        SizeT copy_size = old_size;
+        if (new_size < old_size) {
+            copy_size = new_size;
+        }
+        VG_(memcpy)(result, p, copy_size);
+        tp_free_common(p);
+
+        return result;
+    }
 }
 
 static void tp_pre_clo_init(void)

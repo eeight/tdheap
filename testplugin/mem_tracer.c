@@ -5,7 +5,7 @@
 #include "pub_tool_oset.h"
 #include "pub_tool_libcassert.h"
 #include "pub_tool_libcprint.h" 
-static const Addr kBucketSize = 1024;
+static const Addr kBucketSize = 128;
 
 XArray *blocks_allocated;
 static VgHashTable mem_table;
@@ -59,7 +59,8 @@ void ShutdownMemTracer(void) {
 }
 
 static
-void InsertInMemTable(Addr addr, SizeT size, MemBlock *block) {
+void InsertInMemTable(Addr addr, MemBlock *block) {
+    SizeT size = block->size;
     Addr a = addr - addr%kBucketSize;
     Addr end = addr + size;
 
@@ -74,9 +75,31 @@ void InsertInMemTable(Addr addr, SizeT size, MemBlock *block) {
     }
 }
 
+static
+void RemoveFromMemTable(Addr addr, MemBlock *block) {
+    SizeT size = block->size;
+    Addr a = addr - addr%kBucketSize;
+    Addr end = addr + size;
+
+    for (; a < end; a += kBucketSize) {
+        MemNode *node = VG_(HT_lookup)(mem_table, a);
+        if (node != NULL) {
+            VG_(OSetWord_Remove)(node->blocks, (UWord)block);
+        }
+    }
+}
+
 void RegisterMemoryBlock(Addr addr, SizeT size) {
     MemBlock *block = NewMemBlock(addr, size);
-    InsertInMemTable(addr, size, block);
+    InsertInMemTable(addr, block);
+}
+
+void UnregisterMemoryBlock(Addr addr) {
+    MemBlock *block = FindBlockByAddress(addr);
+    // if block == NULL this block must be of size 0
+    if (block != NULL) {
+        RemoveFromMemTable(addr, block);
+    }
 }
 
 static
