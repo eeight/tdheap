@@ -27,6 +27,7 @@ MemNode *NewMemNode(ULong key, MemBlock *block);
 void InitMemTracer(void);
 void ShutdownMemTracer(void);
 void RegisterMemoryBlock(Addr addr, SizeT size);
+void UnregisterMemoryBlock(Addr addr);
 MemBlock *FindBlockByAddress(Addr addr);
 void VG_REGPARM(2) AddUsedFrom(MemBlock *block, Addr addr);
 
