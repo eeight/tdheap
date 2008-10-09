@@ -2,7 +2,7 @@
 
 #include "pub_tool_mallocfree.h"
 #include "pub_tool_hashtable.h"
-#include "pub_tool_wordfm.h"
+#include "pub_tool_oset.h"
 #include "pub_tool_libcassert.h"
 #include "pub_tool_libcprint.h" 
 static const Addr kBucketSize = 1024;
@@ -25,11 +25,11 @@ MemNode *NewMemNode(ULong key, MemBlock *block) {
                                 sizeof(*node));
 
     node->key = key;
-    node->blocks = VG_(newBag)(
+    node->blocks = VG_(OSetWord_Create)(
             &VG_(malloc),
             "testplugin.newmemnode",
             &VG_(free));
-    VG_(addToBag)(node->blocks, (UWord)block);
+    VG_(OSetWord_Insert)(node->blocks, (UWord)block);
 
     return node;
 }
@@ -49,7 +49,7 @@ void InsertInMemTable(Addr addr, SizeT size, MemBlock *block) {
     for (; a < end; a += kBucketSize) {
         MemNode *node = VG_(HT_lookup)(mem_table, a);
         if (node != NULL) {
-            VG_(addToBag)(node->blocks, (UWord)block);
+            VG_(OSetWord_Insert)(node->blocks, (UWord)block);
         } else {
             node = NewMemNode(a, block);
             VG_(HT_add_node)(mem_table, node);
@@ -67,23 +67,18 @@ Bool IsAddrInBlock(Addr addr, MemBlock *block) {
 }
 
 MemBlock *FindBlockByAddress(Addr addr) {
+    MemNode *node = VG_(HT_lookup)(mem_table, addr);
     addr = addr - (addr%kBucketSize);
 
-    MemNode *node = VG_(HT_lookup)(mem_table, addr);
-
     if (node) {
-        WordBag *blocks = node->blocks;
+        OSet *blocks = node->blocks;
         MemBlock *block;
-        UWord count;
-        VG_(initIterBag)(blocks);
-        while (VG_(nextIterBag)(blocks, (UWord *)&block, &count)) {
-            tl_assert(count == 1);
+        VG_(OSetWord_ResetIter)(blocks);
+        while (VG_(OSetWord_Next)(blocks, (UWord *)&block)) {
             if (IsAddrInBlock(addr, block)) {
-                VG_(doneIterBag)(blocks);
                 return block;
             }
         }
-        VG_(doneIterBag)(blocks);
     }
 
     return NULL;

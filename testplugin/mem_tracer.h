@@ -2,13 +2,13 @@
 #define _MEM_TRACER_H_
 
 #include "pub_tool_basics.h"
-#include "pub_tool_wordfm.h"
+#include "pub_tool_oset.h"
 
 // NB: first two fields must be the same as in VGHashNode
 typedef struct _MemNode {
     struct _MemNode *do_not_use; // this field is managed by HT_* functions
     UWord key;
-    WordBag *blocks;
+    OSet *blocks;
 } MemNode;
 
 typedef struct _MemBlock {
