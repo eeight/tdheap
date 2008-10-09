@@ -3,6 +3,7 @@
 
 #include "pub_tool_basics.h"
 #include "pub_tool_oset.h"
+#include "pub_tool_xarray.h"
 
 // NB: first two fields must be the same as in VGHashNode
 typedef struct _MemNode {
@@ -17,6 +18,8 @@ typedef struct _MemBlock {
     OSet *used_from;
     ULong reads_count, writes_count;
 } MemBlock;
+
+extern XArray *blocks_allocated;
 
 MemBlock *NewMemBlock(Addr start_addr, SizeT size);
 MemNode *NewMemNode(ULong key, MemBlock *block);
