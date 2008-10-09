@@ -67,7 +67,6 @@ Bool IsAddrInBlock(Addr addr, MemBlock *block) {
 }
 
 MemBlock *FindBlockByAddress(Addr addr) {
-    VG_(printf)("lookup: %llu\n", addr);
     addr = addr - (addr%kBucketSize);
 
     MemNode *node = VG_(HT_lookup)(mem_table, addr);
