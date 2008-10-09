@@ -49,21 +49,21 @@ static void tp_post_clo_init(void)
 }
 
 static
-void MemReadHook(Addr addr, SizeT size) {
+void VG_REGPARM(2) MemReadHook(Addr addr, SizeT size) {
     MemBlock *block = FindBlockByAddress(addr);
     if (block != NULL) {
         ++block->reads_count;
-        VG_(printf)("read: %llu", block->reads_count);
+        VG_(printf)("read: %llu\n", block->reads_count);
     }
     ++clo_memreads;
 }
 
 static
-void MemWriteHook(Addr addr, SizeT size) {
+void VG_REGPARM(2) MemWriteHook(Addr addr, SizeT size) {
     MemBlock *block = FindBlockByAddress(addr);
     if (block != NULL) {
         ++block->writes_count;
-        VG_(printf)("write: %llu", block->writes_count);
+        VG_(printf)("write: %llu\n", block->writes_count);
     }
     ++clo_memwrites;
 }
@@ -94,7 +94,7 @@ IRSB* tp_instrument ( VgCallbackClosure* closure,
                 argv = mkIRExprVec_2(
                         expr->Iex.Load.addr,
                         mkIRExpr_HWord((HWord)sizeofIRType(type)));
-                di = unsafeIRDirty_0_N(1, "MemReadHook",
+                di = unsafeIRDirty_0_N(2, "MemReadHook",
                         VG_(fnptr_to_fnentry)(&MemReadHook), argv);
                 addStmtToIRSB(code_out, IRStmt_Dirty(di));
             }
@@ -103,7 +103,7 @@ IRSB* tp_instrument ( VgCallbackClosure* closure,
             type = typeOfIRExpr(code_out->tyenv, st->Ist.Store.data);
             argv = mkIRExprVec_2(st->Ist.Store.addr,
                     mkIRExpr_HWord((HWord)sizeofIRType(type)));
-            di = unsafeIRDirty_0_N(1, "MemWriteHook",
+            di = unsafeIRDirty_0_N(2, "MemWriteHook",
                     VG_(fnptr_to_fnentry)(&MemWriteHook), argv);
             addStmtToIRSB(code_out, IRStmt_Dirty(di));
         }
@@ -134,7 +134,7 @@ void *tp_malloc_common(SizeT align, SizeT n) {
 
     RegisterMemoryBlock(result, n);
 
-    VG_(printf)("alloc: %llu\n", (Addr)result);
+    VG_(printf)("alloc: %lu\n", (Addr)result);
     return result;
 }
 
