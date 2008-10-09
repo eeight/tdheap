@@ -35,6 +35,8 @@
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcassert.h"
 #include "pub_tool_replacemalloc.h"
+#include "pub_tool_stacktrace.h"
+#include "pub_tool_threadstate.h"
 #include "pub_tool_machine.h" // VG_(fnptr_to_fnentry)
 
 #include "mem_tracer.h"
@@ -48,12 +50,27 @@ static void tp_post_clo_init(void)
 {
 }
 
+// TODO: Is more straightforward implementation possible?
+static
+inline Addr GetCurrentIp(void) {
+    Addr ip, sp, fp;
+    ThreadId tid = VG_(get_running_tid)();
+    UInt result = VG_(get_StackTrace)(tid, &ip, 1, &sp, &fp, 0);
+
+    if (result < 1) {
+        VG_(tool_panic)("Cannot get current ip");
+    }
+
+    return ip;
+}
+
 static
 void VG_REGPARM(2) MemReadHook(Addr addr, SizeT size) {
     MemBlock *block = FindBlockByAddress(addr);
     if (block != NULL) {
         ++block->reads_count;
-        VG_(printf)("read: %llu\n", block->reads_count);
+        AddUsedFrom(block, GetCurrentIp());
+//        VG_(printf)("read: %llu\n", block->reads_count);
     }
     ++clo_memreads;
 }
@@ -63,7 +80,8 @@ void VG_REGPARM(2) MemWriteHook(Addr addr, SizeT size) {
     MemBlock *block = FindBlockByAddress(addr);
     if (block != NULL) {
         ++block->writes_count;
-        VG_(printf)("write: %llu\n", block->writes_count);
+        AddUsedFrom(block, GetCurrentIp());
+//        VG_(printf)("write: %llu\n", block->writes_count);
     }
     ++clo_memwrites;
 }
@@ -132,9 +150,9 @@ void *tp_malloc_common(SizeT align, SizeT n) {
       result = VG_(cli_malloc)(VG_(clo_alignment), n);
     }
 
-    RegisterMemoryBlock(result, n);
+    RegisterMemoryBlock((Addr)result, n);
 
-    VG_(printf)("alloc: %lu\n", (Addr)result);
+//    VG_(printf)("alloc: %lu\n", (Addr)result);
     return result;
 }
 
