@@ -14,6 +14,7 @@ typedef struct _MemNode {
 typedef struct _MemBlock {
     Addr start_addr; // Addr is always same size with UWord
     SizeT size;
+    OSet *used_from;
     ULong reads_count, writes_count;
 } MemBlock;
 
@@ -24,5 +25,6 @@ void InitMemTracer(void);
 void ShutdownMemTracer(void);
 void RegisterMemoryBlock(Addr addr, SizeT size);
 MemBlock *FindBlockByAddress(Addr addr);
+void VG_REGPARM(2) AddUsedFrom(MemBlock *block, Addr addr);
 
 #endif

@@ -14,6 +14,7 @@ MemBlock *NewMemBlock(Addr start_addr, SizeT size) {
                                     sizeof(*result));
     result->start_addr = start_addr;
     result->size = size;
+    result->used_from = NULL;
     result->reads_count = 0;
     result->writes_count = 0;
 
@@ -42,6 +43,7 @@ void ShutdownMemTracer(void) {
     VG_(HT_destruct)(mem_table);
 }
 
+static
 void InsertInMemTable(Addr addr, SizeT size, MemBlock *block) {
     Addr a = addr - (addr%kBucketSize);
     Addr end = addr + size;
@@ -62,7 +64,8 @@ void RegisterMemoryBlock(Addr addr, SizeT size) {
     InsertInMemTable(addr, size, block);
 }
 
-Bool IsAddrInBlock(Addr addr, MemBlock *block) {
+static
+Bool VG_REGPARM(2) IsAddrInBlock(Addr addr, MemBlock *block) {
     return addr >= block->start_addr && addr < block->start_addr + block->size;
 }
 
@@ -84,3 +87,15 @@ MemBlock *FindBlockByAddress(Addr addr) {
     return NULL;
 }
 
+void VG_REGPARM(2) AddUsedFrom(MemBlock *block, Addr addr) {
+    if (block->used_from == NULL) {
+        block->used_from = VG_(OSetWord_Create)(
+            &VG_(malloc),
+            "testplugin.addusedfrom",
+            &VG_(free));
+    }
+
+    if (!VG_(OSetWord_Contains)(block->used_from, addr)) {
+        VG_(OSetWord_Insert)(block->used_from, addr);
+    }
+}
