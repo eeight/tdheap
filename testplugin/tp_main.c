@@ -141,12 +141,10 @@ static void tp_fini(Int exitcode)
     addresses_count = 0.0;
     used_blocks_count = 0;
     for (i = 0; i != blocks_count; ++i) {
-        MemBlock *block = VG_(indexXA)(blocks_allocated, i);
+        MemBlock *block = *(MemBlock **)VG_(indexXA)(blocks_allocated, i);
         if (block != NULL) {
             if (block->used_from != NULL) {
                addresses_count += VG_(OSetWord_Size)(block->used_from);
-               VG_(printf)("block used: %lld times\n",
-                    VG_(OSetWord_Size)(block->used_from));
                ++used_blocks_count;
             }
        }
@@ -171,6 +169,7 @@ void *tp_malloc_common(SizeT align, SizeT n) {
     void *result;
 
     ++clo_allocations_count;
+
     if (align != 0) {
       result = VG_(cli_malloc)(align, n);
     } else {
@@ -179,7 +178,7 @@ void *tp_malloc_common(SizeT align, SizeT n) {
 
     RegisterMemoryBlock((Addr)result, n);
 
-//    VG_(printf)("alloc: %lu\n", (Addr)result);
+    VG_(printf)("malloc(%lu) = %lu;\n", n, (Addr)result);
     return result;
 }
 
@@ -223,19 +222,41 @@ void tp_free(ThreadId tid, void *p) {
 
 static
 void tp_builtin_delete(ThreadId tid, void *p) {
-   return tp_free(tid, p);
+   return tp_free_common(p);
 }
 
 static
 void tp_builtin_vec_delete(ThreadId tid, void *p) {
-   return tp_free(tid, p);
+   return tp_free_common(p);
 }
 
 // This is dumb, but what to do?
 static
 void *tp_realloc(ThreadId tid, void *p, SizeT new_size) {
-   tp_free_common(p);
-   return tp_malloc_common(0, new_size);
+    void *result = NULL;
+    if (new_size > 0) {
+        void *result = tp_malloc_common(0, new_size);
+
+        VG_(printf)("realloc(%lu, %lu);\n", (Addr)p, new_size);
+
+        if (p != NULL) {
+            SizeT copy_size;
+            MemBlock *block = FindBlockByAddress((Addr)p);
+            if (block == NULL) {
+                VG_(tool_panic)("Cannot realloc not malloc'd block");
+            }
+            VG_(printf)("\told size: %lu\n", block->size);
+            if (block->size < new_size) {
+                copy_size = block->size;
+            } else {
+                copy_size = new_size;
+            }
+            VG_(memcpy)(result, p, copy_size);
+        }
+    }
+
+    tp_free_common(p);
+    return result;
 }
 
 static void tp_pre_clo_init(void)

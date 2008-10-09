@@ -11,17 +11,17 @@ XArray *blocks_allocated;
 static VgHashTable mem_table;
 
 MemBlock *NewMemBlock(Addr start_addr, SizeT size) {
-    MemBlock block;
-    Word block_index;
+    MemBlock *block = VG_(malloc)("testplugin.newmemblock", sizeof(*block));
     
-    block.start_addr = start_addr;
-    block.size = size;
-    block.used_from = NULL;
-    block.reads_count = 0;
-    block.writes_count = 0;
+    block->start_addr = start_addr;
+    block->size = size;
+    block->used_from = NULL;
+    block->reads_count = 0;
+    block->writes_count = 0;
     
-    block_index = VG_(addToXA)(blocks_allocated, &block);
-    return VG_(indexXA)(blocks_allocated, block_index);
+    VG_(addToXA)(blocks_allocated, &block);
+
+    return block;
 }
 
 MemNode *NewMemNode(ULong key, MemBlock *block) {
@@ -44,17 +44,23 @@ void InitMemTracer(void) {
             &VG_(malloc),
             "testplugin.initmemtracer.2",
             &VG_(free),
-            sizeof(MemBlock));
+            sizeof(void *));
 }
 
 void ShutdownMemTracer(void) {
-    VG_(HT_destruct)(mem_table);
+    UInt blocks_count = VG_(sizeXA)(blocks_allocated);
+    UInt i;
+    for (i = 0; i != blocks_count; ++i) {
+        MemBlock *block = *(MemBlock **)VG_(indexXA)(blocks_allocated, i);
+        VG_(free)(block);
+    }
     VG_(deleteXA)(blocks_allocated);
+    VG_(HT_destruct)(mem_table);
 }
 
 static
 void InsertInMemTable(Addr addr, SizeT size, MemBlock *block) {
-    Addr a = addr - (addr%kBucketSize);
+    Addr a = addr - addr%kBucketSize;
     Addr end = addr + size;
 
     for (; a < end; a += kBucketSize) {
@@ -79,8 +85,8 @@ Bool VG_REGPARM(2) IsAddrInBlock(Addr addr, MemBlock *block) {
 }
 
 MemBlock *FindBlockByAddress(Addr addr) {
-    MemNode *node = VG_(HT_lookup)(mem_table, addr);
-    addr = addr - (addr%kBucketSize);
+    Addr bucket = addr - addr%kBucketSize;
+    MemNode *node = VG_(HT_lookup)(mem_table, bucket);
 
     if (node) {
         OSet *blocks = node->blocks;
