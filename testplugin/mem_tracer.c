@@ -7,18 +7,21 @@
 #include "pub_tool_libcprint.h" 
 static const Addr kBucketSize = 1024;
 
+XArray *blocks_allocated;
 static VgHashTable mem_table;
 
 MemBlock *NewMemBlock(Addr start_addr, SizeT size) {
-    MemBlock *result = VG_(malloc)("testplugin.newmemblock",
-                                    sizeof(*result));
-    result->start_addr = start_addr;
-    result->size = size;
-    result->used_from = NULL;
-    result->reads_count = 0;
-    result->writes_count = 0;
-
-    return result;
+    MemBlock block;
+    Word block_index;
+    
+    block.start_addr = start_addr;
+    block.size = size;
+    block.used_from = NULL;
+    block.reads_count = 0;
+    block.writes_count = 0;
+    
+    block_index = VG_(addToXA)(blocks_allocated, &block);
+    return VG_(indexXA)(blocks_allocated, block_index);
 }
 
 MemNode *NewMemNode(ULong key, MemBlock *block) {
@@ -36,11 +39,17 @@ MemNode *NewMemNode(ULong key, MemBlock *block) {
 }
 
 void InitMemTracer(void) {
-    mem_table = VG_(HT_construct)("testplugin.initmemtracer");
+    mem_table = VG_(HT_construct)("testplugin.initmemtracer.1");
+    blocks_allocated = VG_(newXA)(
+            &VG_(malloc),
+            "testplugin.initmemtracer.2",
+            &VG_(free),
+            sizeof(MemBlock));
 }
 
 void ShutdownMemTracer(void) {
     VG_(HT_destruct)(mem_table);
+    VG_(deleteXA)(blocks_allocated);
 }
 
 static

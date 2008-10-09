@@ -70,7 +70,6 @@ void VG_REGPARM(2) MemReadHook(Addr addr, SizeT size) {
     if (block != NULL) {
         ++block->reads_count;
         AddUsedFrom(block, GetCurrentIp());
-//        VG_(printf)("read: %llu\n", block->reads_count);
     }
     ++clo_memreads;
 }
@@ -81,7 +80,6 @@ void VG_REGPARM(2) MemWriteHook(Addr addr, SizeT size) {
     if (block != NULL) {
         ++block->writes_count;
         AddUsedFrom(block, GetCurrentIp());
-//        VG_(printf)("write: %llu\n", block->writes_count);
     }
     ++clo_memwrites;
 }
@@ -132,11 +130,40 @@ IRSB* tp_instrument ( VgCallbackClosure* closure,
 
 static void tp_fini(Int exitcode)
 {
-   VG_(printf)("mallocs: %lld\nfrees: %lld\n",
+    Word i, blocks_count, used_blocks_count;
+    double addresses_count;
+    VG_(printf)("mallocs: %lld\nfrees: %lld\n",
            clo_allocations_count, clo_frees_count);
-   VG_(printf)("Memory reads: %lld\nMemory writes: %lld\n",
+    VG_(printf)("Memory reads: %lld\nMemory writes: %lld\n",
            clo_memreads, clo_memwrites);
-   ShutdownMemTracer();
+
+    blocks_count = VG_(sizeXA)(blocks_allocated);
+    addresses_count = 0.0;
+    used_blocks_count = 0;
+    for (i = 0; i != blocks_count; ++i) {
+        MemBlock *block = VG_(indexXA)(blocks_allocated, i);
+        if (block != NULL) {
+            if (block->used_from != NULL) {
+               addresses_count += VG_(OSetWord_Size)(block->used_from);
+               VG_(printf)("block used: %lld times\n",
+                    VG_(OSetWord_Size)(block->used_from));
+               ++used_blocks_count;
+            }
+       }
+    }
+    
+    if (used_blocks_count != 0) {
+        addresses_count /= used_blocks_count;
+        
+        // VG_(printf) does not support float values :(
+        VG_(printf)(
+                "Each allocated memory block is accessed "
+                "from %llu addresses mean\n", (ULong)addresses_count);
+    } else {
+        VG_(printf)("No malloc'd blocks used\n");
+    }
+
+    ShutdownMemTracer();
 }
 
 static
