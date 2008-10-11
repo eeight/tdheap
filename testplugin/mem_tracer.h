@@ -20,6 +20,7 @@ typedef struct _MemBlock {
 } MemBlock;
 
 extern XArray *blocks_allocated;
+extern XArray *blocks_clusters;
 
 MemBlock *NewMemBlock(Addr start_addr, SizeT size);
 MemNode *NewMemNode(ULong key, MemBlock *block);
@@ -30,5 +31,8 @@ void RegisterMemoryBlock(Addr addr, SizeT size);
 void UnregisterMemoryBlock(Addr addr);
 MemBlock *FindBlockByAddress(Addr addr);
 void VG_REGPARM(2) AddUsedFrom(MemBlock *block, Addr addr);
+
+void ClusterizeMemBlocks(void);
+void PrettyPrintClusterFingerprint(UInt cluster_index);
 
 #endif
