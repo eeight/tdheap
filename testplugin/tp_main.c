@@ -130,8 +130,10 @@ IRSB* tp_instrument ( VgCallbackClosure* closure,
 
 static void tp_fini(Int exitcode)
 {
-    Word i, blocks_count, used_blocks_count;
+    UInt i, blocks_count, used_blocks_count;
     double addresses_count;
+    UInt clusters_count;
+
     VG_(printf)("mallocs: %lld\nfrees: %lld\n",
            clo_allocations_count, clo_frees_count);
     VG_(printf)("Memory reads: %lld\nMemory writes: %lld\n",
@@ -159,6 +161,15 @@ static void tp_fini(Int exitcode)
                 "from %llu addresses on average\n", (ULong)addresses_count);
     } else {
         VG_(printf)("No malloc'd blocks used\n");
+    }
+
+    VG_(printf)("Clusterizing all allocated memory blocks...\t");
+    ClusterizeMemBlocks();
+    clusters_count = VG_(sizeXA)(blocks_clusters);
+    VG_(printf)("%lu clusters\n", clusters_count);
+    VG_(printf)("Fingerprints of first 3 clusters:\n");
+    for (i = 0; i != 3; ++i) {
+        PrettyPrintClusterFingerprint(i);
     }
 
     ShutdownMemTracer();
