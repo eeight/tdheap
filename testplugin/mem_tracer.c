@@ -64,9 +64,9 @@ void ShutdownMemTracer(void) {
     VG_(HT_destruct)(mem_table);
 }
 
-static
-void InsertInMemTable(Addr addr, MemBlock *block) {
+void InsertInMemTable(MemBlock *block) {
     SizeT size = block->size;
+    Addr addr = block->start_addr;
     Addr a = addr - addr%kBucketSize;
     Addr end = addr + size;
 
@@ -97,12 +97,11 @@ void RemoveFromMemTable(Addr addr, MemBlock *block) {
 
 void RegisterMemoryBlock(Addr addr, SizeT size) {
     MemBlock *block = NewMemBlock(addr, size);
-    InsertInMemTable(addr, block);
+    InsertInMemTable(block);
 }
 
 void UnregisterMemoryBlock(Addr addr) {
     MemBlock *block = FindBlockByAddress(addr);
-    // if block == NULL this block must be of size 0
     if (block != NULL) {
         RemoveFromMemTable(addr, block);
     }
@@ -246,9 +245,9 @@ void PrettyPrintClusterFingerprint(UInt cluster_index) {
                                       NULL, 0, // dirname, n_dirname
                                       NULL, // dirname_available
                                       &line_num)) {
-            VG_(printf)("\t%s:%u\n", filename, line_num);
+            VG_(printf)("\t%s:0x%x\n", filename, line_num);
         } else {
-            VG_(printf)("Address %lu: no debug info present\n", addr);
+            VG_(printf)("Address 0x%x: no debug info present\n", addr);
         }
     }
 }
