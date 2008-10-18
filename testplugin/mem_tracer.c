@@ -237,15 +237,19 @@ void PrettyPrintClusterFingerprint(UInt cluster_index) {
     VG_(printf)("Cluster #%u fingerprint:\n", cluster_index);
     VG_(OSetWord_ResetIter)(used_from);
     while (VG_(OSetWord_Next)(used_from, &addr)) {
-        Char filename[1024];
+        Char filename[1024], dirname[1024];
+        Bool *dirname_available;
         UInt line_num;
 
         if (VG_(get_filename_linenum)(addr,
-                                      filename, 1024,
-                                      NULL, 0, // dirname, n_dirname
-                                      NULL, // dirname_available
+                                      filename, sizeof(filename),
+                                      dirname, sizeof(dirname),
+                                      &dirname_available,
                                       &line_num)) {
-            VG_(printf)("\t%s:0x%x\n", filename, line_num);
+            if (!dirname_available) {
+              dirname[0] = 0;
+            }
+            VG_(printf)("\t%s%s:0x%u\n", dirname, filename, line_num);
         } else {
             VG_(printf)("Address 0x%x: no debug info present\n", addr);
         }
