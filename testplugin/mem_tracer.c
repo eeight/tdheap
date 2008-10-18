@@ -249,7 +249,7 @@ void PrettyPrintClusterFingerprint(UInt cluster_index) {
             if (!dirname_available) {
               dirname[0] = 0;
             }
-            VG_(printf)("\t%s%s:0x%u\n", dirname, filename, line_num);
+            VG_(printf)("\t%s/%s:0x%u\n", dirname, filename, line_num);
         } else {
             VG_(printf)("Address 0x%x: no debug info present\n", addr);
         }
