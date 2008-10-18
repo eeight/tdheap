@@ -166,7 +166,7 @@ static void tp_fini(Int exitcode)
     VG_(printf)("Clusterizing all allocated memory blocks...\t");
     ClusterizeMemBlocks();
     clusters_count = VG_(sizeXA)(blocks_clusters);
-    VG_(printf)("%lu clusters\n", clusters_count);
+    VG_(printf)("%u clusters\n", clusters_count);
     if (clusters_count > 3) {
         clusters_count = 3;
     }
@@ -179,7 +179,7 @@ static void tp_fini(Int exitcode)
 }
 
 static
-void *tp_malloc_common(SizeT align, SizeT n) {
+void *tp_malloc_common(SizeT align, SizeT n, Bool do_register) {
     void *result;
 
     ++clo_allocations_count;
@@ -191,7 +191,7 @@ void *tp_malloc_common(SizeT align, SizeT n) {
     }
     //VG_(printf)("malloc(%lu) = %lu;\n", n, (Addr)result);
 
-    if (n > 0) {
+    if (n > 0 && do_register) {
         RegisterMemoryBlock((Addr)result, n);
     }
 
@@ -208,7 +208,7 @@ void tp_free_common(void *p) {
 
 static
 void *tp_malloc(ThreadId tid, SizeT n) {
-   return tp_malloc_common(0, n);
+   return tp_malloc_common(0, n, True);
 }
 
 static
@@ -223,12 +223,12 @@ void *tp_builtin_vec_new(ThreadId tid, SizeT n) {
 
 static
 void *tp_memalign(ThreadId tid, SizeT align, SizeT n) {
-   return tp_malloc_common(align, n);
+   return tp_malloc_common(align, n, True);
 }
 
 static
 void *tp_calloc(ThreadId tid, SizeT nmemb, SizeT size1) {
-   void *result = tp_malloc_common(0, nmemb*size1);
+   void *result = tp_malloc_common(0, nmemb*size1, True);
    VG_(memset)(result, 0, nmemb*size1);
    return result;
 }
@@ -263,13 +263,20 @@ void *tp_realloc(ThreadId tid, void *p, SizeT new_size) {
     if (old_size == new_size) {
         return p;
     } else {
-        void *result = tp_malloc_common(0, new_size);
+        // realloc'd memory block replaces old block, so no need to register it
+        void *result = tp_malloc_common(0, new_size, False);
         SizeT copy_size = old_size;
+
         if (new_size < old_size) {
             copy_size = new_size;
         }
         VG_(memcpy)(result, p, copy_size);
         tp_free_common(p);
+
+        // manually register realloc'd block
+        block->start_addr = (Addr)result;
+        block->size = new_size;
+        InsertInMemTable(block);
 
         return result;
     }
