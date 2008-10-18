@@ -167,8 +167,11 @@ static void tp_fini(Int exitcode)
     ClusterizeMemBlocks();
     clusters_count = VG_(sizeXA)(blocks_clusters);
     VG_(printf)("%lu clusters\n", clusters_count);
-    VG_(printf)("Fingerprints of first 3 clusters:\n");
-    for (i = 0; i != 3; ++i) {
+    if (clusters_count > 3) {
+        clusters_count = 3;
+    }
+    VG_(printf)("Fingerprints of first %d clusters:\n", clusters_count);
+    for (i = 0; i != clusters_count; ++i) {
         PrettyPrintClusterFingerprint(i);
     }
 
