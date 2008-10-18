@@ -1,0 +1,1 @@
+* Clusterization works improperly because operation of clusters comparison is not transitive.
