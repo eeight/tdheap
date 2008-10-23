@@ -19,6 +19,11 @@ typedef struct _MemBlock {
     ULong reads_count, writes_count;
 } MemBlock;
 
+typedef struct _MemCluster {
+    OSet *used_from;
+    XArray *blocks;
+} MemCluster;
+
 extern XArray *blocks_allocated;
 extern XArray *blocks_clusters;
 

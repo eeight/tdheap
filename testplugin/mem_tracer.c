@@ -166,14 +166,26 @@ Bool AreTwoMemBlocksBelongToSameCluster(MemBlock *a, MemBlock *b) {
 
 static
 void CreateNewMemClusterWithOneElement(MemBlock *a) {
-    XArray *new_cluster = VG_(newXA)(
+    MemCluster *cluster = VG_(malloc)(
+            "testplugin.createnewmemclusterwithoneelement.1",
+            sizeof(*cluster));
+    // TODO use this field
+    cluster->used_from = NULL;
+    cluster->blocks = VG_(newXA)(
             &VG_(malloc),
-            "testplugin.createnewmemclusterwithoneelement",
+            "testplugin.createnewmemclusterwithoneelement.2",
             &VG_(free),
             sizeof(void *));
 
-    VG_(addToXA)(new_cluster, &a);
-    VG_(addToXA)(blocks_clusters, &new_cluster);
+    VG_(addToXA)(cluster->blocks, &a);
+    VG_(addToXA)(blocks_clusters, &cluster);
+}
+
+static
+void MergeClusters(void) {
+    UInt i, clusters_count;
+
+    clusters_count = VG_(sizeXA)(blocks_clusters);
 }
 
 void ClusterizeMemBlocks(void) {
@@ -193,14 +205,14 @@ void ClusterizeMemBlocks(void) {
 
             clusters_count = VG_(sizeXA)(blocks_clusters);
             for (ii = 0; ii != clusters_count; ++ii) {
-                XArray *cluster = *(XArray **)VG_(indexXA)(blocks_clusters, ii);
-                XArray *cluster_sample;
-                tl_assert(VG_(sizeXA)(cluster) > 0);
+                MemCluster *cluster = *(MemCluster **)VG_(indexXA)(blocks_clusters, ii);
+                MemBlock *cluster_sample;
+                tl_assert(VG_(sizeXA)(cluster->blocks) > 0);
 
-                cluster_sample = *(XArray **)VG_(indexXA)(cluster, 0);
+                cluster_sample = *(MemBlock **)VG_(indexXA)(cluster->blocks, 0);
                 if (AreTwoMemBlocksBelongToSameCluster(current_block,
                                                        cluster_sample)) {
-                    VG_(addToXA)(cluster, &current_block);
+                    VG_(addToXA)(cluster->blocks, &current_block);
                     create_new_cluster = False;
                     break;
                 }
@@ -211,20 +223,21 @@ void ClusterizeMemBlocks(void) {
             }
         }
     }
+    MergeClusters();
 }
 
 void PrettyPrintClusterFingerprint(UInt cluster_index) {
-    XArray *cluster = *(XArray **)VG_(indexXA)(blocks_clusters, cluster_index);
+    MemCluster *cluster = *(MemCluster **)VG_(indexXA)(blocks_clusters, cluster_index);
     MemBlock *block;
     OSet *used_from = 0;
     UInt i, cluster_size;
     Addr addr;
 
-    cluster_size = VG_(sizeXA)(cluster);
+    cluster_size = VG_(sizeXA)(cluster->blocks);
     tl_assert(cluster_size > 0);
 
     for (i = 0; i != cluster_size; ++i) {
-        block = *(MemBlock **)VG_(indexXA)(cluster, i);
+        block = *(MemBlock **)VG_(indexXA)(cluster->blocks, i);
         if (used_from == NULL ||
                 VG_(OSetWord_Size)(used_from) <
                         VG_(OSetWord_Size)(block->used_from)) {
@@ -238,7 +251,7 @@ void PrettyPrintClusterFingerprint(UInt cluster_index) {
     VG_(OSetWord_ResetIter)(used_from);
     while (VG_(OSetWord_Next)(used_from, &addr)) {
         Char filename[1024], dirname[1024];
-        Bool *dirname_available;
+        Bool dirname_available;
         UInt line_num;
 
         if (VG_(get_filename_linenum)(addr,
