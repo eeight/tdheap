@@ -158,10 +158,21 @@ Bool IsSubset(OSet *a, OSet *b) {
 }
 
 static
-Bool AreTwoMemBlocksBelongToSameCluster(MemBlock *a, MemBlock *b) {
+Bool AreToUsesBelongToSameCluster(OSet *a, OSet *b) {
     // iff used_from of one block is subset of another
-    return IsSubset(a->used_from, b->used_from) ||
-           IsSubset(b->used_from, a->used_from);
+    return IsSubset(a, b) || IsSubset(b, a);
+}
+
+static
+void SetAdd(OSet *to, OSet *from) {
+    Word val;
+
+    VG_(OSetWord_ResetIter)(from);
+    while (VG_(OSetWord_Next)(from, &val)) {
+        if (!VG_(OSetWord_Contains)(to, val)) {
+            VG_(OSetWord_Insert)(to, val);
+        }
+    }
 }
 
 static
@@ -169,23 +180,82 @@ void CreateNewMemClusterWithOneElement(MemBlock *a) {
     MemCluster *cluster = VG_(malloc)(
             "testplugin.createnewmemclusterwithoneelement.1",
             sizeof(*cluster));
-    // TODO use this field
-    cluster->used_from = NULL;
-    cluster->blocks = VG_(newXA)(
+    cluster->used_from = VG_(OSetWord_Create)(
             &VG_(malloc),
             "testplugin.createnewmemclusterwithoneelement.2",
+            &VG_(free));
+    cluster->blocks = VG_(newXA)(
+            &VG_(malloc),
+            "testplugin.createnewmemclusterwithoneelement.3",
             &VG_(free),
             sizeof(void *));
+
+    SetAdd(cluster->used_from, a->used_from);
 
     VG_(addToXA)(cluster->blocks, &a);
     VG_(addToXA)(blocks_clusters, &cluster);
 }
 
 static
+void MergeTwoClusters(MemCluster *to, MemCluster *from) {
+    UInt i, blocks_count;
+    void **val;
+
+    SetAdd(to->used_from, from->used_from);
+    VG_(OSetWord_Destroy)(from->used_from);
+    from->used_from = NULL;
+
+    blocks_count = VG_(sizeXA)(from->blocks);
+    for (i = 0; i != blocks_count; ++i) {
+        val = VG_(indexXA)(from->blocks, i);
+        VG_(addToXA)(to->blocks, val);
+    }
+    VG_(deleteXA)(from->blocks);
+    from->blocks = NULL;
+}
+
+static
 void MergeClusters(void) {
-    UInt i, clusters_count;
+    UInt i, ii, clusters_count;
+    XArray *new_clusters;
 
     clusters_count = VG_(sizeXA)(blocks_clusters);
+    for (i = 0; i != clusters_count; ++i) {
+        MemCluster *a = *(MemCluster **)VG_(indexXA)(blocks_clusters, i);
+        if (a->used_from == NULL) {
+            continue;
+        }
+        for (ii = i + 1; ii != clusters_count; ++ii) {
+            MemCluster *b = *(MemCluster **)VG_(indexXA)(blocks_clusters, ii);
+            if (b->used_from == NULL) {
+                continue;
+            }
+            if (AreToUsesBelongToSameCluster(a->used_from, b->used_from)) {
+                MergeTwoClusters(a, b);
+            }
+        }
+    }
+    new_clusters = VG_(newXA)(
+            &VG_(malloc),
+            "testplugin.mergeclusters",
+            &VG_(free),
+            sizeof(void *));
+    clusters_count = VG_(sizeXA)(blocks_clusters);
+    for (i = 0; i != clusters_count; ++i) {
+        MemCluster *cluster = *(MemCluster **)VG_(indexXA)(blocks_clusters, i);
+        if (cluster->used_from != NULL) {
+            VG_(addToXA)(new_clusters, &cluster);
+        }
+    }
+
+    VG_(deleteXA)(blocks_clusters);
+    blocks_clusters = new_clusters;
+}
+
+static
+void AddToMemCluster(MemCluster *cluster, MemBlock *block) {
+    VG_(addToXA)(cluster->blocks, &block);
+    SetAdd(cluster->used_from, block->used_from);
 }
 
 void ClusterizeMemBlocks(void) {
@@ -210,9 +280,9 @@ void ClusterizeMemBlocks(void) {
                 tl_assert(VG_(sizeXA)(cluster->blocks) > 0);
 
                 cluster_sample = *(MemBlock **)VG_(indexXA)(cluster->blocks, 0);
-                if (AreTwoMemBlocksBelongToSameCluster(current_block,
-                                                       cluster_sample)) {
-                    VG_(addToXA)(cluster->blocks, &current_block);
+                if (AreToUsesBelongToSameCluster(current_block->used_from,
+                                                       cluster_sample->used_from)) {
+                    AddToMemCluster(cluster, current_block);
                     create_new_cluster = False;
                     break;
                 }
@@ -264,7 +334,7 @@ void PrettyPrintClusterFingerprint(UInt cluster_index) {
             }
             VG_(printf)("\t%s/%s:%u\n", dirname, filename, line_num);
         } else {
-            VG_(printf)("Address 0x%x: no debug info present\n", addr);
+            VG_(printf)("\tAddress 0x%x: no debug info present\n", addr);
         }
     }
 }
