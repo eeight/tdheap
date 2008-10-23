@@ -9,6 +9,7 @@
 
 
 static const Addr kBucketSize = 128;
+static const float kSimilarityThreshold = 0.2f;
 
 XArray *blocks_allocated;
 XArray *blocks_clusters;
@@ -144,23 +145,33 @@ void VG_REGPARM(2) AddUsedFrom(MemBlock *block, Addr addr) {
 }
 
 static
-Bool IsSubset(OSet *a, OSet *b) {
+UInt CommonItemsCount(OSet *a, OSet *b) {
     Word val;
+    UInt result = 0;
 
     VG_(OSetWord_ResetIter)(a);
     while (VG_(OSetWord_Next)(a, &val)) {
-        if (!VG_(OSetWord_Contains)(b, val)) {
-            return False;
+        if (VG_(OSetWord_Contains)(b, val)) {
+            ++result;
         }
     }
 
-    return True;
+    return result;
 }
 
 static
 Bool AreToUsesBelongToSameCluster(OSet *a, OSet *b) {
-    // iff used_from of one block is subset of another
-    return IsSubset(a, b) || IsSubset(b, a);
+    UInt a_size, b_size, common_size;
+
+    a_size = VG_(OSetWord_Size)(a);
+    b_size = VG_(OSetWord_Size)(b);
+    common_size = CommonItemsCount(a, b);
+    if (a_size*kSimilarityThreshold < common_size || 
+        b_size*kSimilarityThreshold < common_size) {
+        return True;
+    } else {
+        return False;
+    }
 }
 
 static
@@ -218,23 +229,28 @@ static
 void MergeClusters(void) {
     UInt i, ii, clusters_count;
     XArray *new_clusters;
+    Bool merged;
 
     clusters_count = VG_(sizeXA)(blocks_clusters);
-    for (i = 0; i != clusters_count; ++i) {
-        MemCluster *a = *(MemCluster **)VG_(indexXA)(blocks_clusters, i);
-        if (a->used_from == NULL) {
-            continue;
-        }
-        for (ii = i + 1; ii != clusters_count; ++ii) {
-            MemCluster *b = *(MemCluster **)VG_(indexXA)(blocks_clusters, ii);
-            if (b->used_from == NULL) {
+    do {
+        merged = False;
+        for (i = 0; i != clusters_count; ++i) {
+            MemCluster *a = *(MemCluster **)VG_(indexXA)(blocks_clusters, i);
+            if (a->used_from == NULL) {
                 continue;
             }
-            if (AreToUsesBelongToSameCluster(a->used_from, b->used_from)) {
-                MergeTwoClusters(a, b);
+            for (ii = i + 1; ii != clusters_count; ++ii) {
+                MemCluster *b = *(MemCluster **)VG_(indexXA)(blocks_clusters, ii);
+                if (b->used_from == NULL) {
+                    continue;
+                }
+                if (AreToUsesBelongToSameCluster(a->used_from, b->used_from)) {
+                    MergeTwoClusters(a, b);
+                    merged = True;
+                }
             }
         }
-    }
+    } while (merged);
     new_clusters = VG_(newXA)(
             &VG_(malloc),
             "testplugin.mergeclusters",
