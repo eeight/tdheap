@@ -41,6 +41,8 @@
 
 #include "mem_tracer.h"
 
+static const UInt kClustersCount = 4;
+
 ULong clo_allocations_count;
 ULong clo_frees_count;
 ULong clo_memreads;
@@ -167,8 +169,8 @@ static void tp_fini(Int exitcode)
     ClusterizeMemBlocks();
     clusters_count = VG_(sizeXA)(blocks_clusters);
     VG_(printf)("%u clusters\n", clusters_count);
-    if (clusters_count > 3) {
-        clusters_count = 3;
+    if (clusters_count > kClustersCount) {
+        clusters_count = kClustersCount;
     }
     VG_(printf)("Fingerprints of first %d clusters:\n", clusters_count);
     for (i = 0; i != clusters_count; ++i) {
