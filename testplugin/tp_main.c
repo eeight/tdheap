@@ -21,7 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
+   64along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
    02111-1307, USA.
 
@@ -77,13 +77,66 @@ void VG_REGPARM(2) MemReadHook(Addr addr, SizeT size) {
 }
 
 static
-void VG_REGPARM(2) MemWriteHook(Addr addr, SizeT size) {
+void VG_REGPARM(2) MemWriteHook(Addr addr, UWord size) {
     MemBlock *block = FindBlockByAddress(addr);
     if (block != NULL) {
         ++block->writes_count;
         AddUsedFrom(block, GetCurrentIp());
     }
     ++clo_memwrites;
+}
+
+static
+void VG_REGPARM(2) MemWriteHook8(Addr addr, UWord val) {
+    MemWriteHook(addr, 1);
+}
+
+static
+void VG_REGPARM(2) MemWriteHook16(Addr addr, UWord val) {
+    MemWriteHook(addr, 2);
+}
+
+static
+void VG_REGPARM(2) MemWriteHook32(Addr addr, UWord val) {
+    MemWriteHook(addr, 4);
+}
+
+static
+void VG_REGPARM(1) MemWriteHook64(Addr addr, ULong val) {
+    MemWriteHook(addr, 8);
+}
+
+static
+IRExpr *AssignNew(IRSB *code_out, IRTypeEnv *env, IRExpr *expr, HWord size) {
+    IRTemp t;
+
+    t = newIRTemp(env, size);
+    addStmtToIRSB(code_out, IRStmt_WrTmp(t, expr));
+    return IRExpr_RdTmp(t);
+}
+
+static
+IRExpr *WidenToHostWord(IRSB *code_out, IRExpr *expr, IRTypeEnv *env, HWord size) {
+    IRType ty = typeOfIRExpr(env, expr);
+
+    if (size == Ity_I32) {
+        switch (ty) {
+        case Ity_I32:
+            return expr;
+            break;
+        case Ity_I16:
+            return AssignNew(code_out, env, IRExpr_Unop(Iop_16Uto32, expr), size);
+            break;
+        case Ity_I8:
+            return AssignNew(code_out, env, IRExpr_Unop(Iop_8Uto32, expr), size);
+            break;
+        default:
+            // Do nothing
+            ty = ty;
+        }
+    }
+
+    VG_(tool_panic)("WidenToHostWord");
 }
 
 static
@@ -119,11 +172,41 @@ IRSB* tp_instrument ( VgCallbackClosure* closure,
         } else if (st->tag == Ist_Store) {
             IRExpr **argv;
             type = typeOfIRExpr(code_out->tyenv, st->Ist.Store.data);
-            argv = mkIRExprVec_2(st->Ist.Store.addr,
-                    mkIRExpr_HWord((HWord)sizeofIRType(type)));
-            di = unsafeIRDirty_0_N(2, "MemWriteHook",
-                    VG_(fnptr_to_fnentry)(&MemWriteHook), argv);
-            addStmtToIRSB(code_out, IRStmt_Dirty(di));
+            // For these write we want to know the value being written
+            if (type == Ity_I8 || type == Ity_I16 || type == Ity_I32 || type == Ity_I64) {
+                if (type == Ity_I64) {
+                    argv = mkIRExprVec_2(st->Ist.Store.addr, st->Ist.Store.data);
+                } else {
+                    argv = mkIRExprVec_2(st->Ist.Store.addr, WidenToHostWord(code_out, st->Ist.Store.data, code_out->tyenv, hWordTy));
+                }
+                di = NULL;
+                switch (type) {
+                case Ity_I8:
+                    di = unsafeIRDirty_0_N(2, "MemWriteHook8",
+                            VG_(fnptr_to_fnentry)(&MemWriteHook8), argv);
+                    break;
+                case Ity_I16:
+                    di = unsafeIRDirty_0_N(2, "MemWriteHook16",
+                            VG_(fnptr_to_fnentry)(&MemWriteHook16), argv);
+                    break;
+                case Ity_I32:
+                    di = unsafeIRDirty_0_N(2, "MemWriteHook32",
+                            VG_(fnptr_to_fnentry)(&MemWriteHook32), argv);
+                    break;
+                case Ity_I64:
+                    di = unsafeIRDirty_0_N(1, "MemWriteHook64",
+                            VG_(fnptr_to_fnentry)(&MemWriteHook64), argv);
+                    break;
+                default:
+                    tl_assert(0);
+                }
+                addStmtToIRSB(code_out, IRStmt_Dirty(di));
+            } else {
+                // Just the fact of writing.
+                argv = mkIRExprVec_2(st->Ist.Store.addr, (HWord)sizeofIRType(type));
+                di = unsafeIRDirty_0_N(2, "MemWriteHook",
+                        VG_(fnptr_to_fnentry)(&MemWriteHook), argv);
+            }
         }
         addStmtToIRSB(code_out, st);
     }
