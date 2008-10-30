@@ -144,6 +144,14 @@ void VG_REGPARM(2) AddUsedFrom(MemBlock *block, Addr addr) {
     }
 }
 
+void VG_REGPARM(2) TraceMemWrite32(Addr addr, UWord val) {
+    MemBlock *block = FindBlockByAddress(addr);
+
+    if (block != NULL) {
+        VG_(printf)("Suspicious address written!\n");
+    }
+}
+
 static
 UInt CommonItemsCount(OSet *a, OSet *b) {
     Word val;
