@@ -99,6 +99,7 @@ void VG_REGPARM(2) MemWriteHook16(Addr addr, UWord val) {
 static
 void VG_REGPARM(2) MemWriteHook32(Addr addr, UWord val) {
     MemWriteHook(addr, 4);
+    TraceMemWrite32(addr, val);
 }
 
 static

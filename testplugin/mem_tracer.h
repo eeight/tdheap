@@ -37,6 +37,7 @@ void InsertInMemTable(MemBlock *block);
 void UnregisterMemoryBlock(Addr addr);
 MemBlock *FindBlockByAddress(Addr addr);
 void VG_REGPARM(2) AddUsedFrom(MemBlock *block, Addr addr);
+void VG_REGPARM(2) TraceMemWrite32(Addr add, UWord val);
 
 void ClusterizeMemBlocks(void);
 void PrettyPrintClusterFingerprint(UInt cluster_index);
