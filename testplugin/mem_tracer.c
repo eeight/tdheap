@@ -74,30 +74,41 @@ void ShutdownMemTracer(void) {
 void InsertInMemTable(MemBlock *block) {
     SizeT size = block->size;
     Addr addr = block->start_addr;
-    Addr a = addr - addr%kBucketSize;
     Addr end = addr + size;
 
-    for (; a < end; a += kBucketSize) {
+    // Stupid and slow, but works right.
+    for (; addr < end; ++addr) {
+        Addr a = addr - addr%kBucketSize;
         MemNode *node = VG_(HT_lookup)(mem_table, a);
         if (node != NULL) {
+          if (!VG_(OSetWord_Contains)(node->blocks, (UWord)block)) {
             VG_(OSetWord_Insert)(node->blocks, (UWord)block);
+          }
         } else {
             node = NewMemNode(a, block);
             VG_(HT_add_node)(mem_table, node);
         }
+    }
+
+    //sanity check
+    for (addr = block->start_addr; addr != end; ++addr) {
+      MemBlock *b = FindBlockByAddress(addr);
+      tl_assert(b == block);
     }
 }
 
 static
 void RemoveFromMemTable(Addr addr, MemBlock *block) {
     SizeT size = block->size;
-    Addr a = addr - addr%kBucketSize;
     Addr end = addr + size;
 
-    for (; a < end; a += kBucketSize) {
+    for (; addr < end; ++addr) {
+        Addr a = addr - addr%kBucketSize;
         MemNode *node = VG_(HT_lookup)(mem_table, a);
         if (node != NULL) {
+          if (VG_(OSetWord_Contains)(node->blocks, (UWord)block)) {
             VG_(OSetWord_Remove)(node->blocks, (UWord)block);
+          }
         }
     }
 }
@@ -485,4 +496,26 @@ void PrettyPrintClusterFingerprint(UInt cluster_index) {
             VG_(printf)("\tAddress 0x%x: no debug info present\n", addr);
         }
     }
+}
+
+void PrintClustersDot(void) {
+    UInt clusters_count = VG_(sizeXA)(blocks_clusters);
+    UInt i;
+
+    VG_(printf)("digraph A {\n");
+    // Firstly, set links from memory blocks to clusters they are belong to.
+    for (i = 0; i != clusters_count; ++i) {
+        UInt blocks_count, ii;
+        MemCluster *cluster = *(MemCluster **)VG_(indexXA)(blocks_clusters, i);
+        MemCluster *link_to;
+
+        VG_(printf)("x%x;\n", (UWord)cluster);
+
+        VG_(OSetWord_ResetIter)(cluster->links_to);
+        while (VG_(OSetWord_Next)(cluster->links_to, (UWord *)&link_to)) {
+          VG_(printf)("x%x -> x%x;\n", (UInt)cluster, (UInt)link_to);
+        }
+    }
+
+    VG_(printf)("}\n");
 }

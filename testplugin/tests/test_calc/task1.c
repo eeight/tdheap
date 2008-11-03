@@ -98,8 +98,7 @@ int main(int argc, char **argv)
 			else
 			{
 				// Readed successfully
-				if (Evalute(SyntaxTree, &v))
-				{
+				if (Evalute(SyntaxTree, &v)) {
 					if (SyntaxTree->Token.Token != ttEqual)
 					{
 						PrintVariable(&v);

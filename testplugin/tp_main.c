@@ -261,6 +261,9 @@ static void tp_fini(Int exitcode)
         PrettyPrintClusterFingerprint(i);
     }
 
+    VG_(printf)("Dot representation:\n\n");
+    PrintClustersDot();
+
     ShutdownMemTracer();
 }
 
