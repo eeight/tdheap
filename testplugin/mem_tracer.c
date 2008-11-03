@@ -9,7 +9,7 @@
 
 
 static const Addr kBucketSize = 128;
-static const float kSimilarityThreshold = 0.2f;
+static const float kSimilarityThreshold = 0.3f;
 
 XArray *blocks_allocated;
 XArray *blocks_clusters;
@@ -24,8 +24,12 @@ MemBlock *NewMemBlock(Addr start_addr, SizeT size) {
     block->used_from = NULL;
     block->reads_count = 0;
     block->writes_count = 0;
+    block->links_to = VG_(OSetWord_Create)(
+        &VG_(malloc),
+        "testplugin.newmemblock.2",
+        &VG_(free));
 
-    block->map = VG_(HT_construct)("testplugin.newmemblock.2");
+    block->map = VG_(HT_construct)("testplugin.newmemblock.3");
     
     VG_(addToXA)(blocks_allocated, &block);
 
@@ -187,7 +191,18 @@ void VG_REGPARM(2) TraceMemWrite(Addr addr, UChar size) {
 }
 
 void VG_REGPARM(2) TraceMemWrite32(Addr addr, UWord val) {
+    MemBlock *dst = FindBlockByAddress(addr);
     TraceMemWrite(addr, 32);
+
+    if (dst != NULL) {
+      MemBlock *link = FindBlockByAddress(val);
+
+      if (link != NULL) {
+        if (!VG_(OSetWord_Contains)(dst->links_to, (UWord)link)) {
+            VG_(OSetWord_Insert)(dst->links_to, (UWord)link);
+        }
+      }
+    }
 }
 
 static
@@ -241,9 +256,13 @@ void CreateNewMemClusterWithOneElement(MemBlock *a) {
             &VG_(malloc),
             "testplugin.createnewmemclusterwithoneelement.2",
             &VG_(free));
-    cluster->blocks = VG_(newXA)(
+    cluster->links_to = VG_(OSetWord_Create)(
             &VG_(malloc),
             "testplugin.createnewmemclusterwithoneelement.3",
+            &VG_(free));
+    cluster->blocks = VG_(newXA)(
+            &VG_(malloc),
+            "testplugin.createnewmemclusterwithoneelement.4",
             &VG_(free),
             sizeof(void *));
 
@@ -336,6 +355,18 @@ void PostProcessClusters(void) {
     UInt clusters_count = VG_(sizeXA)(blocks_clusters);
     UInt i;
 
+    // Firstly, set links from memory blocks to clusters they are belong to.
+    for (i = 0; i != clusters_count; ++i) {
+        UInt blocks_count, ii;
+        MemCluster *cluster = *(MemCluster **)VG_(indexXA)(blocks_clusters, i);
+        blocks_count = VG_(sizeXA)(cluster->blocks);
+
+        for (ii = 0; ii != blocks_count; ++ii) {
+          MemBlock *block = *(MemBlock **)VG_(indexXA)(cluster->blocks, ii);
+          block->cluster = cluster;
+        }
+    }
+
     for (i = 0; i != clusters_count; ++i) {
         UInt blocks_count, ii;
         MemCluster *cluster = *(MemCluster **)VG_(indexXA)(blocks_clusters, i);
@@ -345,11 +376,21 @@ void PostProcessClusters(void) {
 
         for (ii = 0; ii != blocks_count; ++ii) {
           MemBlock *block = *(MemBlock **)VG_(indexXA)(cluster->blocks, ii);
+          MemBlock *link_to;
 
           if (size != 0 && size != block->size) {
             is_array = True;
           }
           size = Gcd(size, block->size);
+          
+          // deal with pointers from this block
+          VG_(OSetWord_ResetIter)(block->links_to);
+          while (VG_(OSetWord_Next)(block->links_to, (UWord *)&link_to)) {
+            MemCluster *link_to_cluster = link_to->cluster;
+            if (!VG_(OSetWord_Contains)(cluster->links_to, (UWord)link_to_cluster)) {
+                VG_(OSetWord_Insert)(cluster->links_to, (UWord)link_to_cluster);
+            }
+          }
         }
 
         cluster->size = size;
@@ -424,6 +465,7 @@ void PrettyPrintClusterFingerprint(UInt cluster_index) {
       VG_(printf)("\trepresents single structure of ");
     }
     VG_(printf)("size %lu\n", cluster->size);
+    VG_(printf)("\tLinks to %lu clusters\n", VG_(OSetWord_Size)(cluster->links_to));
     VG_(OSetWord_ResetIter)(used_from);
     while (VG_(OSetWord_Next)(used_from, &addr)) {
         Char filename[1024], dirname[1024];

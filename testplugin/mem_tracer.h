@@ -23,20 +23,23 @@ typedef struct _MemBlockMapEntry {
   };
 } MemBlockMapEntry;
 
-typedef struct _MemBlock {
-    Addr start_addr; // Addr is always same size with UWord
-    SizeT size;
-    OSet *used_from;
-    VgHashTable map;
-    ULong reads_count, writes_count;
-} MemBlock;
-
 typedef struct _MemCluster {
     OSet *used_from;
+    OSet *links_to;
     XArray *blocks;
     UWord size;
     Bool is_array;
 } MemCluster;
+
+typedef struct _MemBlock {
+    Addr start_addr; // Addr is always same size with UWord
+    SizeT size;
+    MemCluster *cluster;
+    OSet *used_from;
+    OSet *links_to;
+    VgHashTable map;
+    ULong reads_count, writes_count;
+} MemBlock;
 
 extern XArray *blocks_allocated;
 extern XArray *blocks_clusters;
