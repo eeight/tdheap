@@ -33,6 +33,8 @@ int main(int argc, char **argv)
 	unsigned long long int tmp;
 	UINT t;
 	Variable_t v;
+
+  //printf("sizeof(TreeNode_t) == %d\n", sizeof(TreeNode_t));
 	
 	if (argc < 2)
 	{

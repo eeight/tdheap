@@ -2,6 +2,7 @@
 #define _MEM_TRACER_H_
 
 #include "pub_tool_basics.h"
+#include "pub_tool_hashtable.h"
 #include "pub_tool_oset.h"
 #include "pub_tool_xarray.h"
 
@@ -12,16 +13,29 @@ typedef struct _MemNode {
     OSet *blocks;
 } MemNode;
 
+// NB: first two fields must be the same as in VGHashNode
+typedef struct _MemBlockMapEntry {
+  struct _MemBlockMapEntry *do_not_use;
+  UWord offset;
+  union {
+    UChar size;
+    Addr addr;
+  };
+} MemBlockMapEntry;
+
 typedef struct _MemBlock {
     Addr start_addr; // Addr is always same size with UWord
     SizeT size;
     OSet *used_from;
+    VgHashTable map;
     ULong reads_count, writes_count;
 } MemBlock;
 
 typedef struct _MemCluster {
     OSet *used_from;
     XArray *blocks;
+    UWord size;
+    Bool is_array;
 } MemCluster;
 
 extern XArray *blocks_allocated;
