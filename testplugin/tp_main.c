@@ -41,7 +41,7 @@
 
 #include "mem_tracer.h"
 
-static const UInt kClustersCount = 4;
+static const UInt kClustersCount = 6;
 
 ULong clo_allocations_count;
 ULong clo_frees_count;
