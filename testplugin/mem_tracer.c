@@ -17,13 +17,15 @@ XArray *blocks_clusters;
 static VgHashTable mem_table;
 
 MemBlock *NewMemBlock(Addr start_addr, SizeT size) {
-    MemBlock *block = VG_(malloc)("testplugin.newmemblock", sizeof(*block));
+    MemBlock *block = VG_(malloc)("testplugin.newmemblock.1", sizeof(*block));
     
     block->start_addr = start_addr;
     block->size = size;
     block->used_from = NULL;
     block->reads_count = 0;
     block->writes_count = 0;
+
+    block->map = VG_(HT_construct)("testplugin.newmemblock.2");
     
     VG_(addToXA)(blocks_allocated, &block);
 
@@ -144,12 +146,48 @@ void VG_REGPARM(2) AddUsedFrom(MemBlock *block, Addr addr) {
     }
 }
 
-void VG_REGPARM(2) TraceMemWrite32(Addr addr, UWord val) {
-    MemBlock *block = FindBlockByAddress(addr);
+static
+void SanityFail(char *msg) {
+  VG_(printf)("Sanity check failed: %s\n", msg);
+}
 
-    if (block != NULL) {
-        VG_(printf)("Suspicious address written!\n");
+static
+MemBlockMapEntry *NewMemBlockMapEntry(UWord offset, UChar size) {
+  MemBlockMapEntry *entry = VG_(malloc)("testplugin.newmemblockmapentry",
+                                        sizeof(*entry));
+  entry->offset = offset;
+  entry->size = size;
+
+  return entry;
+}
+
+static
+void VG_REGPARM(2) TraceMemWrite(Addr addr, UChar size) {
+    MemBlock *dst = FindBlockByAddress(addr);
+    if (dst != NULL) {
+      Addr i, i_end;
+
+      MemBlockMapEntry *entry = VG_(HT_lookup)(dst->map, addr - dst->start_addr);
+      if (entry != NULL) {
+        if (entry->size != size) {
+          SanityFail("Size does not match");
+        }
+      } else {
+        entry = NewMemBlockMapEntry(addr - dst->start_addr, size);
+        VG_(HT_add_node)(dst->map, entry);
+      }
+
+      // Sanity check
+      for (i = addr, i_end = addr + size; i != i_end; ++i) {
+        if (VG_(HT_lookup)(dst->map, i) != NULL) {
+          SanityFail("Inconsistent read/write");
+        }
+      }
     }
+}
+
+void VG_REGPARM(2) TraceMemWrite32(Addr addr, UWord val) {
+    TraceMemWrite(addr, 32);
 }
 
 static
@@ -168,7 +206,7 @@ UInt CommonItemsCount(OSet *a, OSet *b) {
 }
 
 static
-Bool AreToUsesBelongToSameCluster(OSet *a, OSet *b) {
+Bool AreTwoUsesBelongToSameCluster(OSet *a, OSet *b) {
     UInt a_size, b_size, common_size;
 
     a_size = VG_(OSetWord_Size)(a);
@@ -252,7 +290,7 @@ void MergeClusters(void) {
                 if (b->used_from == NULL) {
                     continue;
                 }
-                if (AreToUsesBelongToSameCluster(a->used_from, b->used_from)) {
+                if (AreTwoUsesBelongToSameCluster(a->used_from, b->used_from)) {
                     MergeTwoClusters(a, b);
                     merged = True;
                 }
@@ -282,6 +320,43 @@ void AddToMemCluster(MemCluster *cluster, MemBlock *block) {
     SetAdd(cluster->used_from, block->used_from);
 }
 
+static
+UWord Gcd(UWord a, UWord b) {
+  if (a == 0) {
+    return b;
+  } else if (b == 0) {
+    return a;
+  } else {
+    return Gcd(b, a%b);
+  }
+}
+
+static
+void PostProcessClusters(void) {
+    UInt clusters_count = VG_(sizeXA)(blocks_clusters);
+    UInt i;
+
+    for (i = 0; i != clusters_count; ++i) {
+        UInt blocks_count, ii;
+        MemCluster *cluster = *(MemCluster **)VG_(indexXA)(blocks_clusters, i);
+        UWord size = 0;
+        Bool is_array = False;
+        blocks_count = VG_(sizeXA)(cluster->blocks);
+
+        for (ii = 0; ii != blocks_count; ++ii) {
+          MemBlock *block = *(MemBlock **)VG_(indexXA)(cluster->blocks, ii);
+
+          if (size != 0 && size != block->size) {
+            is_array = True;
+          }
+          size = Gcd(size, block->size);
+        }
+
+        cluster->size = size;
+        cluster->is_array = is_array;
+    }
+}
+
 void ClusterizeMemBlocks(void) {
     if (blocks_allocated != NULL) {
         UInt blocks_count, i;
@@ -304,7 +379,7 @@ void ClusterizeMemBlocks(void) {
                 tl_assert(VG_(sizeXA)(cluster->blocks) > 0);
 
                 cluster_sample = *(MemBlock **)VG_(indexXA)(cluster->blocks, 0);
-                if (AreToUsesBelongToSameCluster(current_block->used_from,
+                if (AreTwoUsesBelongToSameCluster(current_block->used_from,
                                                        cluster_sample->used_from)) {
                     AddToMemCluster(cluster, current_block);
                     create_new_cluster = False;
@@ -318,6 +393,7 @@ void ClusterizeMemBlocks(void) {
         }
     }
     MergeClusters();
+    PostProcessClusters();
 }
 
 void PrettyPrintClusterFingerprint(UInt cluster_index) {
@@ -342,6 +418,12 @@ void PrettyPrintClusterFingerprint(UInt cluster_index) {
     tl_assert(used_from != NULL);
 
     VG_(printf)("Cluster #%u fingerprint:\n", cluster_index);
+    if (cluster->is_array) {
+      VG_(printf)("\trepresents array with element ");
+    } else {
+      VG_(printf)("\trepresents single structure of ");
+    }
+    VG_(printf)("size %lu\n", cluster->size);
     VG_(OSetWord_ResetIter)(used_from);
     while (VG_(OSetWord_Next)(used_from, &addr)) {
         Char filename[1024], dirname[1024];
