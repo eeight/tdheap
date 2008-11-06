@@ -89,11 +89,13 @@ void VG_REGPARM(2) MemWriteHook(Addr addr, UWord size) {
 static
 void VG_REGPARM(2) MemWriteHook8(Addr addr, UWord val) {
     MemWriteHook(addr, 1);
+    TraceMemWrite8(addr, val);
 }
 
 static
 void VG_REGPARM(2) MemWriteHook16(Addr addr, UWord val) {
     MemWriteHook(addr, 2);
+    TraceMemWrite16(addr, val);
 }
 
 static
@@ -105,6 +107,7 @@ void VG_REGPARM(2) MemWriteHook32(Addr addr, UWord val) {
 static
 void VG_REGPARM(1) MemWriteHook64(Addr addr, ULong val) {
     MemWriteHook(addr, 8);
+    TraceMemWrite64(addr, val);
 }
 
 static
@@ -261,8 +264,13 @@ static void tp_fini(Int exitcode)
         PrettyPrintClusterFingerprint(i);
     }
 
+/*
     VG_(printf)("Dot representation:\n\n");
     PrintClustersDot();
+*/
+
+    VG_(printf)("Structures found:\n\n");
+    PrintClustersStructs();
 
     ShutdownMemTracer();
 }

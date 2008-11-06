@@ -14,14 +14,12 @@ typedef struct _MemNode {
 } MemNode;
 
 // NB: first two fields must be the same as in VGHashNode
-typedef struct _MemBlockMapEntry {
+typedef struct _MemClusterMapEntry {
   struct _MemBlockMapEntry *do_not_use;
   UWord offset;
-  union {
-    UChar size;
-    Addr addr;
-  };
-} MemBlockMapEntry;
+  UChar size;
+  struct _MemCluster *cluster;
+} MemClusterMapEntry;
 
 typedef struct _MemCluster {
     OSet *used_from;
@@ -29,7 +27,16 @@ typedef struct _MemCluster {
     XArray *blocks;
     UWord size;
     Bool is_array;
+    VgHashTable map;
 } MemCluster;
+
+// NB: first two fields must be the same as in VGHashNode
+typedef struct _MemBlockMapEntry {
+  struct _MemBlockMapEntry *do_not_use;
+  UWord offset;
+  UChar size;
+  struct _MemBlock *block;
+} MemBlockMapEntry;
 
 typedef struct _MemBlock {
     Addr start_addr; // Addr is always same size with UWord
@@ -54,10 +61,14 @@ void InsertInMemTable(MemBlock *block);
 void UnregisterMemoryBlock(Addr addr);
 MemBlock *FindBlockByAddress(Addr addr);
 void VG_REGPARM(2) AddUsedFrom(MemBlock *block, Addr addr);
+void VG_REGPARM(2) TraceMemWrite8(Addr addr, UWord val);
+void VG_REGPARM(2) TraceMemWrite16(Addr addr, UWord val);
 void VG_REGPARM(2) TraceMemWrite32(Addr add, UWord val);
+void VG_REGPARM(1) TraceMemWrite64(Addr addr, ULong val);
 
 void ClusterizeMemBlocks(void);
 void PrettyPrintClusterFingerprint(UInt cluster_index);
-void PringClustersDot(void);
+void PrintClustersDot(void);
+void PrintClustersStructs(void);
 
 #endif

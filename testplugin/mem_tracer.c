@@ -172,6 +172,7 @@ MemBlockMapEntry *NewMemBlockMapEntry(UWord offset, UChar size) {
                                         sizeof(*entry));
   entry->offset = offset;
   entry->size = size;
+  entry->block = NULL;
 
   return entry;
 }
@@ -185,7 +186,9 @@ void VG_REGPARM(2) TraceMemWrite(Addr addr, UChar size) {
       MemBlockMapEntry *entry = VG_(HT_lookup)(dst->map, addr - dst->start_addr);
       if (entry != NULL) {
         if (entry->size != size) {
+          VG_(printf)("%d vs %d\n", entry->size, size);
           SanityFail("Size does not match");
+          entry->size = size;
         }
       } else {
         entry = NewMemBlockMapEntry(addr - dst->start_addr, size);
@@ -198,17 +201,34 @@ void VG_REGPARM(2) TraceMemWrite(Addr addr, UChar size) {
           SanityFail("Inconsistent read/write");
         }
       }
+
+      if (addr - dst->start_addr + size > dst->size) {
+        SanityFail("Write beyond end of memory block");
+      }
     }
+}
+
+void VG_REGPARM(2) TraceMemWrite8(Addr addr, UWord val) {
+  TraceMemWrite(addr, 1);
+}
+
+void VG_REGPARM(2) TraceMemWrite16(Addr addr, UWord val) {
+  TraceMemWrite(addr, 2);
 }
 
 void VG_REGPARM(2) TraceMemWrite32(Addr addr, UWord val) {
     MemBlock *dst = FindBlockByAddress(addr);
-    TraceMemWrite(addr, 32);
+    TraceMemWrite(addr, 4);
 
     if (dst != NULL) {
       MemBlock *link = FindBlockByAddress(val);
 
       if (link != NULL) {
+        MemBlockMapEntry *entry = VG_(HT_lookup)(dst->map, addr - dst->start_addr);
+        if (entry != NULL) {
+          entry->block = link;
+        }
+
         if (!VG_(OSetWord_Contains)(dst->links_to, (UWord)link)) {
             VG_(OSetWord_Insert)(dst->links_to, (UWord)link);
         }
@@ -216,6 +236,9 @@ void VG_REGPARM(2) TraceMemWrite32(Addr addr, UWord val) {
     }
 }
 
+void VG_REGPARM(1) TraceMemWrite64(Addr addr, ULong val) {
+    TraceMemWrite(addr, 8);
+}
 static
 UInt CommonItemsCount(OSet *a, OSet *b) {
     Word val;
@@ -276,6 +299,8 @@ void CreateNewMemClusterWithOneElement(MemBlock *a) {
             "testplugin.createnewmemclusterwithoneelement.4",
             &VG_(free),
             sizeof(void *));
+    cluster->map = VG_(HT_construct)(
+        "testplugin.createnewmemclusterwithoneelement.5");
 
     SetAdd(cluster->used_from, a->used_from);
 
@@ -362,6 +387,22 @@ UWord Gcd(UWord a, UWord b) {
 }
 
 static
+MemClusterMapEntry *NewMemClusterMapEntry(MemBlockMapEntry *block_entry) {
+  MemClusterMapEntry *entry = VG_(malloc)("testplugin.memclustermapentry",
+                                          sizeof(*entry));
+
+  entry->offset = block_entry->offset;
+  entry->size = block_entry->size;
+  if (block_entry->block != NULL) {
+    entry->cluster = block_entry->block->cluster;
+  } else {
+    entry->cluster = NULL;
+  }
+
+  return entry;
+}
+
+static
 void PostProcessClusters(void) {
     UInt clusters_count = VG_(sizeXA)(blocks_clusters);
     UInt i;
@@ -388,6 +429,8 @@ void PostProcessClusters(void) {
         for (ii = 0; ii != blocks_count; ++ii) {
           MemBlock *block = *(MemBlock **)VG_(indexXA)(cluster->blocks, ii);
           MemBlock *link_to;
+          MemBlockMapEntry *block_entry;
+          MemClusterMapEntry *cluster_entry;
 
           if (size != 0 && size != block->size) {
             is_array = True;
@@ -400,6 +443,26 @@ void PostProcessClusters(void) {
             MemCluster *link_to_cluster = link_to->cluster;
             if (!VG_(OSetWord_Contains)(cluster->links_to, (UWord)link_to_cluster)) {
                 VG_(OSetWord_Insert)(cluster->links_to, (UWord)link_to_cluster);
+            }
+          }
+
+          // usage maps
+          VG_(HT_ResetIter)(block->map);
+          while ((block_entry = VG_(HT_Next)(block->map))) {
+            tl_assert(block_entry->size <= 8);
+            cluster_entry = VG_(HT_lookup)(cluster->map, block_entry->offset);
+
+            if (cluster_entry != NULL) {
+              if (block_entry->block != NULL) {
+                if (cluster_entry->cluster == NULL) {
+                  cluster_entry->cluster = block_entry->block->cluster;
+                } else if (cluster_entry->cluster != block_entry->block->cluster) {
+                  SanityFail("Inconsistent clusterization");
+                }
+              }
+            } else {
+              cluster_entry = NewMemClusterMapEntry(block_entry);
+              VG_(HT_add_node)(cluster->map, cluster_entry);
             }
           }
         }
@@ -503,9 +566,7 @@ void PrintClustersDot(void) {
     UInt i;
 
     VG_(printf)("digraph A {\n");
-    // Firstly, set links from memory blocks to clusters they are belong to.
     for (i = 0; i != clusters_count; ++i) {
-        UInt blocks_count, ii;
         MemCluster *cluster = *(MemCluster **)VG_(indexXA)(blocks_clusters, i);
         MemCluster *link_to;
 
@@ -518,4 +579,33 @@ void PrintClustersDot(void) {
     }
 
     VG_(printf)("}\n");
+}
+
+void PrintClustersStructs(void) {
+    UInt clusters_count = VG_(sizeXA)(blocks_clusters);
+    UInt i, ii;
+
+    for (i = 0; i != clusters_count; ++i) {
+        UWord size;
+        MemCluster *cluster = *(MemCluster **)VG_(indexXA)(blocks_clusters, i);
+
+        VG_(printf)("struct x%x {\n", (UWord)(cluster));
+        for (ii = 0; ii < cluster->size; ii += size) {
+          MemClusterMapEntry *entry = VG_(HT_lookup)(cluster->map, ii);
+          if (entry == NULL) {
+            size = 1;
+            VG_(printf)("?: type8;\n");
+          } else {
+            size = entry->size;
+            VG_(printf)("value: ");
+            if (entry->cluster != NULL) {
+              VG_(printf)("*x%x", entry->cluster);
+            } else {
+              VG_(printf)("type%d", entry->size*8);
+            }
+            VG_(printf)(";\n");
+          }
+        }
+        VG_(printf)("}\n\n");
+    }
 }
