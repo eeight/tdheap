@@ -580,6 +580,45 @@ void PrintClustersDot(void) {
 
     VG_(printf)("}\n");
 }
+void PrintClustersDotStructs(void) {
+    UInt clusters_count = VG_(sizeXA)(blocks_clusters);
+    UInt i, ii;
+
+    VG_(printf)("digraph A {\n");
+    for (i = 0; i != clusters_count; ++i) {
+        UWord size;
+        MemCluster *cluster = *(MemCluster **)VG_(indexXA)(blocks_clusters, i);
+        MemCluster *link_to;
+
+        VG_(printf)("x%x [ label=\"", (UWord)cluster);
+
+        VG_(printf)("struct x%x {\\n", (UWord)(cluster));
+        for (ii = 0; ii < cluster->size; ii += size) {
+          MemClusterMapEntry *entry = VG_(HT_lookup)(cluster->map, ii);
+          if (entry == NULL) {
+            size = 1;
+            VG_(printf)("?: type8;\\n");
+          } else {
+            size = entry->size;
+            VG_(printf)("value: ");
+            if (entry->cluster != NULL) {
+              VG_(printf)("*x%x", entry->cluster);
+            } else {
+              VG_(printf)("type%d", entry->size*8);
+            }
+            VG_(printf)(";\\n");
+          }
+        }
+        VG_(printf)("};\"];\n");
+
+        VG_(OSetWord_ResetIter)(cluster->links_to);
+        while (VG_(OSetWord_Next)(cluster->links_to, (UWord *)&link_to)) {
+          VG_(printf)("x%x -> x%x;\n", (UInt)cluster, (UInt)link_to);
+        }
+    }
+
+    VG_(printf)("}\n");
+}
 
 void PrintClustersStructs(void) {
     UInt clusters_count = VG_(sizeXA)(blocks_clusters);

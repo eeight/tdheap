@@ -70,5 +70,6 @@ void ClusterizeMemBlocks(void);
 void PrettyPrintClusterFingerprint(UInt cluster_index);
 void PrintClustersDot(void);
 void PrintClustersStructs(void);
+void PrintClustersDotStructs(void);
 
 #endif

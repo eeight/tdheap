@@ -264,13 +264,8 @@ static void tp_fini(Int exitcode)
         PrettyPrintClusterFingerprint(i);
     }
 
-/*
     VG_(printf)("Dot representation:\n\n");
-    PrintClustersDot();
-*/
-
-    VG_(printf)("Structures found:\n\n");
-    PrintClustersStructs();
+    PrintClustersDotStructs();
 
     ShutdownMemTracer();
 }
