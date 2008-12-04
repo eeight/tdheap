@@ -1565,9 +1565,9 @@ AC_OUTPUT(
    drd/docs/Makefile
    drd/scripts/download-and-build-splash2
    drd/tests/Makefile
-   testplugin/Makefile
-   testplugin/tests/Makefile
-   testplugin/docs/Makefile
+   heap1/Makefile
+   heap1/tests/Makefile
+   heap1/docs/Makefile
 )
 
 cat<<EOF
