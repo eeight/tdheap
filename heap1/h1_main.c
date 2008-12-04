@@ -1,11 +1,9 @@
-
 /*--------------------------------------------------------------------*/
-/*--- Testplugin: Test plugin.                           tp_main.c ---*/
+/*--- Heap1: Heap tracer.                                heap1.c   ---*/
 /*--------------------------------------------------------------------*/
 
 /*
-   This file is part of Testplugin, the simplest possible Valgrind tool,
-   which does something unclear.
+   This file is part of Heap1, heap tracer.
 
    Copyright (C) 2002-2008 Petr Prokhorenkov
       prokhorenkov@gmail.com
@@ -40,15 +38,11 @@
 #include "pub_tool_machine.h" // VG_(fnptr_to_fnentry)
 
 #include "mem_tracer.h"
+#include "malloc_replace.h"
 
 static const UInt kClustersCount = 6;
 
-ULong clo_allocations_count;
-ULong clo_frees_count;
-ULong clo_memreads;
-ULong clo_memwrites;
-
-static void tp_post_clo_init(void)
+static void h1_post_clo_init(void)
 {
 }
 
@@ -144,7 +138,7 @@ IRExpr *WidenToHostWord(IRSB *code_out, IRExpr *expr, IRTypeEnv *env, HWord size
 }
 
 static
-IRSB* tp_instrument ( VgCallbackClosure* closure,
+IRSB* h1_instrument ( VgCallbackClosure* closure,
                       IRSB* code_in,
                       VexGuestLayout* layout, 
                       VexGuestExtents* vge,
@@ -217,7 +211,7 @@ IRSB* tp_instrument ( VgCallbackClosure* closure,
     return code_out;
 }
 
-static void tp_fini(Int exitcode)
+static void h1_fini(Int exitcode)
 {
     UInt i, blocks_count, used_blocks_count;
     double addresses_count;
@@ -270,132 +264,28 @@ static void tp_fini(Int exitcode)
     ShutdownMemTracer();
 }
 
-static
-void *tp_malloc_common(SizeT align, SizeT n, Bool do_register) {
-    void *result;
-
-    ++clo_allocations_count;
-
-    if (align != 0) {
-      result = VG_(cli_malloc)(align, n);
-    } else {
-      result = VG_(cli_malloc)(VG_(clo_alignment), n);
-    }
-    //VG_(printf)("malloc(%lu) = %lu;\n", n, (Addr)result);
-
-    if (n > 0 && do_register) {
-        RegisterMemoryBlock((Addr)result, n);
-    }
-
-    return result;
-}
-
-static
-void tp_free_common(void *p) {
-   ++clo_frees_count;
-   //VG_(printf)("free(%lu);\n", (Addr)p);
-   UnregisterMemoryBlock((Addr)p);
-   VG_(cli_free)(p);
-}
-
-static
-void *tp_malloc(ThreadId tid, SizeT n) {
-   return tp_malloc_common(0, n, True);
-}
-
-static
-void *tp_builtin_new(ThreadId tid, SizeT n) {
-   return tp_malloc(tid, n);
-}
-
-static
-void *tp_builtin_vec_new(ThreadId tid, SizeT n) {
-   return tp_malloc(tid, n);
-}
-
-static
-void *tp_memalign(ThreadId tid, SizeT align, SizeT n) {
-   return tp_malloc_common(align, n, True);
-}
-
-static
-void *tp_calloc(ThreadId tid, SizeT nmemb, SizeT size1) {
-   void *result = tp_malloc_common(0, nmemb*size1, True);
-   VG_(memset)(result, 0, nmemb*size1);
-   return result;
-}
-
-static
-void tp_free(ThreadId tid, void *p) {
-   return tp_free_common(p);
-}
-
-static
-void tp_builtin_delete(ThreadId tid, void *p) {
-   return tp_free_common(p);
-}
-
-static
-void tp_builtin_vec_delete(ThreadId tid, void *p) {
-   return tp_free_common(p);
-}
-
-static
-void *tp_realloc(ThreadId tid, void *p, SizeT new_size) {
-    SizeT old_size;
-
-    MemBlock *block = FindBlockByAddress((Addr)p);
-    if (block == NULL) {
-        VG_(tool_panic)("Cannot realloc not malloc'd block");
-    } else {
-        old_size = block->size;
-    }
-    //VG_(printf)("realloc(%lu, %lu);\t old size: %lu\n", (Addr)p, new_size, old_size);
-
-    if (old_size == new_size) {
-        return p;
-    } else {
-        // realloc'd memory block replaces old block, so no need to register it
-        void *result = tp_malloc_common(0, new_size, False);
-        SizeT copy_size = old_size;
-
-        if (new_size < old_size) {
-            copy_size = new_size;
-        }
-        VG_(memcpy)(result, p, copy_size);
-        tp_free_common(p);
-
-        // manually register realloc'd block
-        block->start_addr = (Addr)result;
-        block->size = new_size;
-        InsertInMemTable(block);
-
-        return result;
-    }
-}
-
-static void tp_pre_clo_init(void)
+static void h1_pre_clo_init(void)
 {
-   VG_(details_name)            ("Testplugin");
+   VG_(details_name)            ("Heap1");
    VG_(details_version)         (NULL);
-   VG_(details_description)     ("some unclear tool");
+   VG_(details_description)     ("Heap tracer, user for reverse-engineering of heap contents.");
    VG_(details_copyright_author)(
       "Copyright (C) 2002-2008 Petr Prokhorenkov.");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
 
-   VG_(basic_tool_funcs)        (tp_post_clo_init,
-                                 tp_instrument,
-                                 tp_fini);
+   VG_(basic_tool_funcs)        (h1_post_clo_init,
+                                 h1_instrument,
+                                 h1_fini);
    VG_(needs_malloc_replacement)(
-      &tp_malloc,
-      &tp_builtin_new,
-      &tp_builtin_vec_new,
-      &tp_memalign,
-      &tp_calloc,
-      &tp_free,
-      &tp_builtin_delete,
-      &tp_builtin_vec_delete,
-      &tp_realloc,
+      &h1_malloc,
+      &h1_builtin_new,
+      &h1_builtin_vec_new,
+      &h1_memalign,
+      &h1_calloc,
+      &h1_free,
+      &h1_builtin_delete,
+      &h1_builtin_vec_delete,
+      &h1_realloc,
       0
    );
 
@@ -406,7 +296,7 @@ static void tp_pre_clo_init(void)
    clo_memwrites = 0;
 }
 
-VG_DETERMINE_INTERFACE_VERSION(tp_pre_clo_init)
+VG_DETERMINE_INTERFACE_VERSION(h1_pre_clo_init)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

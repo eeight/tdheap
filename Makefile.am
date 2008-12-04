@@ -14,7 +14,7 @@ TOOLS =		memcheck \
 
 EXP_TOOLS = 	exp-omega \
 		exp-ptrcheck \
-		testplugin
+		heap1
 
 # Put docs last because building the HTML is slow and we want to get
 # everything else working before we try it.
