@@ -1013,6 +1013,9 @@ AC_OUTPUT(
    callgrind/callgrind_control
    callgrind/tests/Makefile
    callgrind/docs/Makefile
+   heap1/Makefile
+   heap1/tests/Makefile
+   heap1/docs/Makefile
    helgrind/Makefile
    helgrind/tests/Makefile
    helgrind/docs/Makefile

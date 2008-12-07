@@ -9,6 +9,7 @@ TOOLS =		memcheck \
 		massif \
 		lackey \
 		none \
+		heap1 \
 		helgrind
 
 EXP_TOOLS = 	exp-omega \
