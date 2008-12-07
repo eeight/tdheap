@@ -8,10 +8,10 @@
    This file is part of Callgrind, a Valgrind tool for call graph
    profiling programs.
 
-   Copyright (C) 2002-2008, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2007, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This tool is derived from and contains code from Cachegrind
-   Copyright (C) 2002-2008 Nicholas Nethercote (njn@valgrind.org)
+   Copyright (C) 2002-2007 Nicholas Nethercote (njn@valgrind.org)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -522,12 +522,12 @@ IRSB* CLG_(instrument)( VgCallbackClosure* closure,
 
    // No instrumentation if it is switched off
    if (! CLG_(instrument_state)) {
-       CLG_DEBUG(5, "instrument(BB %#lx) [Instrumentation OFF]\n",
+       CLG_DEBUG(5, "instrument(BB %p) [Instrumentation OFF]\n",
 		 (Addr)closure->readdr);
        return bbIn;
    }
 
-   CLG_DEBUG(3, "+ instrument(BB %#lx)\n", (Addr)closure->readdr);
+   CLG_DEBUG(3, "+ instrument(BB %p)\n", (Addr)closure->readdr);
 
    /* Set up SB for instrumented IR */
    bbOut = deepCopyIRSBExceptStmts(bbIn);
@@ -681,7 +681,7 @@ IRSB* CLG_(instrument)( VgCallbackClosure* closure,
        bb->jmpkind = bbIn->jumpkind;
    }
    
-   CLG_DEBUG(3, "- instrument(BB %#lx): byteLen %u, CJumps %u, CostLen %u\n",
+   CLG_DEBUG(3, "- instrument(BB %p): byteLen %u, CJumps %u, CostLen %u\n",
 	     origAddr, bb->instr_len, bb->cjmp_count, bb->cost_count);
    if (cJumps>0) {
        CLG_DEBUG(3, "                     [ ");
@@ -1083,7 +1083,7 @@ void CLG_(pre_clo_init)(void)
     VG_(details_name)            ("Callgrind");
     VG_(details_version)         (NULL);
     VG_(details_description)     ("a call-graph generating cache profiler");
-    VG_(details_copyright_author)("Copyright (C) 2002-2008, and GNU GPL'd, "
+    VG_(details_copyright_author)("Copyright (C) 2002-2007, and GNU GPL'd, "
 				  "by Josef Weidendorfer et al.");
     VG_(details_bug_reports_to)  (VG_BUGS_TO);
     VG_(details_avg_translation_sizeB) ( 500 );

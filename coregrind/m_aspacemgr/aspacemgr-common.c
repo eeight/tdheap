@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2008 OpenWorks LLP
+   Copyright (C) 2006-2007 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -255,8 +255,8 @@ Int ML_(am_readlink)(HChar* path, HChar* buf, UInt bufsiz)
 /* Get the dev, inode and mode info for a file descriptor, if
    possible.  Returns True on success. */
 Bool ML_(am_get_fd_d_i_m)( Int fd, 
-                           /*OUT*/ULong* dev, 
-                           /*OUT*/ULong* ino, /*OUT*/UInt* mode )
+                           /*OUT*/UWord* dev, 
+                           /*OUT*/UWord* ino, /*OUT*/UInt* mode )
 {
    SysRes          res;
    struct vki_stat buf;
@@ -267,17 +267,17 @@ Bool ML_(am_get_fd_d_i_m)( Int fd,
    struct vki_stat64 buf64;
    res = VG_(do_syscall2)(__NR_fstat64, fd, (UWord)&buf64);
    if (!res.isError) {
-      *dev  = (ULong)buf64.st_dev;
-      *ino  = (ULong)buf64.st_ino;
-      *mode = (UInt) buf64.st_mode;
+      *dev  = buf64.st_dev;
+      *ino  = buf64.st_ino;
+      *mode = buf64.st_mode;
       return True;
    }
 #  endif
    res = VG_(do_syscall2)(__NR_fstat, fd, (UWord)&buf);
    if (!res.isError) {
-      *dev  = (ULong)buf.st_dev;
-      *ino  = (ULong)buf.st_ino;
-      *mode = (UInt) buf.st_mode;
+      *dev  = buf.st_dev;
+      *ino  = buf.st_ino;
+      *mode = buf.st_mode;
       return True;
    }
    return False;

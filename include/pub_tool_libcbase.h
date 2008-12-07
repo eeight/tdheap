@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2007 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -131,20 +131,17 @@ extern Int   VG_(memcmp) ( const void* s1, const void* s2, SizeT n );
    Misc useful functions
    ------------------------------------------------------------------ */
 
-/* Like qsort().  The name VG_(ssort) is for historical reasons -- it used
- * to be a shell sort, but is now a quicksort. */
+/* Like qsort(), but does shell-sort.  The size==1/2/4 cases are specialised. */
 extern void VG_(ssort)( void* base, SizeT nmemb, SizeT size,
                         Int (*compar)(void*, void*) );
 
-/* Returns the base-2 logarithm of x.  Returns -1 if x is not a power
-   of two. */
-extern Int VG_(log2) ( UInt x );
+/* Returns the base-2 logarithm of x.  Returns -1 if x is not a power of two. */
+extern Int VG_(log2) ( Int x );
 
 // A pseudo-random number generator returning a random UInt.  If pSeed
 // is NULL, it uses its own seed, which starts at zero.  If pSeed is
 // non-NULL, it uses and updates whatever pSeed points at.
 extern UInt VG_(random) ( /*MOD*/UInt* pSeed );
-#define VG_RAND_MAX (1ULL << 32)
 
 #endif   // __PUB_TOOL_LIBCBASE_H
 

@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2007 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -1150,24 +1150,6 @@ static HReg iselIntExpr_R_wrk ( ISelEnv* env, IRExpr* e )
 
       /* Handle misc other ops. */
 
-      if (e->Iex.Binop.op == Iop_Max32U) {
-         /* This generates a truly rotten piece of code.  Just as well
-            it doesn't happen very often. */
-         HReg src1  = iselIntExpr_R(env, e->Iex.Binop.arg1);
-         HReg src1L = newVRegI(env);
-         HReg src2  = iselIntExpr_R(env, e->Iex.Binop.arg2);
-         HReg src2L = newVRegI(env);
-         HReg dst   = newVRegI(env);
-         addInstr(env, mk_iMOVsd_RR(src1,dst));
-         addInstr(env, mk_iMOVsd_RR(src1,src1L));
-         addInstr(env, AMD64Instr_Sh64(Ash_SHL, 32, src1L));
-         addInstr(env, mk_iMOVsd_RR(src2,src2L));
-         addInstr(env, AMD64Instr_Sh64(Ash_SHL, 32, src2L));
-         addInstr(env, AMD64Instr_Alu64R(Aalu_CMP, AMD64RMI_Reg(src2L), src1L));
-         addInstr(env, AMD64Instr_CMov64(Acc_B, AMD64RM_Reg(src2), dst));
-         return dst;
-      }
-
       if (e->Iex.Binop.op == Iop_DivModS64to32
           || e->Iex.Binop.op == Iop_DivModU64to32) {
          /* 64 x 32 -> (32(rem),32(div)) division */
@@ -1607,20 +1589,6 @@ static HReg iselIntExpr_R_wrk ( ISelEnv* env, IRExpr* e )
             return dst;
          }
 
-         /* ReinterpF32asI32(e) */
-         /* Given an IEEE754 single, produce an I64 with the same bit
-            pattern in the lower half. */
-         case Iop_ReinterpF32asI32: {
-            AMD64AMode* m8_rsp = AMD64AMode_IR(-8, hregAMD64_RSP());
-            HReg        dst    = newVRegI(env);
-            HReg        src    = iselFltExpr(env, e->Iex.Unop.arg);
-            /* paranoia */
-            set_SSE_rounding_default(env);
-            addInstr(env, AMD64Instr_SseLdSt(False/*store*/, 4, src, m8_rsp));
-            addInstr(env, AMD64Instr_LoadEX(4, False/*unsigned*/, m8_rsp, dst ));
-            return dst;
-         }
-
          case Iop_16to8:
          case Iop_32to8:
          case Iop_64to8:
@@ -1982,7 +1950,7 @@ static AMD64RI* iselIntExpr_RI ( ISelEnv* env, IRExpr* e )
    switch (ri->tag) {
       case Ari_Imm:
          return ri;
-      case Ari_Reg:
+      case Armi_Reg:
          vassert(hregClass(ri->Ari.Reg.reg) == HRcInt64);
          vassert(hregIsVirtual(ri->Ari.Reg.reg));
          return ri;

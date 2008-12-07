@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2007 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -220,7 +220,7 @@ typedef
          replace-style ones. */
       UInt guest_NRADDR;
 
-      /* Padding to make it have an 16-aligned size */
+      /* Padding to make it have an 8-aligned size */
       UInt padding;
    }
    VexGuestX86State;

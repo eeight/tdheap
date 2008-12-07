@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2008 OpenWorks LLP
+   Copyright (C) 2007-2007 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -44,13 +44,12 @@
 
 
 /* It's an abstract type.  Bwaha. */
-typedef  struct _XArray  XArray;
+typedef  void  XArray;
 
 /* Create new XArray, using given allocation and free function, and
    for elements of the specified size.  Alloc fn must not fail (that
    is, if it returns it must have succeeded.) */
-extern XArray* VG_(newXA) ( void*(*alloc_fn)(HChar*,SizeT), 
-                            HChar* cc,
+extern XArray* VG_(newXA) ( void*(*alloc_fn)(SizeT), 
                             void(*free_fn)(void*),
                             Word elemSzB );
 
@@ -65,12 +64,7 @@ extern void VG_(setCmpFnXA) ( XArray*, Int (*compar)(void*,void*) );
 /* Add an element to an XArray.  Element is copied into the XArray.
    Index at which it was added is returned.  Note this will be
    invalidated if the array is later sortXA'd. */
-extern Word VG_(addToXA) ( XArray*, void* elem );
-
-/* Add a sequence of bytes to an XArray of bytes.  Asserts if nbytes
-   is negative or the array's element size is not 1.  Returns the
-   index at which the first byte was added. */
-extern Word VG_(addBytesToXA) ( XArray* xao, void* bytesV, Word nbytes );
+extern Int VG_(addToXA) ( XArray*, void* elem );
 
 /* Sort an XArray using its comparison function, if set; else bomb.
    Probably not a stable sort w.r.t. equal elements module cmpFn. */
@@ -100,13 +94,6 @@ extern void* VG_(indexXA) ( XArray*, Word );
    than n elements in the array. */
 extern void VG_(dropTailXA) ( XArray*, Word );
 
-/* Make a new, completely independent copy of the given XArray, using
-   the existing allocation function to allocate the new space.
-   Returns NULL if the allocation function didn't manage to allocate
-   space (but did return NULL rather than merely abort.)  Space for
-   the clone (and all additions to it) is billed to 'cc' unless that
-   is NULL, in which case the parent's cost-center is used. */
-extern XArray* VG_(cloneXA)( HChar* cc, XArray* xa );
 
 #endif   // __PUB_TOOL_XARRAY_H
 

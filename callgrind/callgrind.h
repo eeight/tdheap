@@ -13,7 +13,7 @@
    This file is part of callgrind, a valgrind tool for cache simulation
    and call tree tracing.
 
-   Copyright (C) 2003-2008 Josef Weidendorfer.  All rights reserved.
+   Copyright (C) 2003-2007 Josef Weidendorfer.  All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions
@@ -49,7 +49,7 @@
    ----------------------------------------------------------------
 
    Notice that the above BSD-style license applies to this one file
-   (callgrind.h) only.  The entire rest of Valgrind is licensed under
+   (vgprof.h) only.  The entire rest of Valgrind is licensed under
    the terms of the GNU General Public License, version 2.  See the
    COPYING file in the source distribution for details.
 

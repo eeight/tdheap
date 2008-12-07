@@ -2,7 +2,7 @@
    This file is part of Callgrind, a Valgrind tool for call graph
    profiling programs.
 
-   Copyright (C) 2002-2008, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2007, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This tool is derived from and contains lot of code from Cachegrind
    Copyright (C) 2002 Nicholas Nethercote (njn@valgrind.org)
@@ -67,7 +67,7 @@ static void setup_control(void)
 
   /* name of command file */
   size = VG_(strlen)(dir) + VG_(strlen)(DEFAULT_COMMANDNAME) +10;
-  command_file = (char*) CLG_MALLOC("cl.command.sc.1", size);
+  command_file = (char*) CLG_MALLOC(size);
   CLG_ASSERT(command_file != 0);
   VG_(sprintf)(command_file, "%s/%s.%d",
 	       dir, DEFAULT_COMMANDNAME, thisPID);
@@ -76,13 +76,13 @@ static void setup_control(void)
    * KCachegrind releases, as it doesn't use ".pid" to distinguish
    * different callgrind instances from same base directory.
    */
-  command_file2 = (char*) CLG_MALLOC("cl.command.sc.2", size);
+  command_file2 = (char*) CLG_MALLOC(size);
   CLG_ASSERT(command_file2 != 0);
   VG_(sprintf)(command_file2, "%s/%s",
 	       dir, DEFAULT_COMMANDNAME);
 
   size = VG_(strlen)(dir) + VG_(strlen)(DEFAULT_RESULTNAME) +10;
-  result_file = (char*) CLG_MALLOC("cl.command.sc.3", size);
+  result_file = (char*) CLG_MALLOC(size);
   CLG_ASSERT(result_file != 0);
   VG_(sprintf)(result_file, "%s/%s.%d",
 	       dir, DEFAULT_RESULTNAME, thisPID);
@@ -90,13 +90,12 @@ static void setup_control(void)
   /* If we get a command from a command file without .pid, use
    * a result file without .pid suffix
    */
-  result_file2 = (char*) CLG_MALLOC("cl.command.sc.4", size);
+  result_file2 = (char*) CLG_MALLOC(size);
   CLG_ASSERT(result_file2 != 0);
   VG_(sprintf)(result_file2, "%s/%s",
                dir, DEFAULT_RESULTNAME);
 
-  info_file = (char*) CLG_MALLOC("cl.command.sc.5",
-                                 VG_(strlen)(DEFAULT_INFONAME) + 10);
+  info_file = (char*) CLG_MALLOC(VG_(strlen)(DEFAULT_INFONAME) + 10);
   CLG_ASSERT(info_file != 0);
   VG_(sprintf)(info_file, "%s.%d", DEFAULT_INFONAME, thisPID);
 

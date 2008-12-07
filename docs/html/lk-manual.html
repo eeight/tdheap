@@ -1,0 +1,164 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+<title>10. Lackey: a simple profiler and memory tracer</title>
+<link rel="stylesheet" href="vg_basic.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.69.1">
+<link rel="start" href="index.html" title="Valgrind Documentation">
+<link rel="up" href="manual.html" title="Valgrind User Manual">
+<link rel="prev" href="nl-manual.html" title='9. Nulgrind: the "null" tool'>
+<link rel="next" href="writing-tools.html" title="11. Writing a New Valgrind Tool">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<div><table class="nav" width="100%" cellspacing="3" cellpadding="3" border="0" summary="Navigation header"><tr>
+<td width="22px" align="center" valign="middle"><a accesskey="p" href="nl-manual.html"><img src="images/prev.png" width="18" height="21" border="0" alt="Prev"></a></td>
+<td width="25px" align="center" valign="middle"><a accesskey="u" href="manual.html"><img src="images/up.png" width="21" height="18" border="0" alt="Up"></a></td>
+<td width="31px" align="center" valign="middle"><a accesskey="h" href="index.html"><img src="images/home.png" width="27" height="20" border="0" alt="Up"></a></td>
+<th align="center" valign="middle">Valgrind User Manual</th>
+<td width="22px" align="center" valign="middle"><a accesskey="n" href="writing-tools.html"><img src="images/next.png" width="18" height="21" border="0" alt="Next"></a></td>
+</tr></table></div>
+<div class="chapter" lang="en">
+<div class="titlepage"><div><div><h2 class="title">
+<a name="lk-manual"></a>10. Lackey: a simple profiler and memory tracer</h2></div></div></div>
+<div class="toc">
+<p><b>Table of Contents</b></p>
+<dl>
+<dt><span class="sect1"><a href="lk-manual.html#lk-manual.overview">10.1. Overview</a></span></dt>
+<dt><span class="sect1"><a href="lk-manual.html#lk-manual.options">10.2. Lackey Options</a></span></dt>
+</dl>
+</div>
+<p>To use this tool, you must specify
+<code class="computeroutput">--tool=lackey</code> on the Valgrind
+command line.</p>
+<div class="sect1" lang="en">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="lk-manual.overview"></a>10.1. Overview</h2></div></div></div>
+<p>Lackey is a simple valgrind tool that does some basic program
+measurement.  It adds quite a lot of simple instrumentation to the
+program's code.  It is primarily intended to be of use as an example
+tool, and consequently emphasises clarity of implementation
+over performance.</p>
+<p>It measures and reports various things.</p>
+<div class="orderedlist"><ol type="1">
+<li>
+<p>When command line option
+  <code class="computeroutput">--basic-counts=yes</code> is specified,
+  it prints the following statistics and information about the execution of
+  the client program:</p>
+<div class="orderedlist"><ol type="a">
+<li>
+<p>The number of calls to
+    <code class="computeroutput">_dl_runtime_resolve()</code>, the
+    function in glibc's dynamic linker that resolves function
+    references to shared objects.</p>
+<p>You can change the name of the function tracked with command line
+    option <code class="computeroutput">--fnname=&lt;name&gt;</code>.</p>
+</li>
+<li><p>The number of conditional branches encountered and the
+    number and proportion of those taken.</p></li>
+<li><p>The number of superblocks entered and completed by the
+    program.  Note that due to optimisations done by the JIT, this
+    is not at all an accurate value.</p></li>
+<li><p>The number of guest (x86, amd64, ppc, etc.) instructions and IR
+    statements executed.  IR is Valgrind's RISC-like intermediate
+    representation via which all instrumentation is done.
+    </p></li>
+<li><p>Ratios between some of these counts.</p></li>
+<li><p>The exit code of the client program.</p></li>
+</ol></div>
+</li>
+<li>
+<p>When command line option
+  <code class="computeroutput">--detailed-counts=yes</code> is
+  specified, a table is printed with counts of loads, stores and ALU
+  operations for various types of operands.</p>
+<p>The types are identified by their IR name ("I1" ... "I128",
+  "F32", "F64", and "V128").</p>
+</li>
+<li><p>When command line option
+  <code class="computeroutput">--trace-mem=yes</code> is
+  specified, it prints out the size and address of almost every load and
+  store made by the program.  See the comments at the top of the file
+  <code class="computeroutput">lackey/lk_main.c</code> for details about
+  the output format, how it works, and inaccuracies in the address trace.
+  </p></li>
+<li><p>When command line option
+  <code class="computeroutput">--trace-superblocks=yes</code> is
+  specified, it prints out the address of every superblock 
+  (extended basic block) executed by the program.  This is
+  primarily of interest to Valgrind developers.  See the comments at 
+  the top of the file <code class="computeroutput">lackey/lk_main.c</code>
+  for details about the output format.
+  </p></li>
+</ol></div>
+<p>Note that Lackey runs quite slowly, especially when
+<code class="computeroutput">--detailed-counts=yes</code> is specified.
+It could be made to run a lot faster by doing a slightly more
+sophisticated job of the instrumentation, but that would undermine
+its role as a simple example tool.  Hence we have chosen not to do
+so.</p>
+<p>Note also that <code class="computeroutput">--trace-mem=yes</code>
+and <code class="computeroutput">--trace-superblocks=yes</code> create
+immense amounts of output.  If you are saving the output in a file,
+you can eat up tens of gigabytes of disk space very quickly.
+As a result of printing out so much stuff, they also cause the program
+to run absolutely utterly unbelievably slowly.</p>
+</div>
+<div class="sect1" lang="en">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="lk-manual.options"></a>10.2. Lackey Options</h2></div></div></div>
+<p>Lackey-specific options are:</p>
+<div class="variablelist">
+<a name="lk.opts.list"></a><dl>
+<dt>
+<a name="opt.basic-counts"></a><span class="term">
+      <code class="option">--basic-counts=&lt;no|yes&gt; [default: yes] </code>
+    </span>
+</dt>
+<dd><p>Count basic events, as described above.</p></dd>
+<dt>
+<a name="opt.detailed-counts"></a><span class="term">
+      <code class="option">--detailed-counts=&lt;no|yes&gt; [default: no] </code>
+    </span>
+</dt>
+<dd><p>Count loads, stores and alu ops, differentiated by their
+            IR types.</p></dd>
+<dt>
+<a name="opt.fnname"></a><span class="term">
+      <code class="option">--fnname=&lt;name&gt; [default: _dl_runtime_resolve()] </code>
+    </span>
+</dt>
+<dd><p>Count calls to the function &lt;name&gt;.</p></dd>
+<dt>
+<a name="opt.trace-mem"></a><span class="term">
+      <code class="option">--trace-mem=&lt;no|yes&gt; [default: no] </code>
+    </span>
+</dt>
+<dd><p>Produce a log of all memory references, as described
+      above.</p></dd>
+<dt>
+<a name="opt.trace-superblocks"></a><span class="term">
+      <code class="option">--trace-superblocks=&lt;no|yes&gt; [default: no] </code>
+    </span>
+</dt>
+<dd><p>Print a line of text giving the address of each superblock
+            (single entry, multiple exit chunk of code) executed
+            by the program.</p></dd>
+</dl>
+</div>
+</div>
+</div>
+<div>
+<br><table class="nav" width="100%" cellspacing="3" cellpadding="2" border="0" summary="Navigation footer">
+<tr>
+<td rowspan="2" width="40%" align="left">
+<a accesskey="p" href="nl-manual.html">&lt;&lt; 9. Nulgrind: the "null" tool</a> </td>
+<td width="20%" align="center"><a accesskey="u" href="manual.html">Up</a></td>
+<td rowspan="2" width="40%" align="right"> <a accesskey="n" href="writing-tools.html">11. Writing a New Valgrind Tool &gt;&gt;</a>
+</td>
+</tr>
+<tr><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td></tr>
+</table>
+</div>
+</body>
+</html>

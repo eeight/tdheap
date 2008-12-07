@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2008, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2007, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -52,8 +52,7 @@ void CLG_(init_call_stack)(call_stack* s)
   CLG_ASSERT(s != 0);
 
   s->size = N_CALL_STACK_INITIAL_ENTRIES;   
-  s->entry = (call_entry*) CLG_MALLOC("cl.callstack.ics.1",
-                                      s->size * sizeof(call_entry));
+  s->entry = (call_entry*) CLG_MALLOC(s->size * sizeof(call_entry));
   s->sp = 0;
   s->entry[0].cxt = 0; /* for assertion in push_cxt() */
 
@@ -97,8 +96,7 @@ void ensure_stack_size(Int i)
   cs->size *= 2;
   while (i > cs->size) cs->size *= 2;
 
-  cs->entry = (call_entry*) VG_(realloc)("cl.callstack.ess.1",
-                                         cs->entry,
+  cs->entry = (call_entry*) VG_(realloc)(cs->entry,
 					 cs->size * sizeof(call_entry));
 
   for(i=oldsize; i<cs->size; i++)
@@ -277,7 +275,7 @@ void CLG_(push_call_stack)(BBCC* from, UInt jmp, BBCC* to, Addr sp, Bool skip)
 
 	    BB* bb = jcc->to->bb;
 	    if (s>40) s=40;
-	    VG_(printf)("%s> %s(0x%x, 0x%x, ...) [%s / %#lx]\n", spaces[s%4]+40-s, bb->fn->name,
+	    VG_(printf)("%s> %s(0x%x, 0x%x, ...) [%s / %p]\n", spaces[s%4]+40-s, bb->fn->name,
                         pars ? pars[1]:0,
 			pars ? pars[2]:0,
 			bb->obj->name + bb->obj->last_slash_pos,
@@ -287,7 +285,7 @@ void CLG_(push_call_stack)(BBCC* from, UInt jmp, BBCC* to, Addr sp, Bool skip)
 	else if (CLG_(clo).verbose<4) {
 	    VG_(printf)("+ %2d ", CLG_(current_call_stack).sp);
 	    CLG_(print_short_jcc)(jcc);
-	    VG_(printf)(", SP %#lx, RA %#lx\n", sp, ret_addr);
+	    VG_(printf)(", SP %p, RA %p\n", sp, ret_addr);
 	}
 	else {
 	    VG_(printf)("  Pushed ");
@@ -367,16 +365,16 @@ void CLG_(pop_call_stack)()
 	if (CLG_(clo).verbose<4) {
 	    if (jcc) {
 		/* popped JCC target first */
-		VG_(printf)("- %2d %#lx => ",
+		VG_(printf)("- %2d %p => ", 
 			    CLG_(current_call_stack).sp,
 			    bb_addr(jcc->to->bb));
 		CLG_(print_addr)(bb_jmpaddr(jcc->from->bb));
-		VG_(printf)(", SP %#lx\n",
+		VG_(printf)(", SP %p\n",
 			    CLG_(current_call_stack).entry[CLG_(current_call_stack).sp].sp);
 		CLG_(print_cost)(10, CLG_(sets).full, jcc->cost);
 	    }
 	    else
-		VG_(printf)("- %2d [Skipped JCC], SP %#lx\n",
+		VG_(printf)("- %2d [Skipped JCC], SP %p\n",
 			    CLG_(current_call_stack).sp,
 			    CLG_(current_call_stack).entry[CLG_(current_call_stack).sp].sp);
 	}
@@ -399,7 +397,7 @@ void CLG_(pop_call_stack)()
 void CLG_(unwind_call_stack)(Addr sp, Int minpops)
 {
     Int csp;
-    CLG_DEBUG(4,"+ unwind_call_stack(sp %#lx, minpops %d): frame %d\n",
+    CLG_DEBUG(4,"+ unwind_call_stack(sp %p, minpops %d): frame %d\n",
 	      sp, minpops, CLG_(current_call_stack).sp);
 
     /* We pop old stack frames.

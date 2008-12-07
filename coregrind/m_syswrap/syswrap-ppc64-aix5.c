@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2008 OpenWorks LLP
+   Copyright (C) 2006-2007 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -350,7 +350,7 @@ PRE(sys__clock_gettime)
 {
    /* Seems like ARG2 points at a destination buffer? */
    /* _clock_gettime (UNDOCUMENTED) ( 0, 0xA, 0x2FF21808 ) */
-   PRINT("_clock_gettime (UNDOCUMENTED) ( %ld, %#lx, %#lx )", ARG1, ARG2, ARG3 );
+   PRINT("_clock_gettime (UNDOCUMENTED) ( %d, %p, %p )", ARG1, ARG2, ARG3 );
    PRE_REG_READ3(int, "_clock_gettime", int, arg1, int, arg2, void*, arg3);
    PRE_MEM_WRITE( "_clock_gettime(dst)", ARG2, sizeof(struct timespec) );
 }
@@ -367,14 +367,14 @@ PRE(sys__fp_fpscrx64_)
 
 PRE(sys_kload)
 {
-   PRINT("kload (UNDOCUMENTED)( %#lx(%s), %ld, %ld )", 
-         ARG1,(Char*)ARG1, ARG2, ARG3 );
+   PRINT("kload (UNDOCUMENTED)( %p(%s), %ld, %ld )", 
+         ARG1,ARG1, ARG2, ARG3 );
    PRE_REG_READ3(void*, "kload", char*, name, long, arg2, char*, arg3);
 }
 POST(sys_kload)
 {
    vg_assert(SUCCESS);
-   if (0) VG_(printf)("kload result = %#lx\n", RES);
+   if (0) VG_(printf)("kload result = %p\n", RES);
    if (RES)
       POST_MEM_WRITE( RES, 64 );
    ML_(aix5_rescan_procmap_after_load_or_unload)();
@@ -382,7 +382,7 @@ POST(sys_kload)
 
 PRE(sys_kunload64)
 {
-   PRINT("kunload64 (UNDOCUMENTED)( %#lx, %ld, %ld, %#lx )", 
+   PRINT("kunload64 (UNDOCUMENTED)( %p, %ld, %ld, %p )", 
          ARG1, ARG2, ARG3, ARG4 );
    PRE_REG_READ4(long, "kunload64",
                  void*, arg1, long, arg2, long, arg3, void*, arg4);
@@ -751,7 +751,6 @@ AIX5SCTabEntry aix5_ppc64_syscall_table[]
     AIXX_(__NR_AIX5_thread_unlock,      sys_thread_unlock),
     AIXX_(__NR_AIX5_thread_waitlock_,   sys_thread_waitlock_),
     AIXXY(__NR_AIX5_times,              sys_times),
-    AIXXY(__NR_AIX5_uname,              sys_uname),
     AIXX_(__NR_AIX5_unlink,             sys_unlink),
     AIXX_(__NR_AIX5_utimes,             sys_utimes),
     AIXXY(__NR_AIX5_vmgetinfo,          sys_vmgetinfo),

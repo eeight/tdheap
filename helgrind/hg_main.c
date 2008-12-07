@@ -8,7 +8,7 @@
    This file is part of Helgrind, a Valgrind tool for detecting errors
    in threaded programs.
 
-   Copyright (C) 2007-2008 OpenWorks LLP
+   Copyright (C) 2007-2007 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -48,12 +48,11 @@
 #include "pub_tool_options.h"
 #include "pub_tool_xarray.h"
 #include "pub_tool_stacktrace.h"
-#include "pub_tool_debuginfo.h"  /* VG_(get_data_description) */
-#include "pub_tool_wordfm.h"
 
 #include "helgrind.h"
 
 #define HG_(str) VGAPPEND(vgHelgrind_,str)
+#include "hg_wordfm.h"
 #include "hg_wordset.h"
 
 /*----------------------------------------------------------------*/
@@ -208,10 +207,10 @@ static Int clo_sanity_flags = 0;
 /*--- Some very basic stuff                                    ---*/
 /*----------------------------------------------------------------*/
 
-static void* hg_zalloc ( HChar* cc, SizeT n ) {
+static void* hg_zalloc ( SizeT n ) {
    void* p;
    tl_assert(n > 0);
-   p = VG_(malloc)( cc, n );
+   p = VG_(malloc)( n );
    tl_assert(p);
    VG_(memset)(p, 0, n);
    return p;
@@ -225,6 +224,14 @@ static void hg_free ( void* p ) {
 #define ROUNDUP(a, N)   ((a + N - 1) & ~(N-1))
 /* Round a down to the next multiple of N.  N must be a power of 2 */
 #define ROUNDDN(a, N)   ((a) & ~(N-1))
+
+#ifdef HAVE_BUILTIN_EXPECT
+#define LIKELY(cond)   __builtin_expect(!!(cond),1)
+#define UNLIKELY(cond) __builtin_expect(!!(cond),0)
+#else
+#define LIKELY(cond)   (cond)
+#define UNLIKELY(cond) (cond)
+#endif
 
 
 /*----------------------------------------------------------------*/
@@ -575,7 +582,7 @@ static inline Bool is_sane_LockN ( Lock* lock ); /* fwds */
 
 static Thread* mk_Thread ( SegmentID csegid ) {
    static Int indx      = 1;
-   Thread* thread       = hg_zalloc( "hg", sizeof(Thread) );
+   Thread* thread       = hg_zalloc( sizeof(Thread) );
    thread->locksetA     = HG_(emptyWS)( univ_lsets );
    thread->locksetW     = HG_(emptyWS)( univ_lsets );
    thread->csegid       = csegid;
@@ -590,7 +597,7 @@ static Thread* mk_Thread ( SegmentID csegid ) {
 // Make a new lock which is unlocked (hence ownerless)
 static Lock* mk_LockN ( LockKind kind, Addr guestaddr ) {
    static ULong unique = 0;
-   Lock* lock             = hg_zalloc( "hg", sizeof(Lock) );
+   Lock* lock             = hg_zalloc( sizeof(Lock) );
    lock->admin            = admin_locks;
    lock->unique           = unique++;
    lock->magic            = LockN_MAGIC;
@@ -605,7 +612,7 @@ static Lock* mk_LockN ( LockKind kind, Addr guestaddr ) {
    return lock;
 }
 static Segment* mk_Segment ( Thread* thr, Segment* prev, Segment* other ) {
-   Segment* seg    = hg_zalloc( "hg", sizeof(Segment) );
+   Segment* seg    = hg_zalloc( sizeof(Segment) );
    seg->dfsver     = 0;
    seg->thr        = thr;
    seg->prev       = prev;
@@ -630,12 +637,12 @@ static Bool is_sane_Bag_of_Threads ( WordBag* bag )
 {
    Thread* thr;
    Word    count;
-   VG_(initIterBag)( bag );
-   while (VG_(nextIterBag)( bag, (Word*)&thr, &count )) {
+   HG_(initIterBag)( bag );
+   while (HG_(nextIterBag)( bag, (Word*)&thr, &count )) {
       if (count < 1) return False;
       if (!is_sane_Thread(thr)) return False;
    }
-   VG_(doneIterBag)( bag );
+   HG_(doneIterBag)( bag );
    return True;
 }
 static Bool is_sane_Lock_BASE ( Lock* lock )
@@ -657,7 +664,7 @@ static Bool is_sane_Lock_BASE ( Lock* lock )
 
    /* If heldBy is non-NULL, we require it to contain at least one
       thread. */
-   if (VG_(isEmptyBag)(lock->heldBy))
+   if (HG_(isEmptyBag)(lock->heldBy))
       return False;
 
    /* Lock is either r- or w-held. */
@@ -666,7 +673,7 @@ static Bool is_sane_Lock_BASE ( Lock* lock )
    if (lock->heldW) {
       /* Held in write-mode */
       if ((lock->kind == LK_nonRec || lock->kind == LK_rdwr)
-          && !VG_(isSingletonTotalBag)(lock->heldBy))
+          && !HG_(isSingletonTotalBag)(lock->heldBy))
          return False;
    } else {
       /* Held in read-mode */
@@ -694,7 +701,7 @@ static void del_LockN ( Lock* lk )
 {
    tl_assert(is_sane_LockN(lk));
    if (lk->heldBy)
-      VG_(deleteBag)( lk->heldBy );
+      HG_(deleteBag)( lk->heldBy );
    VG_(memset)(lk, 0xAA, sizeof(*lk));
    hg_free(lk);
 }
@@ -729,8 +736,8 @@ static void lockN_acquire_writer ( Lock* lk, Thread* thr )
          tl_assert(lk->heldBy == NULL); /* can't w-lock recursively */
          tl_assert(!lk->heldW);
          lk->heldW  = True;
-         lk->heldBy = VG_(newBag)( hg_zalloc, "hg", hg_free );
-         VG_(addToBag)( lk->heldBy, (Word)thr );
+         lk->heldBy = HG_(newBag)( hg_zalloc, hg_free );
+         HG_(addToBag)( lk->heldBy, (Word)thr );
          break;
       case LK_mbRec:
          if (lk->heldBy == NULL)
@@ -738,11 +745,11 @@ static void lockN_acquire_writer ( Lock* lk, Thread* thr )
          /* 2nd and subsequent locking of a lock by its owner */
          tl_assert(lk->heldW);
          /* assert: lk is only held by one thread .. */
-         tl_assert(VG_(sizeUniqueBag(lk->heldBy)) == 1);
+         tl_assert(HG_(sizeUniqueBag(lk->heldBy)) == 1);
          /* assert: .. and that thread is 'thr'. */
-         tl_assert(VG_(elemBag)(lk->heldBy, (Word)thr)
-                   == VG_(sizeTotalBag)(lk->heldBy));
-         VG_(addToBag)(lk->heldBy, (Word)thr);
+         tl_assert(HG_(elemBag)(lk->heldBy, (Word)thr)
+                   == HG_(sizeTotalBag)(lk->heldBy));
+         HG_(addToBag)(lk->heldBy, (Word)thr);
          break;
       case LK_rdwr:
          tl_assert(lk->heldBy == NULL && !lk->heldW); /* must be unheld */
@@ -780,11 +787,11 @@ static void lockN_acquire_reader ( Lock* lk, Thread* thr )
    /* end EXPOSITION only */
 
    if (lk->heldBy) {
-      VG_(addToBag)(lk->heldBy, (Word)thr);
+      HG_(addToBag)(lk->heldBy, (Word)thr);
    } else {
       lk->heldW  = False;
-      lk->heldBy = VG_(newBag)( hg_zalloc, "hg", hg_free );
-      VG_(addToBag)( lk->heldBy, (Word)thr );
+      lk->heldBy = HG_(newBag)( hg_zalloc, hg_free );
+      HG_(addToBag)( lk->heldBy, (Word)thr );
    }
    tl_assert(!lk->heldW);
    tl_assert(is_sane_LockN(lk));
@@ -803,13 +810,13 @@ static void lockN_release ( Lock* lk, Thread* thr )
    tl_assert(lk->heldBy);
    stats__lockN_releases++;
    /* Remove it from the holder set */
-   b = VG_(delFromBag)(lk->heldBy, (Word)thr);
+   b = HG_(delFromBag)(lk->heldBy, (Word)thr);
    /* thr must actually have been a holder of lk */
    tl_assert(b);
    /* normalise */
    tl_assert(lk->acquired_at);
-   if (VG_(isEmptyBag)(lk->heldBy)) {
-      VG_(deleteBag)(lk->heldBy);
+   if (HG_(isEmptyBag)(lk->heldBy)) {
+      HG_(deleteBag)(lk->heldBy);
       lk->heldBy      = NULL;
       lk->heldW       = False;
       lk->acquired_at = NULL;
@@ -825,8 +832,8 @@ static void remove_Lock_from_locksets_of_all_owning_Threads( Lock* lk )
       return;
    }
    /* for each thread that holds this lock do ... */
-   VG_(initIterBag)( lk->heldBy );
-   while (VG_(nextIterBag)( lk->heldBy, (Word*)&thr, NULL )) {
+   HG_(initIterBag)( lk->heldBy );
+   while (HG_(nextIterBag)( lk->heldBy, (Word*)&thr, NULL )) {
       tl_assert(is_sane_Thread(thr));
       tl_assert(HG_(elemWS)( univ_lsets,
                              thr->locksetA, (Word)lk ));
@@ -840,7 +847,7 @@ static void remove_Lock_from_locksets_of_all_owning_Threads( Lock* lk )
             = HG_(delFromWS)( univ_lsets, thr->locksetW, (Word)lk );
       }
    }
-   VG_(doneIterBag)( lk->heldBy );
+   HG_(doneIterBag)( lk->heldBy );
 }
 
 /* --------- xxxID functions --------- */
@@ -1060,7 +1067,7 @@ static void pp_admin_threads ( Int d )
       }
       pp_Thread(d+3, t);
    }
-   space(d); VG_(printf)("}\n");
+   space(d); VG_(printf)("}\n", n);
 }
 
 static void pp_map_threads ( Int d )
@@ -1094,7 +1101,7 @@ static const HChar* show_LockKind ( LockKind lkk ) {
 
 static void pp_Lock ( Int d, Lock* lk )
 {
-   space(d+0); VG_(printf)("Lock %p (ga %#lx) {\n", lk, lk->guestaddr);
+   space(d+0); VG_(printf)("Lock %p (ga %p) {\n", lk, lk->guestaddr);
    if (sHOW_ADMIN) {
       space(d+3); VG_(printf)("admin  %p\n",   lk->admin);
       space(d+3); VG_(printf)("magic  0x%x\n", (UInt)lk->magic);
@@ -1107,10 +1114,10 @@ static void pp_Lock ( Int d, Lock* lk )
       Thread* thr;
       Word    count;
       VG_(printf)(" { ");
-      VG_(initIterBag)( lk->heldBy );
-      while (VG_(nextIterBag)( lk->heldBy, (Word*)&thr, &count ))
+      HG_(initIterBag)( lk->heldBy );
+      while (HG_(nextIterBag)( lk->heldBy, (Word*)&thr, &count ))
          VG_(printf)("%lu:%p ", count, thr);
-      VG_(doneIterBag)( lk->heldBy );
+      HG_(doneIterBag)( lk->heldBy );
       VG_(printf)("}");
    }
    VG_(printf)("\n");
@@ -1132,7 +1139,7 @@ static void pp_admin_locks ( Int d )
       }
       pp_Lock(d+3, lk);
    }
-   space(d); VG_(printf)("}\n");
+   space(d); VG_(printf)("}\n", n);
 }
 
 static void pp_map_locks ( Int d )
@@ -1140,14 +1147,14 @@ static void pp_map_locks ( Int d )
    void* gla;
    Lock* lk;
    space(d); VG_(printf)("map_locks (%d entries) {\n",
-                         (Int)VG_(sizeFM)( map_locks ));
-   VG_(initIterFM)( map_locks );
-   while (VG_(nextIterFM)( map_locks, (Word*)&gla,
+                         (Int)HG_(sizeFM)( map_locks ));
+   HG_(initIterFM)( map_locks );
+   while (HG_(nextIterFM)( map_locks, (Word*)&gla,
                                       (Word*)&lk )) {
       space(d+3);
       VG_(printf)("guest %p -> Lock %p\n", gla, lk);
    }
-   VG_(doneIterFM)( map_locks );
+   HG_(doneIterFM)( map_locks );
    space(d); VG_(printf)("}\n");
 }
 
@@ -1180,7 +1187,7 @@ static void pp_admin_segments ( Int d )
       }
       pp_Segment(d+3, s);
    }
-   space(d); VG_(printf)("}\n");
+   space(d); VG_(printf)("}\n", n);
 }
 
 static void pp_map_segments ( Int d )
@@ -1188,14 +1195,14 @@ static void pp_map_segments ( Int d )
    SegmentID segid;
    Segment*  seg;
    space(d); VG_(printf)("map_segments (%d entries) {\n", 
-                         (Int)VG_(sizeFM)( map_segments ));
-   VG_(initIterFM)( map_segments );
-   while (VG_(nextIterFM)( map_segments, (Word*)&segid,
+                         (Int)HG_(sizeFM)( map_segments ));
+   HG_(initIterFM)( map_segments );
+   while (HG_(nextIterFM)( map_segments, (Word*)&segid,
                                          (Word*)&seg )) {
       space(d+3);
       VG_(printf)("segid 0x%x -> Segment %p\n", (UInt)segid, seg);
    }
-   VG_(doneIterFM)( map_segments );
+   HG_(doneIterFM)( map_segments );
    space(d); VG_(printf)("}\n");
 }
 
@@ -1237,7 +1244,7 @@ void show_shadow_w32_for_user ( /*OUT*/Char* buf, Int nBuf, SVal w32 )
    if (is_SHVAL_ShM(w32)) {
       WordSetID tset = un_SHVAL_ShM_tset(w32);
       WordSetID lset = del_BHL( un_SHVAL_ShM_lset(w32) );
-      VG_(sprintf)(buf, "ShMod(#Tset=%ld,#Lset=%ld)",
+      VG_(sprintf)(buf, "ShMod(#Tset=%d,#Lset=%d)", 
                    HG_(cardinalityWS)(univ_tsets, tset),
                    HG_(cardinalityWS)(univ_lsets, lset));
    }
@@ -1245,7 +1252,7 @@ void show_shadow_w32_for_user ( /*OUT*/Char* buf, Int nBuf, SVal w32 )
    if (is_SHVAL_ShR(w32)) {
       WordSetID tset = un_SHVAL_ShR_tset(w32);
       WordSetID lset = del_BHL( un_SHVAL_ShR_lset(w32) );
-      VG_(sprintf)(buf, "ShRO(#Tset=%ld,#Lset=%ld)",
+      VG_(sprintf)(buf, "ShRO(#Tset=%d,#Lset=%d)", 
                    HG_(cardinalityWS)(univ_tsets, tset),
                    HG_(cardinalityWS)(univ_lsets, lset));
    }
@@ -1282,7 +1289,7 @@ static void pp_SecMap_shared ( Int d, SecMap* sm, Addr ga )
 #endif
    CacheLineZ* lineZ;
    CacheLineF* lineF;
-   space(d+0); VG_(printf)("SecMap %p (ga %#lx) {\n", sm, ga);
+   space(d+0); VG_(printf)("SecMap %p (ga %p) {\n", sm, (void*)ga);
 
    for (i = 0; i < N_SECMAP_ZLINES; i++) {
       get_ZF_by_index( &lineZ, &lineF, sm, i );
@@ -1295,7 +1302,7 @@ static void pp_SecMap_shared ( Int d, SecMap* sm, Addr ga )
       a   = ga + 1 * i;
       if (! (is_SHVAL_ShM(w32) || is_SHVAL_ShR(w32)))
          continue;
-      space(d+3); VG_(printf)("%#lx -> 0x%08x ", (void*)a, w32);
+      space(d+3); VG_(printf)("%p -> 0x%08x ", (void*)a, w32);
       show_shadow_w32(buf, sizeof(buf), w32);
       VG_(printf)("%s\n", buf);
    }
@@ -1309,12 +1316,12 @@ static void pp_map_shmem_shared ( Int d )
    Addr    ga;
    SecMap* sm;
    space(d); VG_(printf)("map_shmem_ShR_and_ShM_only {\n");
-   VG_(initIterFM)( map_shmem );
-   while (VG_(nextIterFM)( map_shmem, (Word*)&ga,
+   HG_(initIterFM)( map_shmem );
+   while (HG_(nextIterFM)( map_shmem, (Word*)&ga,
                                       (Word*)&sm )) {
       pp_SecMap_shared( d+3, sm, ga );
    }
-   VG_(doneIterFM) ( map_shmem );
+   HG_(doneIterFM) ( map_shmem );
    space(d); VG_(printf)("}\n");
 }
 
@@ -1380,30 +1387,30 @@ static void initialise_data_structures ( void )
 
    tl_assert(sizeof(Addr) == sizeof(Word));
    tl_assert(map_shmem == NULL);
-   map_shmem = VG_(newFM)( hg_zalloc, "hg", hg_free, NULL/*unboxed Word cmp*/);
+   map_shmem = HG_(newFM)( hg_zalloc, hg_free, NULL/*unboxed Word cmp*/);
    tl_assert(map_shmem != NULL);
    shmem__invalidate_scache();
 
    tl_assert(map_threads == NULL);
-   map_threads = hg_zalloc( "hg", VG_N_THREADS * sizeof(Thread*) );
+   map_threads = hg_zalloc( VG_N_THREADS * sizeof(Thread*) );
    tl_assert(map_threads != NULL);
 
    /* re <=: < on 64-bit platforms, == on 32-bit ones */
    tl_assert(sizeof(SegmentID) <= sizeof(Word));
    tl_assert(sizeof(Segment*) == sizeof(Word));
    tl_assert(map_segments == NULL);
-   map_segments = VG_(newFM)( hg_zalloc, "hg", hg_free, NULL/*unboxed Word cmp*/);
+   map_segments = HG_(newFM)( hg_zalloc, hg_free, NULL/*unboxed Word cmp*/);
    tl_assert(map_segments != NULL);
    hbefore__invalidate_cache();
 
    tl_assert(sizeof(Addr) == sizeof(Word));
    tl_assert(map_locks == NULL);
-   map_locks = VG_(newFM)( hg_zalloc, "hg", hg_free, NULL/*unboxed Word cmp*/);
+   map_locks = HG_(newFM)( hg_zalloc, hg_free, NULL/*unboxed Word cmp*/);
    tl_assert(map_locks != NULL);
 
    __bus_lock_Lock = mk_LockN( LK_nonRec, (Addr)&__bus_lock );
    tl_assert(is_sane_LockN(__bus_lock_Lock));
-   VG_(addToFM)( map_locks, (Word)&__bus_lock, (Word)__bus_lock_Lock );
+   HG_(addToFM)( map_locks, (Word)&__bus_lock, (Word)__bus_lock_Lock );
 
    tl_assert(univ_tsets == NULL);
    univ_tsets = HG_(newWordSetU)( hg_zalloc, hg_free, 8/*cacheSize*/ );
@@ -1522,13 +1529,13 @@ Lock* map_locks_lookup_or_create ( LockKind lkk, Addr ga, ThreadId tid )
    Bool  found;
    Lock* oldlock = NULL;
    tl_assert(is_sane_ThreadId(tid));
-   found = VG_(lookupFM)( map_locks, 
+   found = HG_(lookupFM)( map_locks, 
                           NULL, (Word*)&oldlock, (Word)ga );
    if (!found) {
       Lock* lock = mk_LockN(lkk, ga);
       lock->appeared_at = VG_(record_ExeContext)( tid, 0 );
       tl_assert(is_sane_LockN(lock));
-      VG_(addToFM)( map_locks, (Word)ga, (Word)lock );
+      HG_(addToFM)( map_locks, (Word)ga, (Word)lock );
       tl_assert(oldlock == NULL);
       // mark the relevant secondary map has .mbHasLocks
       shmem__set_mbHasLocks( ga, True );
@@ -1547,7 +1554,7 @@ static Lock* map_locks_maybe_lookup ( Addr ga )
 {
    Bool  found;
    Lock* lk = NULL;
-   found = VG_(lookupFM)( map_locks, NULL, (Word*)&lk, (Word)ga );
+   found = HG_(lookupFM)( map_locks, NULL, (Word*)&lk, (Word)ga );
    tl_assert(found  ?  lk != NULL  :  lk == NULL);
    if (found) {
       // check the relevant secondary map has .mbHasLocks?
@@ -1560,7 +1567,7 @@ static void map_locks_delete ( Addr ga )
 {
    Addr  ga2 = 0;
    Lock* lk  = NULL;
-   VG_(delFromFM)( map_locks,
+   HG_(delFromFM)( map_locks,
                    (Word*)&ga2, (Word*)&lk, (Word)ga );
    /* delFromFM produces the val which is being deleted, if it is
       found.  So assert it is non-null; that in effect asserts that we
@@ -1584,7 +1591,7 @@ static Segment* map_segments_lookup ( SegmentID segid )
    Bool     found;
    Segment* seg = NULL;
    tl_assert( is_sane_SegmentID(segid) );
-   found = VG_(lookupFM)( map_segments,
+   found = HG_(lookupFM)( map_segments,
                           NULL, (Word*)&seg, (Word)segid );
    tl_assert(found);
    tl_assert(seg != NULL);
@@ -1596,7 +1603,7 @@ static Segment* map_segments_maybe_lookup ( SegmentID segid )
    Bool     found;
    Segment* seg = NULL;
    tl_assert( is_sane_SegmentID(segid) );
-   found = VG_(lookupFM)( map_segments,
+   found = HG_(lookupFM)( map_segments,
                           NULL, (Word*)&seg, (Word)segid );
    if (!found) tl_assert(seg == NULL);
    return seg;
@@ -1605,8 +1612,8 @@ static Segment* map_segments_maybe_lookup ( SegmentID segid )
 static void map_segments_add ( SegmentID segid, Segment* seg )
 {
    /* This is a bit inefficient.  Oh well. */
-   tl_assert( !VG_(lookupFM)( map_segments, NULL, NULL, segid ));
-   VG_(addToFM)( map_segments, (Word)segid, (Word)seg );
+   tl_assert( !HG_(lookupFM)( map_segments, NULL, NULL, segid ));
+   HG_(addToFM)( map_segments, (Word)segid, (Word)seg );
 }
 
 /*--------------- to do with Vector Timestamps ---------------*/
@@ -1640,7 +1647,7 @@ static Bool is_sane_VTS ( XArray* vts )
 }
 
 static XArray* new_VTS ( void ) {
-   return VG_(newXA)( hg_zalloc, "hg", hg_free, sizeof(ScalarTS) );
+   return VG_(newXA)( hg_zalloc, hg_free, sizeof(ScalarTS) );
 }
 static XArray* singleton_VTS ( Thread* thr, UWord tym ) {
    ScalarTS st;
@@ -2071,7 +2078,7 @@ static Bool happens_before_wrk ( Segment* seg1, Segment* seg2 )
    dfsver_current++;
    
    if (dfsver_stack == NULL) {
-     dfsver_stack = VG_(newXA)( hg_zalloc, "hg", hg_free, sizeof(Segment*) );
+     dfsver_stack = VG_(newXA)( hg_zalloc, hg_free, sizeof(Segment*) );
      tl_assert(dfsver_stack);
    }
 
@@ -2212,7 +2219,7 @@ static void segments__generate_vcg ( void )
          VG_(printf)("\\n%s", vtsstr);
       }
 
-      VG_(printf)("\" }\n");
+      VG_(printf)("\" }\n", vtsstr);
 
       if (seg->prev)
          VG_(printf)(PFX "edge: { sourcename: \"%p\" targetname: \"%p\""
@@ -2346,7 +2353,7 @@ static SecMap* shmem__find_or_alloc_SecMap ( Addr ga )
 {
    SecMap* sm    = NULL;
    Addr    gaKey = shmem__round_to_SecMap_base(ga);
-   if (VG_(lookupFM)( map_shmem,
+   if (HG_(lookupFM)( map_shmem,
                       NULL/*keyP*/, (Word*)&sm, (Word)gaKey )) {
       /* Found; address of SecMap is in sm */
       tl_assert(sm);
@@ -2354,7 +2361,7 @@ static SecMap* shmem__find_or_alloc_SecMap ( Addr ga )
       /* create a new one */
       sm = shmem__alloc_SecMap();
       tl_assert(sm);
-      VG_(addToFM)( map_shmem, (Word)gaKey, (Word)sm );
+      HG_(addToFM)( map_shmem, (Word)gaKey, (Word)sm );
    }
    return sm;
 }
@@ -2368,7 +2375,7 @@ static Bool shmem__get_mbHasLocks ( Addr a )
 {
    SecMap* sm;
    Addr aKey = shmem__round_to_SecMap_base(a);
-   if (VG_(lookupFM)( map_shmem,
+   if (HG_(lookupFM)( map_shmem,
                       NULL/*keyP*/, (Word*)&sm, (Word)aKey )) {
       /* Found */
       return sm->mbHasLocks;
@@ -2382,14 +2389,14 @@ static void shmem__set_mbHasLocks ( Addr a, Bool b )
    SecMap* sm;
    Addr aKey = shmem__round_to_SecMap_base(a);
    tl_assert(b == False || b == True);
-   if (VG_(lookupFM)( map_shmem,
+   if (HG_(lookupFM)( map_shmem,
                       NULL/*keyP*/, (Word*)&sm, (Word)aKey )) {
       /* Found; address of SecMap is in sm */
    } else {
       /* create a new one */
       sm = shmem__alloc_SecMap();
       tl_assert(sm);
-      VG_(addToFM)( map_shmem, (Word)aKey, (Word)sm );
+      HG_(addToFM)( map_shmem, (Word)aKey, (Word)sm );
    }
    sm->mbHasLocks = b;
 }
@@ -2399,14 +2406,14 @@ static void shmem__set_mbHasShared ( Addr a, Bool b )
    SecMap* sm;
    Addr aKey = shmem__round_to_SecMap_base(a);
    tl_assert(b == False || b == True);
-   if (VG_(lookupFM)( map_shmem,
+   if (HG_(lookupFM)( map_shmem,
                       NULL/*keyP*/, (Word*)&sm, (Word)aKey )) {
       /* Found; address of SecMap is in sm */
    } else {
       /* create a new one */
       sm = shmem__alloc_SecMap();
       tl_assert(sm);
-      VG_(addToFM)( map_shmem, (Word)aKey, (Word)sm );
+      HG_(addToFM)( map_shmem, (Word)aKey, (Word)sm );
    }
    sm->mbHasShared = b;
 }
@@ -2496,7 +2503,7 @@ static void laog__sanity_check ( Char* who ); /* fwds */
 static Bool thread_is_a_holder_of_Lock ( Thread* thr, Lock* lk )
 {
    if (lk->heldBy)
-      return VG_(elemBag)( lk->heldBy, (Word)thr ) > 0;
+      return HG_(elemBag)( lk->heldBy, (Word)thr ) > 0;
    else
       return False;
 }
@@ -2509,7 +2516,7 @@ static void threads__sanity_check ( Char* who )
    Char*     how = "no error";
    Thread*   thr;
    WordSetID wsA, wsW;
-   UWord*    ls_words;
+   Word*     ls_words;
    Word      ls_size, i;
    Lock*     lk;
    Segment*  seg;
@@ -2555,15 +2562,15 @@ static void locks__sanity_check ( Char* who )
    // # entries in admin_locks == # entries in map_locks
    for (i = 0, lk = admin_locks;  lk;  i++, lk = lk->admin)
       ;
-   if (i != VG_(sizeFM)(map_locks)) BAD("1");
+   if (i != HG_(sizeFM)(map_locks)) BAD("1");
    // for each entry (gla, lk) in map_locks
    //      gla == lk->guest_addr
-   VG_(initIterFM)( map_locks );
-   while (VG_(nextIterFM)( map_locks,
+   HG_(initIterFM)( map_locks );
+   while (HG_(nextIterFM)( map_locks,
                            (Word*)&gla, (Word*)&lk )) {
       if (lk->guestaddr != gla) BAD("2");
    }
-   VG_(doneIterFM)( map_locks );
+   HG_(doneIterFM)( map_locks );
    // scan through admin_locks ...
    for (lk = admin_locks; lk; lk = lk->admin) {
       // lock is sane.  Quite comprehensive, also checks that
@@ -2581,8 +2588,8 @@ static void locks__sanity_check ( Char* who )
       if (lk->heldBy) {
          Thread* thr;
          Word    count;
-         VG_(initIterBag)( lk->heldBy );
-         while (VG_(nextIterBag)( lk->heldBy, 
+         HG_(initIterBag)( lk->heldBy );
+         while (HG_(nextIterBag)( lk->heldBy, 
                                   (Word*)&thr, &count )) {
             // is_sane_LockN above ensures these
             tl_assert(count >= 1);
@@ -2597,7 +2604,7 @@ static void locks__sanity_check ( Char* who )
                 && HG_(elemWS)(univ_lsets, thr->locksetW, (Word)lk)) 
                BAD("8");
          }
-         VG_(doneIterBag)( lk->heldBy );
+         HG_(doneIterBag)( lk->heldBy );
       } else {
          /* lock not held by anybody */
          if (lk->heldW) BAD("9"); /* should be False if !heldBy */
@@ -2631,7 +2638,7 @@ static void segments__sanity_check ( Char* who )
    // # entries in admin_segments == # entries in map_segments
    for (i = 0, seg = admin_segments;  seg;  i++, seg = seg->admin)
       ;
-   if (i != VG_(sizeFM)(map_segments)) BAD("1");
+   if (i != HG_(sizeFM)(map_segments)) BAD("1");
    // for seg in Segments {
    for (seg = admin_segments; seg; seg = seg->admin) {
       if (!is_sane_Segment(seg)) BAD("2");
@@ -2669,11 +2676,11 @@ static void shmem__sanity_check ( Char* who )
    Word    smga;
    SecMap* sm;
    Word    i, j, ws_size, n_valid_tags;
-   UWord*  ws_words;
+   Word*   ws_words;
    Addr*   valid_tags;
-   VG_(initIterFM)( map_shmem );
+   HG_(initIterFM)( map_shmem );
    // for sm in SecMaps {
-   while (VG_(nextIterFM)( map_shmem,
+   while (HG_(nextIterFM)( map_shmem,
                            (Word*)&smga, (Word*)&sm )) {
       SecMapIter itr;
       SVal*      w32p = NULL;
@@ -2737,10 +2744,10 @@ static void shmem__sanity_check ( Char* who )
       // GCing of SecMaps is implemented
       //if (allNoAccess && sm->mbHasLocks) BAD("13a");
    }
-   VG_(doneIterFM)( map_shmem );
+   HG_(doneIterFM)( map_shmem );
 
    // check the cache
-   valid_tags   = hg_zalloc("hg", N_WAY_NENT * sizeof(Addr));
+   valid_tags   = hg_zalloc(N_WAY_NENT * sizeof(Addr));
    n_valid_tags = 0;
    tl_assert(valid_tags);
    for (i = 0; i < N_WAY_NENT; i++) {
@@ -2881,7 +2888,7 @@ void record_last_lock_lossage ( Addr ga_of_access,
 
    tl_assert(lset_old != lset_new);
 
-   if (0) VG_(printf)("XX1: %d (card %ld) -> %d (card %ld) %#lx\n",
+   if (0) VG_(printf)("XX1: %d (card %d) -> %d (card %d) %p\n", 
                       (Int)lset_old, 
                       HG_(cardinalityWS)(univ_lsets,lset_old),
                       (Int)lset_new, 
@@ -2925,12 +2932,12 @@ void record_last_lock_lossage ( Addr ga_of_access,
       it's simple. */
 
    lk = (Lock*)HG_(anyElementOfWS)( univ_lsets, lset_old );
-   if (0) VG_(printf)("lossage %ld %p\n",
+   if (0) VG_(printf)("lossage %d %p\n", 
                       HG_(cardinalityWS)( univ_lsets, lset_old), lk );
    if (lk->appeared_at) {
       if (ga_to_lastlock == NULL)
-         ga_to_lastlock = VG_(newFM)( hg_zalloc, "hg", hg_free, NULL );
-      VG_(addToFM)( ga_to_lastlock, ga_of_access, (Word)lk->appeared_at );
+         ga_to_lastlock = HG_(newFM)( hg_zalloc, hg_free, NULL );
+      HG_(addToFM)( ga_to_lastlock, ga_of_access, (Word)lk->appeared_at );
       stats__ga_LL_adds++;
    }
 }
@@ -2944,7 +2951,7 @@ static ExeContext* maybe_get_lastlock_initpoint ( Addr ga )
 {
    ExeContext* ec_hint = NULL;
    if (ga_to_lastlock != NULL 
-       && VG_(lookupFM)(ga_to_lastlock, 
+       && HG_(lookupFM)(ga_to_lastlock, 
                         NULL, (Word*)&ec_hint, ga)) {
       tl_assert(ec_hint != NULL);
       return ec_hint;
@@ -2978,7 +2985,7 @@ static void msm__show_state_change ( Thread* thr_acc, Addr a, Int szB,
       VG_(message)(Vg_UserMsg, "");
       announce_one_thread( thr_acc );
       VG_(message)(Vg_UserMsg, 
-                   "TRACE: %#lx %s %d thr#%d :: %s --> %s",
+                   "TRACE: %p %s %d thr#%d :: %s --> %s",
                    a, how, szB, thr_acc->errmsg_index, txt_old, txt_new );
       tid = map_threads_maybe_reverse_lookup_SLOW(thr_acc);
       if (tid != VG_INVALID_THREADID) {
@@ -2987,7 +2994,7 @@ static void msm__show_state_change ( Thread* thr_acc, Addr a, Int szB,
    } else {
       /* Just print one line */
       VG_(message)(Vg_UserMsg, 
-                   "TRACE: %#lx %s %d thr#%d :: %22s --> %22s",
+                   "TRACE: %p %s %d thr#%d :: %22s --> %22s",
                    a, how, szB, thr_acc->errmsg_index, txt_old, txt_new );
    }
 }
@@ -3029,7 +3036,7 @@ SVal msm__handle_read ( Thread* thr_acc, Addr a, SVal wold, Int szB )
 
    tl_assert(is_sane_Thread(thr_acc));
 
-   if (0) VG_(printf)("read thr=%p %#lx\n", thr_acc, a);
+   if (0) VG_(printf)("read thr=%p %p\n", thr_acc, a);
 
    /* Exclusive */
    if (LIKELY(is_SHVAL_Excl(wold))) {
@@ -3163,7 +3170,7 @@ SVal msm__handle_write ( Thread* thr_acc, Addr a, SVal wold, Int szB )
 
    tl_assert(is_sane_Thread(thr_acc));
 
-   if (0) VG_(printf)("write32 thr=%p %#lx\n", thr_acc, a);
+   if (0) VG_(printf)("write32 thr=%p %p\n", thr_acc, a);
 
    /* New */
    if (LIKELY(is_SHVAL_New(wold))) {
@@ -3438,7 +3445,7 @@ void alloc_F_for_writing ( /*MOD*/SecMap* sm, /*OUT*/Word* fixp ) {
 
    /* No free F line found.  Expand existing array and try again. */
    new_size = sm->linesF_size==0 ? 1 : 2 * sm->linesF_size;
-   nyu      = hg_zalloc( "hg", new_size * sizeof(CacheLineF) );
+   nyu      = hg_zalloc( new_size * sizeof(CacheLineF) );
    tl_assert(nyu);
 
    stats__secmap_linesF_allocd += (new_size - sm->linesF_size);
@@ -3446,7 +3453,7 @@ void alloc_F_for_writing ( /*MOD*/SecMap* sm, /*OUT*/Word* fixp ) {
                                   * sizeof(CacheLineF);
 
    if (0)
-   VG_(printf)("SM %p: expand F array from %d to %ld\n",
+   VG_(printf)("SM %p: expand F array from %d to %d\n", 
                sm, (Int)sm->linesF_size, new_size);
 
    for (i = 0; i < new_size; i++)
@@ -4881,7 +4888,7 @@ static void shadow_mem_make_NoAccess ( Thread* thr, Addr aIN, SizeT len )
    Bool      mbHasLocks;
 
    if (0 && len > 500)
-      VG_(printf)("make NoAccess ( %#lx, %ld )\n", aIN, len );
+      VG_(printf)("make NoAccess ( %p, %d )\n", aIN, len );
 
    if (len == 0) 
       return;
@@ -4936,18 +4943,17 @@ static void shadow_mem_make_NoAccess ( Thread* thr, Addr aIN, SizeT len )
    /* --- Step 4 --- */
 
    if (0) 
-   VG_(printf)("shadow_mem_make_NoAccess(%p, %lu, %p): maybe slow case\n",
+   VG_(printf)("shadow_mem_make_NoAccess(%p, %u, %p): maybe slow case\n",
                (void*)firstA, (UWord)len, (void*)lastA);
    locksToDelete = HG_(emptyWS)( univ_lsets );
    
-   /* Iterate over all locks in the range firstA .. lastA inclusive. */
-   VG_(initIterAtFM)( map_locks, firstA );
-   while (VG_(nextIterFM)( map_locks, (Word*)&gla, (Word*)&lk )
-          && gla <= lastA) {
+   /* FIXME: don't iterate over the complete lock set */
+   HG_(initIterFM)( map_locks );
+   while (HG_(nextIterFM)( map_locks,
+                           (Word*)&gla, (Word*)&lk )) {
       tl_assert(is_sane_LockN(lk));
-      tl_assert(gla >= firstA);
-      tl_assert(gla <= lastA);
-
+      if (gla < firstA || gla > lastA)
+         continue;
       locksToDelete = HG_(addToWS)( univ_lsets, locksToDelete, (Word)lk );
       /* If the lock is held, we must remove it from the currlock sets
          of all threads that hold it.  Also take the opportunity to
@@ -4956,15 +4962,15 @@ static void shadow_mem_make_NoAccess ( Thread* thr, Addr aIN, SizeT len )
          them all, but that's too much hassle.  So choose one
          arbitrarily. */
       if (lk->heldBy) {
-         tl_assert(!VG_(isEmptyBag)(lk->heldBy));
-         record_error_FreeMemLock( (Thread*)VG_(anyElementOfBag)(lk->heldBy),
+         tl_assert(!HG_(isEmptyBag)(lk->heldBy));
+         record_error_FreeMemLock( (Thread*)HG_(anyElementOfBag)(lk->heldBy),
                                    lk );
          /* remove lock from locksets of all owning threads */
          remove_Lock_from_locksets_of_all_owning_Threads( lk );
          /* Leave lk->heldBy in place; del_Lock below will free it up. */
       }
    }
-   VG_(doneIterFM)( map_locks );
+   HG_(doneIterFM)( map_locks );
 
    /* --- Step 5 --- */
 
@@ -4978,7 +4984,7 @@ static void shadow_mem_make_NoAccess ( Thread* thr, Addr aIN, SizeT len )
    /* --- Step 7 --- */
 
    if (0) 
-   VG_(printf)("shadow_mem_make_NoAccess(%p, %lu, %p): definitely slow case\n",
+   VG_(printf)("shadow_mem_make_NoAccess(%p, %u, %p): definitely slow case\n",
                (void*)firstA, (UWord)len, (void*)lastA);
 
    /* Modify all shadow words, by removing locksToDelete from the lockset
@@ -4991,8 +4997,8 @@ static void shadow_mem_make_NoAccess ( Thread* thr, Addr aIN, SizeT len )
      SecMapIter itr;
      SVal*      w32p = NULL;
 
-     VG_(initIterFM)( map_shmem );
-     while (VG_(nextIterFM)( map_shmem,
+     HG_(initIterFM)( map_shmem );
+     while (HG_(nextIterFM)( map_shmem,
                              (Word*)&ga, (Word*)&sm )) {
         tl_assert(sm);
         stats_SMs++;
@@ -5019,7 +5025,7 @@ static void shadow_mem_make_NoAccess ( Thread* thr, Addr aIN, SizeT len )
               *w32p = wnew;
         }
      }
-     VG_(doneIterFM)( map_shmem );
+     HG_(doneIterFM)( map_shmem );
      if (SHOW_EXPENSIVE_STUFF)
         VG_(printf)("shadow_mem_make_NoAccess: %d SMs, %d scanned\n", 
                     stats_SMs, stats_SMs_scanned);
@@ -5144,9 +5150,9 @@ void evhH__post_thread_w_acquires_lock ( Thread* thr,
 
    /* So the lock is held in w-mode.  If it's held by some other
       thread, then libpthread must be buggy. */
-   tl_assert(VG_(sizeUniqueBag)(lk->heldBy) == 1); /* from precondition */
+   tl_assert(HG_(sizeUniqueBag)(lk->heldBy) == 1); /* from precondition */
 
-   if (thr != (Thread*)VG_(anyElementOfBag)(lk->heldBy)) {
+   if (thr != (Thread*)HG_(anyElementOfBag)(lk->heldBy)) {
       record_error_Misc( thr, "Bug in libpthread: write lock "
                               "granted on mutex/rwlock which is currently "
                               "wr-held by a different thread");
@@ -5309,14 +5315,14 @@ void evhH__pre_thread_releases_lock ( Thread* thr,
 
    /* The lock is held.  Is this thread one of the holders?  If not,
       report a bug in the client. */
-   n = VG_(elemBag)( lock->heldBy, (Word)thr );
+   n = HG_(elemBag)( lock->heldBy, (Word)thr );
    tl_assert(n >= 0);
    if (n == 0) {
       /* We are not a current holder of the lock.  This is a bug in
          the guest, and (per POSIX pthread rules) the unlock
          attempt will fail.  So just complain and do nothing
          else. */
-      Thread* realOwner = (Thread*)VG_(anyElementOfBag)( lock->heldBy );
+      Thread* realOwner = (Thread*)HG_(anyElementOfBag)( lock->heldBy );
       tl_assert(is_sane_Thread(realOwner));
       tl_assert(realOwner != thr);
       tl_assert(!HG_(elemWS)( univ_lsets, thr->locksetA, (Word)lock ));
@@ -5335,7 +5341,7 @@ void evhH__pre_thread_releases_lock ( Thread* thr,
 
    if (n > 0) {
       tl_assert(lock->heldBy);
-      tl_assert(n == VG_(elemBag)( lock->heldBy, (Word)thr )); 
+      tl_assert(n == HG_(elemBag)( lock->heldBy, (Word)thr )); 
       /* We still hold the lock.  So either it's a recursive lock 
          or a rwlock which is currently r-held. */
       tl_assert(lock->kind == LK_mbRec
@@ -5348,7 +5354,7 @@ void evhH__pre_thread_releases_lock ( Thread* thr,
    } else {
       /* We no longer hold the lock. */
       if (lock->heldBy) {
-         tl_assert(0 == VG_(elemBag)( lock->heldBy, (Word)thr ));
+         tl_assert(0 == HG_(elemBag)( lock->heldBy, (Word)thr ));
       }
       /* update this thread's lockset accordingly. */
       thr->locksetA
@@ -5425,17 +5431,8 @@ void evh__new_mem ( Addr a, SizeT len ) {
 }
 
 static
-void evh__new_mem_w_tid ( Addr a, SizeT len, ThreadId tid ) {
-   if (SHOW_EVENTS >= 2)
-      VG_(printf)("evh__new_mem_w_tid(%p, %lu)\n", (void*)a, len );
-   shadow_mem_make_New( get_current_Thread(), a, len );
-   if (len >= SCE_BIGRANGE_T && (clo_sanity_flags & SCE_BIGRANGE))
-      all__sanity_check("evh__new_mem_w_tid-post");
-}
-
-static
 void evh__new_mem_w_perms ( Addr a, SizeT len, 
-                            Bool rr, Bool ww, Bool xx, ULong di_handle ) {
+                            Bool rr, Bool ww, Bool xx ) {
    if (SHOW_EVENTS >= 1)
       VG_(printf)("evh__new_mem_w_perms(%p, %lu, %d,%d,%d)\n",
                   (void*)a, len, (Int)rr, (Int)ww, (Int)xx );
@@ -5665,8 +5662,8 @@ void evh__HG_PTHREAD_JOIN_POST ( ThreadId stay_tid, Thread* quit_thr )
    shmem__flush_and_invalidate_scache();
 
    stats_SMs = stats_SMs_scanned = stats_reExcls = 0;
-   VG_(initIterFM)( map_shmem );
-   while (VG_(nextIterFM)( map_shmem,
+   HG_(initIterFM)( map_shmem );
+   while (HG_(nextIterFM)( map_shmem,
                            (Word*)&ga, (Word*)&sm )) {
       SecMapIter itr;
       SVal*      w32p = NULL;
@@ -5705,7 +5702,7 @@ void evh__HG_PTHREAD_JOIN_POST ( ThreadId stay_tid, Thread* quit_thr )
                    <= HG_(cardinalityWS)(univ_tsets, tset_old));
 
          if (0) {
-            VG_(printf)("smga %#lx: old 0x%x new 0x%x   ",
+            VG_(printf)("smga %p: old 0x%x new 0x%x   ",
                         ga, tset_old, tset_new);
             HG_(ppWS)( univ_tsets, tset_old );
             VG_(printf)("  -->  ");
@@ -5723,7 +5720,7 @@ void evh__HG_PTHREAD_JOIN_POST ( ThreadId stay_tid, Thread* quit_thr )
          *w32p = wnew;
       }
    }
-   VG_(doneIterFM)( map_shmem );
+   HG_(doneIterFM)( map_shmem );
 
    if (SHOW_EXPENSIVE_STUFF)
       VG_(printf)("evh__post_thread_join: %d SMs, "
@@ -5912,7 +5909,7 @@ void evh__HG_PTHREAD_MUTEX_DESTROY_PRE( ThreadId tid, void* mutex )
          record_error_Misc( thr, "pthread_mutex_destroy of a locked mutex" );
          /* remove lock from locksets of all owning threads */
          remove_Lock_from_locksets_of_all_owning_Threads( lk );
-         VG_(deleteBag)( lk->heldBy );
+         HG_(deleteBag)( lk->heldBy );
          lk->heldBy = NULL;
          lk->heldW = False;
          lk->acquired_at = NULL;
@@ -5952,7 +5949,7 @@ static void evh__HG_PTHREAD_MUTEX_LOCK_PRE ( ThreadId tid,
         && (lk->kind == LK_nonRec || lk->kind == LK_rdwr)
         && lk->heldBy
         && lk->heldW
-        && VG_(elemBag)( lk->heldBy, (Word)thr ) > 0 ) {
+        && HG_(elemBag)( lk->heldBy, (Word)thr ) > 0 ) {
       /* uh, it's a non-recursive lock and we already w-hold it, and
          this is a real lock operation (not a speculative "tryLock"
          kind of thing).  Duh.  Deadlock coming up; but at least
@@ -6021,7 +6018,7 @@ static WordFM* map_cond_to_Segment = NULL;
 
 static void map_cond_to_Segment_INIT ( void ) {
    if (UNLIKELY(map_cond_to_Segment == NULL)) {
-      map_cond_to_Segment = VG_(newFM)( hg_zalloc, "hg", hg_free, NULL );
+      map_cond_to_Segment = HG_(newFM)( hg_zalloc, hg_free, NULL );
       tl_assert(map_cond_to_Segment != NULL);
    }
 }
@@ -6063,7 +6060,7 @@ static void evh__HG_PTHREAD_COND_SIGNAL_PRE ( ThreadId tid, void* cond )
       new_seg->vts = tick_VTS( new_seg->thr, new_seg->prev->vts );
 
       /* ... and add the binding. */
-      VG_(addToFM)( map_cond_to_Segment, (Word)cond,
+      HG_(addToFM)( map_cond_to_Segment, (Word)cond,
                                          (Word)(new_seg->prev) );
    }
 }
@@ -6110,7 +6107,7 @@ static Bool evh__HG_PTHREAD_COND_WAIT_PRE ( ThreadId tid,
             thr, "pthread_cond_{timed}wait called with un-held mutex");
       } else
       if (lk->heldBy != NULL
-          && VG_(elemBag)( lk->heldBy, (Word)thr ) == 0) {
+          && HG_(elemBag)( lk->heldBy, (Word)thr ) == 0) {
          lk_valid = False;
          record_error_Misc( 
             thr, "pthread_cond_{timed}wait called with mutex "
@@ -6162,7 +6159,7 @@ static void evh__HG_PTHREAD_COND_WAIT_POST ( ThreadId tid,
       /* and find out which thread signalled us; then add a dependency
          edge back to it. */
       signalling_seg = NULL;
-      found = VG_(lookupFM)( map_cond_to_Segment, 
+      found = HG_(lookupFM)( map_cond_to_Segment, 
                              NULL, (Word*)&signalling_seg,
                                    (Word)cond );
       if (found) {
@@ -6233,7 +6230,7 @@ void evh__HG_PTHREAD_RWLOCK_DESTROY_PRE( ThreadId tid, void* rwl )
          record_error_Misc( thr, "pthread_rwlock_destroy of a locked mutex" );
          /* remove lock from locksets of all owning threads */
          remove_Lock_from_locksets_of_all_owning_Threads( lk );
-         VG_(deleteBag)( lk->heldBy );
+         HG_(deleteBag)( lk->heldBy );
          lk->heldBy = NULL;
          lk->heldW = False;
          lk->acquired_at = NULL;
@@ -6362,7 +6359,7 @@ static WordFM* map_sem_to_Segment_stack = NULL;
 
 static void map_sem_to_Segment_stack_INIT ( void ) {
    if (map_sem_to_Segment_stack == NULL) {
-      map_sem_to_Segment_stack = VG_(newFM)( hg_zalloc, "hg", hg_free, NULL );
+      map_sem_to_Segment_stack = HG_(newFM)( hg_zalloc, hg_free, NULL );
       tl_assert(map_sem_to_Segment_stack != NULL);
    }
 }
@@ -6371,14 +6368,14 @@ static void push_Segment_for_sem ( void* sem, Segment* seg ) {
    XArray* xa;
    tl_assert(seg);
    map_sem_to_Segment_stack_INIT();
-   if (VG_(lookupFM)( map_sem_to_Segment_stack, 
+   if (HG_(lookupFM)( map_sem_to_Segment_stack, 
                       NULL, (Word*)&xa, (Word)sem )) {
       tl_assert(xa);
       VG_(addToXA)( xa, &seg );
    } else {
-      xa = VG_(newXA)( hg_zalloc, "hg", hg_free, sizeof(Segment*) );
+      xa = VG_(newXA)( hg_zalloc, hg_free, sizeof(Segment*) );
       VG_(addToXA)( xa, &seg );
-      VG_(addToFM)( map_sem_to_Segment_stack, (Word)sem, (Word)xa );
+      HG_(addToFM)( map_sem_to_Segment_stack, (Word)sem, (Word)xa );
    }
 }
 
@@ -6386,7 +6383,7 @@ static Segment* mb_pop_Segment_for_sem ( void* sem ) {
    XArray*  xa;
    Segment* seg;
    map_sem_to_Segment_stack_INIT();
-   if (VG_(lookupFM)( map_sem_to_Segment_stack, 
+   if (HG_(lookupFM)( map_sem_to_Segment_stack, 
                       NULL, (Word*)&xa, (Word)sem )) {
       /* xa is the stack for this semaphore. */
       Word sz = VG_(sizeXA)( xa );
@@ -6619,7 +6616,7 @@ typedef
    }
    LAOGLinkExposition;
 
-static Word cmp_LAOGLinkExposition ( UWord llx1W, UWord llx2W ) {
+static Word cmp_LAOGLinkExposition ( Word llx1W, Word llx2W ) {
    /* Compare LAOGLinkExposition*s by (src_ga,dst_ga) field pair. */
    LAOGLinkExposition* llx1 = (LAOGLinkExposition*)llx1W;
    LAOGLinkExposition* llx2 = (LAOGLinkExposition*)llx2W;
@@ -6636,28 +6633,28 @@ static WordFM* laog_exposition = NULL; /* WordFM LAOGLinkExposition* NULL */
 
 static void laog__show ( Char* who ) {
    Word i, ws_size;
-   UWord* ws_words;
+   Word* ws_words;
    Lock* me;
    LAOGLinks* links;
    VG_(printf)("laog (requested by %s) {\n", who);
-   VG_(initIterFM)( laog );
+   HG_(initIterFM)( laog );
    me = NULL;
    links = NULL;
-   while (VG_(nextIterFM)( laog, (Word*)&me,
+   while (HG_(nextIterFM)( laog, (Word*)&me,
                                  (Word*)&links )) {
       tl_assert(me);
       tl_assert(links);
       VG_(printf)("   node %p:\n", me);
       HG_(getPayloadWS)( &ws_words, &ws_size, univ_laog, links->inns );
       for (i = 0; i < ws_size; i++)
-         VG_(printf)("      inn %#lx\n", ws_words[i] );
+         VG_(printf)("      inn %p\n", ws_words[i] );
       HG_(getPayloadWS)( &ws_words, &ws_size, univ_laog, links->outs );
       for (i = 0; i < ws_size; i++)
-         VG_(printf)("      out %#lx\n", ws_words[i] );
+         VG_(printf)("      out %p\n", ws_words[i] );
       me = NULL;
       links = NULL;
    }
-   VG_(doneIterFM)( laog );
+   HG_(doneIterFM)( laog );
    VG_(printf)("}\n");
 }
 
@@ -6681,7 +6678,7 @@ static void laog__add_edge ( Lock* src, Lock* dst ) {
    /* Update the out edges for src */
    keyW  = 0;
    links = NULL;
-   if (VG_(lookupFM)( laog, &keyW, (Word*)&links, (Word)src )) {
+   if (HG_(lookupFM)( laog, &keyW, (Word*)&links, (Word)src )) {
       WordSetID outs_new;
       tl_assert(links);
       tl_assert(keyW == (Word)src);
@@ -6689,15 +6686,15 @@ static void laog__add_edge ( Lock* src, Lock* dst ) {
       presentF = outs_new == links->outs;
       links->outs = outs_new;
    } else {
-      links = hg_zalloc("hg", sizeof(LAOGLinks));
+      links = hg_zalloc(sizeof(LAOGLinks));
       links->inns = HG_(emptyWS)( univ_laog );
       links->outs = HG_(singletonWS)( univ_laog, (Word)dst );
-      VG_(addToFM)( laog, (Word)src, (Word)links );
+      HG_(addToFM)( laog, (Word)src, (Word)links );
    }
    /* Update the in edges for dst */
    keyW  = 0;
    links = NULL;
-   if (VG_(lookupFM)( laog, &keyW, (Word*)&links, (Word)dst )) {
+   if (HG_(lookupFM)( laog, &keyW, (Word*)&links, (Word)dst )) {
       WordSetID inns_new;
       tl_assert(links);
       tl_assert(keyW == (Word)dst);
@@ -6705,10 +6702,10 @@ static void laog__add_edge ( Lock* src, Lock* dst ) {
       presentR = inns_new == links->inns;
       links->inns = inns_new;
    } else {
-      links = hg_zalloc("hg", sizeof(LAOGLinks));
+      links = hg_zalloc(sizeof(LAOGLinks));
       links->inns = HG_(singletonWS)( univ_laog, (Word)src );
       links->outs = HG_(emptyWS)( univ_laog );
-      VG_(addToFM)( laog, (Word)dst, (Word)links );
+      HG_(addToFM)( laog, (Word)dst, (Word)links );
    }
 
    tl_assert( (presentF && presentR) || (!presentF && !presentR) );
@@ -6720,22 +6717,22 @@ static void laog__add_edge ( Lock* src, Lock* dst ) {
          points.  Hence, if there is later a violation of this
          ordering, we can show the user the two places in which the
          required src-dst ordering was previously established. */
-      if (0) VG_(printf)("acquire edge %#lx %#lx\n",
+      if (0) VG_(printf)("acquire edge %p %p\n", 
                          src->guestaddr, dst->guestaddr);
       expo.src_ga = src->guestaddr;
       expo.dst_ga = dst->guestaddr;
       expo.src_ec = NULL;
       expo.dst_ec = NULL;
       tl_assert(laog_exposition);
-      if (VG_(lookupFM)( laog_exposition, NULL, NULL, (Word)&expo )) {
+      if (HG_(lookupFM)( laog_exposition, NULL, NULL, (Word)&expo )) {
          /* we already have it; do nothing */
       } else {
-         LAOGLinkExposition* expo2 = hg_zalloc("hg", sizeof(LAOGLinkExposition));
+         LAOGLinkExposition* expo2 = hg_zalloc(sizeof(LAOGLinkExposition));
          expo2->src_ga = src->guestaddr;
          expo2->dst_ga = dst->guestaddr;
          expo2->src_ec = src->acquired_at;
          expo2->dst_ec = dst->acquired_at;
-         VG_(addToFM)( laog_exposition, (Word)expo2, (Word)NULL );
+         HG_(addToFM)( laog_exposition, (Word)expo2, (Word)NULL );
       }
    }
 }
@@ -6748,7 +6745,7 @@ static void laog__del_edge ( Lock* src, Lock* dst ) {
    /* Update the out edges for src */
    keyW  = 0;
    links = NULL;
-   if (VG_(lookupFM)( laog, &keyW, (Word*)&links, (Word)src )) {
+   if (HG_(lookupFM)( laog, &keyW, (Word*)&links, (Word)src )) {
       tl_assert(links);
       tl_assert(keyW == (Word)src);
       links->outs = HG_(delFromWS)( univ_laog, links->outs, (Word)dst );
@@ -6756,7 +6753,7 @@ static void laog__del_edge ( Lock* src, Lock* dst ) {
    /* Update the in edges for dst */
    keyW  = 0;
    links = NULL;
-   if (VG_(lookupFM)( laog, &keyW, (Word*)&links, (Word)dst )) {
+   if (HG_(lookupFM)( laog, &keyW, (Word*)&links, (Word)dst )) {
       tl_assert(links);
       tl_assert(keyW == (Word)dst);
       links->inns = HG_(delFromWS)( univ_laog, links->inns, (Word)src );
@@ -6769,7 +6766,7 @@ static WordSetID /* in univ_laog */ laog__succs ( Lock* lk ) {
    LAOGLinks* links;
    keyW  = 0;
    links = NULL;
-   if (VG_(lookupFM)( laog, &keyW, (Word*)&links, (Word)lk )) {
+   if (HG_(lookupFM)( laog, &keyW, (Word*)&links, (Word)lk )) {
       tl_assert(links);
       tl_assert(keyW == (Word)lk);
       return links->outs;
@@ -6784,7 +6781,7 @@ static WordSetID /* in univ_laog */ laog__preds ( Lock* lk ) {
    LAOGLinks* links;
    keyW  = 0;
    links = NULL;
-   if (VG_(lookupFM)( laog, &keyW, (Word*)&links, (Word)lk )) {
+   if (HG_(lookupFM)( laog, &keyW, (Word*)&links, (Word)lk )) {
       tl_assert(links);
       tl_assert(keyW == (Word)lk);
       return links->inns;
@@ -6796,16 +6793,16 @@ static WordSetID /* in univ_laog */ laog__preds ( Lock* lk ) {
 __attribute__((noinline))
 static void laog__sanity_check ( Char* who ) {
    Word i, ws_size;
-   UWord* ws_words;
+   Word* ws_words;
    Lock* me;
    LAOGLinks* links;
    if ( !laog )
       return; /* nothing much we can do */
-   VG_(initIterFM)( laog );
+   HG_(initIterFM)( laog );
    me = NULL;
    links = NULL;
    if (0) VG_(printf)("laog sanity check\n");
-   while (VG_(nextIterFM)( laog, (Word*)&me,
+   while (HG_(nextIterFM)( laog, (Word*)&me,
                                  (Word*)&links )) {
       tl_assert(me);
       tl_assert(links);
@@ -6826,7 +6823,7 @@ static void laog__sanity_check ( Char* who ) {
       me = NULL;
       links = NULL;
    }
-   VG_(doneIterFM)( laog );
+   HG_(doneIterFM)( laog );
    return;
 
   bad:
@@ -6850,7 +6847,7 @@ Lock* laog__do_dfs_from_to ( Lock* src, WordSetID dsts /* univ_lsets */ )
    Lock*     here;
    WordSetID succs;
    Word      succs_size;
-   UWord*    succs_words;
+   Word*     succs_words;
    //laog__sanity_check();
 
    /* If the destination set is empty, we can never get there from
@@ -6859,8 +6856,8 @@ Lock* laog__do_dfs_from_to ( Lock* src, WordSetID dsts /* univ_lsets */ )
       return NULL;
 
    ret     = NULL;
-   stack   = VG_(newXA)( hg_zalloc, "hg", hg_free, sizeof(Lock*) );
-   visited = VG_(newFM)( hg_zalloc, "hg", hg_free, NULL/*unboxedcmp*/ );
+   stack   = VG_(newXA)( hg_zalloc, hg_free, sizeof(Lock*) );
+   visited = HG_(newFM)( hg_zalloc, hg_free, NULL/*unboxedcmp*/ );
 
    (void) VG_(addToXA)( stack, &src );
 
@@ -6875,10 +6872,10 @@ Lock* laog__do_dfs_from_to ( Lock* src, WordSetID dsts /* univ_lsets */ )
 
       if (HG_(elemWS)( univ_lsets, dsts, (Word)here )) { ret = here; break; }
 
-      if (VG_(lookupFM)( visited, NULL, NULL, (Word)here ))
+      if (HG_(lookupFM)( visited, NULL, NULL, (Word)here ))
          continue;
 
-      VG_(addToFM)( visited, (Word)here, 0 );
+      HG_(addToFM)( visited, (Word)here, 0 );
 
       succs = laog__succs( here );
       HG_(getPayloadWS)( &succs_words, &succs_size, univ_laog, succs );
@@ -6886,7 +6883,7 @@ Lock* laog__do_dfs_from_to ( Lock* src, WordSetID dsts /* univ_lsets */ )
          (void) VG_(addToXA)( stack, &succs_words[i] );
    }
 
-   VG_(deleteFM)( visited, NULL, NULL );
+   HG_(deleteFM)( visited, NULL, NULL );
    VG_(deleteXA)( stack );
    return ret;
 }
@@ -6902,7 +6899,7 @@ static void laog__pre_thread_acquires_lock (
                Lock*   lk
             )
 {
-   UWord*   ls_words;
+   Word*    ls_words;
    Word     ls_size, i;
    Lock*    other;
 
@@ -6913,9 +6910,9 @@ static void laog__pre_thread_acquires_lock (
       return;
 
    if (!laog)
-      laog = VG_(newFM)( hg_zalloc, "hg", hg_free, NULL/*unboxedcmp*/ );
+      laog = HG_(newFM)( hg_zalloc, hg_free, NULL/*unboxedcmp*/ );
    if (!laog_exposition)
-      laog_exposition = VG_(newFM)( hg_zalloc, "hg", hg_free, 
+      laog_exposition = HG_(newFM)( hg_zalloc, hg_free, 
                                     cmp_LAOGLinkExposition );
 
    /* First, the check.  Complain if there is any path in laog from lk
@@ -6939,7 +6936,7 @@ static void laog__pre_thread_acquires_lock (
       key.src_ec = NULL;
       key.dst_ec = NULL;
       found = NULL;
-      if (VG_(lookupFM)( laog_exposition,
+      if (HG_(lookupFM)( laog_exposition,
                          (Word*)&found, NULL, (Word)&key )) {
          tl_assert(found != &key);
          tl_assert(found->src_ga == key.src_ga);
@@ -6987,7 +6984,7 @@ static void laog__handle_one_lock_deletion ( Lock* lk )
 {
    WordSetID preds, succs;
    Word preds_size, succs_size, i, j;
-   UWord *preds_words, *succs_words;
+   Word *preds_words, *succs_words;
 
    preds = laog__preds( lk );
    succs = laog__succs( lk );
@@ -7017,13 +7014,13 @@ static void laog__handle_lock_deletions (
                WordSetID /* in univ_laog */ locksToDelete
             )
 {
-   Word   i, ws_size;
-   UWord* ws_words;
+   Word  i, ws_size;
+   Word* ws_words;
 
    if (!laog)
-      laog = VG_(newFM)( hg_zalloc, "hg", hg_free, NULL/*unboxedcmp*/ );
+      laog = HG_(newFM)( hg_zalloc, hg_free, NULL/*unboxedcmp*/ );
    if (!laog_exposition)
-      laog_exposition = VG_(newFM)( hg_zalloc, "hg", hg_free, 
+      laog_exposition = HG_(newFM)( hg_zalloc, hg_free, 
                                     cmp_LAOGLinkExposition );
 
    HG_(getPayloadWS)( &ws_words, &ws_size, univ_lsets, locksToDelete );
@@ -7055,7 +7052,7 @@ static VgHashTable hg_mallocmeta_table = NULL;
 
 
 static MallocMeta* new_MallocMeta ( void ) {
-   MallocMeta* md = hg_zalloc( "hg", sizeof(MallocMeta) );
+   MallocMeta* md = hg_zalloc( sizeof(MallocMeta) );
    tl_assert(md);
    return md;
 }
@@ -7349,11 +7346,6 @@ static void instrument_mem_access ( IRSB*   bbOut,
 static void instrument_memory_bus_event ( IRSB* bbOut, IRMBusEvent event )
 {
    switch (event) {
-      case Imbe_SnoopedStoreBegin:
-      case Imbe_SnoopedStoreEnd:
-         /* These arise from ppc stwcx. insns.  They should perhaps be
-            handled better. */
-         break;
       case Imbe_Fence:
          break; /* not interesting */
       case Imbe_BusLock:
@@ -7499,7 +7491,7 @@ static WordFM* map_pthread_t_to_Thread = NULL; /* pthread_t -> Thread* */
 
 static void map_pthread_t_to_Thread_INIT ( void ) {
    if (UNLIKELY(map_pthread_t_to_Thread == NULL)) {
-      map_pthread_t_to_Thread = VG_(newFM)( hg_zalloc, "hg", hg_free, NULL );
+      map_pthread_t_to_Thread = HG_(newFM)( hg_zalloc, hg_free, NULL );
       tl_assert(map_pthread_t_to_Thread != NULL);
    }
 }
@@ -7522,7 +7514,7 @@ Bool hg_handle_client_request ( ThreadId tid, UWord* args, UWord* ret)
       /* --- --- User-visible client requests --- --- */
 
       case VG_USERREQ__HG_CLEAN_MEMORY:
-         if (0) VG_(printf)("VG_USERREQ__HG_CLEAN_MEMORY(%#lx,%ld)\n",
+         if (0) VG_(printf)("VG_USERREQ__HG_CLEAN_MEMORY(%p,%d)\n",
                             args[1], args[2]);
          /* Call die_mem to (expensively) tidy up properly, if there
             are any held locks etc in the area */
@@ -7559,7 +7551,7 @@ Bool hg_handle_client_request ( ThreadId tid, UWord* args, UWord* ret)
          if (0)
          VG_(printf)("XXXX: bind pthread_t %p to Thread* %p\n",
                      (void*)args[1], (void*)my_thr );
-         VG_(addToFM)( map_pthread_t_to_Thread, (Word)args[1], (Word)my_thr );
+         HG_(addToFM)( map_pthread_t_to_Thread, (Word)args[1], (Word)my_thr );
          break;
       }
 
@@ -7582,7 +7574,7 @@ Bool hg_handle_client_request ( ThreadId tid, UWord* args, UWord* ret)
          VG_(printf)("NOTIFY_JOIN_COMPLETE (tid %d): quitter = %p\n", (Int)tid,
                      (void*)args[1]);
          map_pthread_t_to_Thread_INIT();
-         found = VG_(lookupFM)( map_pthread_t_to_Thread, 
+         found = HG_(lookupFM)( map_pthread_t_to_Thread, 
                                 NULL, (Word*)&thr_q, (Word)args[1] );
           /* Can this fail?  It would mean that our pthread_join
              wrapper observed a successful join on args[1] yet that
@@ -7727,7 +7719,7 @@ Bool hg_handle_client_request ( ThreadId tid, UWord* args, UWord* ret)
 /* maps (by value) strings to a copy of them in ARENA_TOOL */
 static UWord stats__string_table_queries = 0;
 static WordFM* string_table = NULL;
-static Word string_table_cmp ( UWord s1, UWord s2 ) {
+static Word string_table_cmp ( Word s1, Word s2 ) {
    return (Word)VG_(strcmp)( (HChar*)s1, (HChar*)s2 );
 }
 static HChar* string_table_strdup ( HChar* str ) {
@@ -7736,18 +7728,18 @@ static HChar* string_table_strdup ( HChar* str ) {
    if (!str)
       str = "(null)";
    if (!string_table) {
-      string_table = VG_(newFM)( hg_zalloc, "hg", hg_free, string_table_cmp );
+      string_table = HG_(newFM)( hg_zalloc, hg_free, string_table_cmp );
       tl_assert(string_table);
    }
-   if (VG_(lookupFM)( string_table,
+   if (HG_(lookupFM)( string_table,
                       NULL, (Word*)&copy, (Word)str )) {
       tl_assert(copy);
       if (0) VG_(printf)("string_table_strdup: %p -> %p\n", str, copy );
       return copy;
    } else {
-      copy = VG_(strdup)("hg", str);
+      copy = VG_(strdup)(str);
       tl_assert(copy);
-      VG_(addToFM)( string_table, (Word)copy, (Word)copy );
+      HG_(addToFM)( string_table, (Word)copy, (Word)copy );
       return copy;
    }
 }
@@ -7755,7 +7747,7 @@ static HChar* string_table_strdup ( HChar* str ) {
 /* maps from Lock .unique fields to LockP*s */
 static UWord stats__ga_LockN_to_P_queries = 0;
 static WordFM* yaWFM = NULL;
-static Word lock_unique_cmp ( UWord lk1W, UWord lk2W )
+static Word lock_unique_cmp ( Word lk1W, Word lk2W )
 {
    Lock* lk1 = (Lock*)lk1W;
    Lock* lk2 = (Lock*)lk2W;
@@ -7771,11 +7763,11 @@ static Lock* mk_LockP_from_LockN ( Lock* lkn )
    stats__ga_LockN_to_P_queries++;
    tl_assert( is_sane_LockN(lkn) );
    if (!yaWFM) {
-      yaWFM = VG_(newFM)( hg_zalloc, "hg", hg_free, lock_unique_cmp );
+      yaWFM = HG_(newFM)( hg_zalloc, hg_free, lock_unique_cmp );
       tl_assert(yaWFM);
    }
-   if (!VG_(lookupFM)( yaWFM, NULL, (Word*)&lkp, (Word)lkn)) {
-      lkp = hg_zalloc( "hg", sizeof(Lock) );
+   if (!HG_(lookupFM)( yaWFM, NULL, (Word*)&lkp, (Word)lkn)) {
+      lkp = hg_zalloc( sizeof(Lock) );
       *lkp = *lkn;
       lkp->admin = NULL;
       lkp->magic = LockP_MAGIC;
@@ -7785,7 +7777,7 @@ static Lock* mk_LockP_from_LockN ( Lock* lkn )
       lkp->heldW  = False;
       lkp->heldBy = NULL;
       lkp->acquired_at = NULL;
-      VG_(addToFM)( yaWFM, (Word)lkp, (Word)lkp );
+      HG_(addToFM)( yaWFM, (Word)lkp, (Word)lkp );
    }
    tl_assert( is_sane_LockP(lkp) );
    return lkp;
@@ -7835,8 +7827,6 @@ typedef
             SVal  old_state;
             ExeContext* mb_lastlock;
             Thread* thr;
-            Char  descr1[96];
-            Char  descr2[96];
          } Race;
          struct {
             Thread* thr;  /* doing the freeing */
@@ -7926,20 +7916,6 @@ static void record_error_Race ( Thread* thr,
    // FIXME: tid vs thr
    tl_assert(isWrite == False || isWrite == True);
    tl_assert(szB == 8 || szB == 4 || szB == 2 || szB == 1);
-
-   tl_assert(sizeof(xe.XE.Race.descr1) == sizeof(xe.XE.Race.descr2));
-   xe.XE.Race.descr1[0] = xe.XE.Race.descr2[0] = 0;
-   if (VG_(get_data_description)(
-             &xe.XE.Race.descr1[0],
-             &xe.XE.Race.descr2[0],
-             sizeof(xe.XE.Race.descr1)-1,
-             data_addr )) {
-      tl_assert( xe.XE.Race.descr1
-                    [ sizeof(xe.XE.Race.descr1)-1 ] == 0);
-      tl_assert( xe.XE.Race.descr2
-                    [ sizeof(xe.XE.Race.descr2)-1 ] == 0);
-   }
-
    VG_(maybe_record_error)( map_threads_reverse_lookup_SLOW(thr),
                             XE_Race, data_addr, NULL, &xe );
 }
@@ -8111,9 +8087,9 @@ static Int cmp_Thread_by_errmsg_index ( void* thr1V, void* thr2V ) {
 static XArray* /* of Thread* */ get_sorted_thread_set ( WordSetID tset )
 {
    XArray* xa;
-   UWord*  ts_words;
-   UWord   ts_size, i;
-   xa = VG_(newXA)( hg_zalloc, "hg", hg_free, sizeof(Thread*) );
+   Word*   ts_words;
+   Word    ts_size, i;
+   xa = VG_(newXA)( hg_zalloc, hg_free, sizeof(Thread*) );
    tl_assert(xa);
    HG_(getPayloadWS)( &ts_words, &ts_size, univ_tsets, tset );
    tl_assert(ts_words);
@@ -8400,7 +8376,7 @@ static void hg_pp_Error ( Error* err )
          announce_threadset( tset_to_announce );
 
          VG_(message)(Vg_UserMsg,
-                      "Possible data race during %s of size %d at %#lx",
+                      "Possible data race during %s of size %d at %p",
                       what, szB, err_ga);
          VG_(pp_ExeContext)( VG_(get_error_where)(err) );
          /* pp_AddrInfo(err_addr, &extra->addrinfo); */
@@ -8430,7 +8406,7 @@ static void hg_pp_Error ( Error* err )
          announce_threadset( tset_to_announce );
 
          VG_(message)(Vg_UserMsg,
-                      "Possible data race during %s of size %d at %#lx",
+                      "Possible data race during %s of size %d at %p",
                       what, szB, err_ga);
          VG_(pp_ExeContext)( VG_(get_error_where)(err) );
          /* pp_AddrInfo(err_addr, &extra->addrinfo); */
@@ -8454,18 +8430,18 @@ static void hg_pp_Error ( Error* err )
                       "consistent locks",
                       thr_acc->errmsg_index);
          if (xe->XE.Race.mb_lastlock) {
-            VG_(message)(Vg_UserMsg, "  Last consistently used lock for %#lx was "
+            VG_(message)(Vg_UserMsg, "  Last consistently used lock for %p was "
                                      "first observed", err_ga);
             VG_(pp_ExeContext)(xe->XE.Race.mb_lastlock);
          } else {
-            VG_(message)(Vg_UserMsg, "  Location %#lx has never been protected "
+            VG_(message)(Vg_UserMsg, "  Location %p has never been protected "
                                      "by any lock", err_ga);
          }
       }
       /* Hmm, unknown transition.  Just print what we do know. */
       else {
          VG_(message)(Vg_UserMsg,
-                      "Possible data race during %s of size %d at %#lx",
+                      "Possible data race during %s of size %d at %p",
                       what, szB, err_ga);
          VG_(pp_ExeContext)( VG_(get_error_where)(err) );
 
@@ -8474,12 +8450,6 @@ static void hg_pp_Error ( Error* err )
                       "  Old state 0x%08x=%s, new state 0x%08x=%s",
                       old_state, old_buf, new_state, new_buf);
       }
-
-      /* If we have a better description of the address, show it. */
-      if (xe->XE.Race.descr1[0] != 0)
-         VG_(message)(Vg_UserMsg, "  %s", &xe->XE.Race.descr1[0]);
-      if (xe->XE.Race.descr2[0] != 0)
-         VG_(message)(Vg_UserMsg, "  %s", &xe->XE.Race.descr2[0]);
 
       break; /* case XE_Race */
    } /* case XE_Race */
@@ -8670,113 +8640,113 @@ static void hg_fini ( Int exitcode )
       }
 
       VG_(printf)("\n");
-      VG_(printf)(" hbefore: %'10lu queries\n",        stats__hbefore_queries);
-      VG_(printf)(" hbefore: %'10lu cache 0 hits\n",   stats__hbefore_cache0s);
-      VG_(printf)(" hbefore: %'10lu cache > 0 hits\n", stats__hbefore_cacheNs);
-      VG_(printf)(" hbefore: %'10lu graph searches\n", stats__hbefore_gsearches);
-      VG_(printf)(" hbefore: %'10lu   of which slow\n",
+      VG_(printf)(" hbefore: %,10lu queries\n",        stats__hbefore_queries);
+      VG_(printf)(" hbefore: %,10lu cache 0 hits\n",   stats__hbefore_cache0s);
+      VG_(printf)(" hbefore: %,10lu cache > 0 hits\n", stats__hbefore_cacheNs);
+      VG_(printf)(" hbefore: %,10lu graph searches\n", stats__hbefore_gsearches);
+      VG_(printf)(" hbefore: %,10lu   of which slow\n",
                   stats__hbefore_gsearches - stats__hbefore_gsearchFs);
-      VG_(printf)(" hbefore: %'10lu stack high water mark\n",
+      VG_(printf)(" hbefore: %,10lu stack high water mark\n",
                   stats__hbefore_stk_hwm);
-      VG_(printf)(" hbefore: %'10lu cache invals\n",   stats__hbefore_invals);
-      VG_(printf)(" hbefore: %'10lu probes\n",         stats__hbefore_probes);
+      VG_(printf)(" hbefore: %,10lu cache invals\n",   stats__hbefore_invals);
+      VG_(printf)(" hbefore: %,10lu probes\n",         stats__hbefore_probes);
 
       VG_(printf)("\n");
-      VG_(printf)("        segments: %'8lu Segment objects allocated\n",
+      VG_(printf)("        segments: %,8lu Segment objects allocated\n", 
                   stats__mk_Segment);
-      VG_(printf)("        locksets: %'8d unique lock sets\n",
+      VG_(printf)("        locksets: %,8d unique lock sets\n",
                   (Int)HG_(cardinalityWSU)( univ_lsets ));
-      VG_(printf)("      threadsets: %'8d unique thread sets\n",
+      VG_(printf)("      threadsets: %,8d unique thread sets\n",
                   (Int)HG_(cardinalityWSU)( univ_tsets ));
-      VG_(printf)("       univ_laog: %'8d unique lock sets\n",
+      VG_(printf)("       univ_laog: %,8d unique lock sets\n",
                   (Int)HG_(cardinalityWSU)( univ_laog ));
 
-      VG_(printf)("L(ast)L(ock) map: %'8lu inserts (%d map size)\n",
+      VG_(printf)("L(ast)L(ock) map: %,8lu inserts (%d map size)\n", 
                   stats__ga_LL_adds,
-                  (Int)(ga_to_lastlock ? VG_(sizeFM)( ga_to_lastlock ) : 0) );
+                  (Int)(ga_to_lastlock ? HG_(sizeFM)( ga_to_lastlock ) : 0) );
 
-      VG_(printf)("  LockN-to-P map: %'8lu queries (%d map size)\n",
+      VG_(printf)("  LockN-to-P map: %,8lu queries (%d map size)\n", 
                   stats__ga_LockN_to_P_queries,
-                  (Int)(yaWFM ? VG_(sizeFM)( yaWFM ) : 0) );
+                  (Int)(yaWFM ? HG_(sizeFM)( yaWFM ) : 0) );
 
-      VG_(printf)("string table map: %'8lu queries (%d map size)\n",
+      VG_(printf)("string table map: %,8lu queries (%d map size)\n", 
                   stats__string_table_queries,
-                  (Int)(string_table ? VG_(sizeFM)( string_table ) : 0) );
-      VG_(printf)("            LAOG: %'8d map size\n",
-                  (Int)(laog ? VG_(sizeFM)( laog ) : 0));
-      VG_(printf)(" LAOG exposition: %'8d map size\n",
-                  (Int)(laog_exposition ? VG_(sizeFM)( laog_exposition ) : 0));
-      VG_(printf)("           locks: %'8lu acquires, "
-                  "%'lu releases\n",
+                  (Int)(string_table ? HG_(sizeFM)( string_table ) : 0) );
+      VG_(printf)("            LAOG: %,8d map size\n", 
+                  (Int)(laog ? HG_(sizeFM)( laog ) : 0));
+      VG_(printf)(" LAOG exposition: %,8d map size\n", 
+                  (Int)(laog_exposition ? HG_(sizeFM)( laog_exposition ) : 0));
+      VG_(printf)("           locks: %,8lu acquires, "
+                  "%,lu releases\n",
                   stats__lockN_acquires,
                   stats__lockN_releases
                  );
-      VG_(printf)("   sanity checks: %'8lu\n", stats__sanity_checks);
+      VG_(printf)("   sanity checks: %,8lu\n", stats__sanity_checks);
 
       VG_(printf)("\n");
-      VG_(printf)("     msm: %'12lu %'12lu rd/wr_Excl_nochange\n",
+      VG_(printf)("     msm: %,12lu %,12lu rd/wr_Excl_nochange\n",
                   stats__msm_read_Excl_nochange, stats__msm_write_Excl_nochange);
-      VG_(printf)("     msm: %'12lu %'12lu rd/wr_Excl_transfer\n",
+      VG_(printf)("     msm: %,12lu %,12lu rd/wr_Excl_transfer\n",
                   stats__msm_read_Excl_transfer, stats__msm_write_Excl_transfer);
-      VG_(printf)("     msm: %'12lu %'12lu rd/wr_Excl_to_ShR/ShM\n",
+      VG_(printf)("     msm: %,12lu %,12lu rd/wr_Excl_to_ShR/ShM\n",
                   stats__msm_read_Excl_to_ShR,   stats__msm_write_Excl_to_ShM);
-      VG_(printf)("     msm: %'12lu %'12lu rd/wr_ShR_to_ShR/ShM\n",
+      VG_(printf)("     msm: %,12lu %,12lu rd/wr_ShR_to_ShR/ShM\n",
                   stats__msm_read_ShR_to_ShR,    stats__msm_write_ShR_to_ShM);
-      VG_(printf)("     msm: %'12lu %'12lu rd/wr_ShM_to_ShM\n",
+      VG_(printf)("     msm: %,12lu %,12lu rd/wr_ShM_to_ShM\n",
                   stats__msm_read_ShM_to_ShM,    stats__msm_write_ShM_to_ShM);
-      VG_(printf)("     msm: %'12lu %'12lu rd/wr_New_to_Excl\n",
+      VG_(printf)("     msm: %,12lu %,12lu rd/wr_New_to_Excl\n",
                   stats__msm_read_New_to_Excl,   stats__msm_write_New_to_Excl);
-      VG_(printf)("     msm: %'12lu %'12lu rd/wr_NoAccess\n",
+      VG_(printf)("     msm: %,12lu %,12lu rd/wr_NoAccess\n",
                   stats__msm_read_NoAccess,      stats__msm_write_NoAccess);
 
       VG_(printf)("\n");
-      VG_(printf)(" secmaps: %'10lu allocd (%'12lu g-a-range)\n",
+      VG_(printf)(" secmaps: %,10lu allocd (%,12lu g-a-range)\n",
                   stats__secmaps_allocd,
                   stats__secmap_ga_space_covered);
-      VG_(printf)("  linesZ: %'10lu allocd (%'12lu bytes occupied)\n",
+      VG_(printf)("  linesZ: %,10lu allocd (%,12lu bytes occupied)\n",
                   stats__secmap_linesZ_allocd,
                   stats__secmap_linesZ_bytes);
-      VG_(printf)("  linesF: %'10lu allocd (%'12lu bytes occupied)\n",
+      VG_(printf)("  linesF: %,10lu allocd (%,12lu bytes occupied)\n",
                   stats__secmap_linesF_allocd,
                   stats__secmap_linesF_bytes);
-      VG_(printf)(" secmaps: %'10lu iterator steppings\n",
+      VG_(printf)(" secmaps: %,10lu iterator steppings\n",
                   stats__secmap_iterator_steppings);
 
       VG_(printf)("\n");
-      VG_(printf)("   cache: %'lu totrefs (%'lu misses)\n",
+      VG_(printf)("   cache: %,lu totrefs (%,lu misses)\n",
                   stats__cache_totrefs, stats__cache_totmisses );
-      VG_(printf)("   cache: %'12lu Z-fetch, %'12lu F-fetch\n",
+      VG_(printf)("   cache: %,12lu Z-fetch, %,12lu F-fetch\n",
                   stats__cache_Z_fetches, stats__cache_F_fetches );
-      VG_(printf)("   cache: %'12lu Z-wback, %'12lu F-wback\n",
+      VG_(printf)("   cache: %,12lu Z-wback, %,12lu F-wback\n",
                   stats__cache_Z_wbacks, stats__cache_F_wbacks );
-      VG_(printf)("   cache: %'12lu invals,  %'12lu flushes\n",
+      VG_(printf)("   cache: %,12lu invals,  %,12lu flushes\n",
                   stats__cache_invals, stats__cache_flushes );
 
       VG_(printf)("\n");
-      VG_(printf)("   cline: %'10lu normalises\n",
+      VG_(printf)("   cline: %,10lu normalises\n",
                   stats__cline_normalises );
-      VG_(printf)("   cline:  reads 8/4/2/1: %'12lu %'12lu %'12lu %'12lu\n",
+      VG_(printf)("   cline:  reads 8/4/2/1: %,12lu %,12lu %,12lu %,12lu\n",
                   stats__cline_read64s,
                   stats__cline_read32s,
                   stats__cline_read16s,
                   stats__cline_read8s );
-      VG_(printf)("   cline: writes 8/4/2/1: %'12lu %'12lu %'12lu %'12lu\n",
+      VG_(printf)("   cline: writes 8/4/2/1: %,12lu %,12lu %,12lu %,12lu\n",
                   stats__cline_write64s,
                   stats__cline_write32s,
                   stats__cline_write16s,
                   stats__cline_write8s );
-      VG_(printf)("   cline:   sets 8/4/2/1: %'12lu %'12lu %'12lu %'12lu\n",
+      VG_(printf)("   cline:   sets 8/4/2/1: %,12lu %,12lu %,12lu %,12lu\n",
                   stats__cline_set64s,
                   stats__cline_set32s,
                   stats__cline_set16s,
                   stats__cline_set8s );
-      VG_(printf)("   cline: get1s %'lu, copy1s %'lu\n",
+      VG_(printf)("   cline: get1s %,lu, copy1s %,lu\n",
                   stats__cline_get8s, stats__cline_copy8s );
-      VG_(printf)("   cline:    splits: 8to4 %'12lu    4to2 %'12lu    2to1 %'12lu\n",
+      VG_(printf)("   cline:    splits: 8to4 %,12lu    4to2 %,12lu    2to1 %,12lu\n",
                  stats__cline_64to32splits,
                  stats__cline_32to16splits,
                  stats__cline_16to8splits );
-      VG_(printf)("   cline: pulldowns: 8to4 %'12lu    4to2 %'12lu    2to1 %'12lu\n",
+      VG_(printf)("   cline: pulldowns: 8to4 %,12lu    4to2 %,12lu    2to1 %,12lu\n",
                  stats__cline_64to32pulldown,
                  stats__cline_32to16pulldown,
                  stats__cline_16to8pulldown );
@@ -8791,7 +8761,7 @@ static void hg_pre_clo_init ( void )
    VG_(details_version)         (NULL);
    VG_(details_description)     ("a thread error detector");
    VG_(details_copyright_author)(
-      "Copyright (C) 2007-2008, and GNU GPL'd, by OpenWorks LLP et al.");
+      "Copyright (C) 2007-2007, and GNU GPL'd, by OpenWorks LLP et al.");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
    VG_(details_avg_translation_sizeB) ( 200 );
 
@@ -8830,13 +8800,13 @@ static void hg_pre_clo_init ( void )
                                    hg_cli__realloc,
                                    HG_CLI__MALLOC_REDZONE_SZB );
 
-   VG_(needs_var_info)();
+   VG_(needs_data_syms)();
 
    //VG_(needs_xml_output)          ();
 
    VG_(track_new_mem_startup)     ( evh__new_mem_w_perms );
-   VG_(track_new_mem_stack_signal)( evh__new_mem_w_tid );
-   VG_(track_new_mem_brk)         ( evh__new_mem_w_tid );
+   VG_(track_new_mem_stack_signal)( evh__die_mem );
+   VG_(track_new_mem_brk)         ( evh__new_mem );
    VG_(track_new_mem_mmap)        ( evh__new_mem_w_perms );
    VG_(track_new_mem_stack)       ( evh__new_mem );
 

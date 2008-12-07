@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2007 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -2690,10 +2690,6 @@ VexGuestLayout
           /* Describe the stack pointer. */
           .offset_SP = offsetof(VexGuestX86State,guest_ESP),
           .sizeof_SP = 4,
-
-          /* Describe the frame pointer. */
-          .offset_FP = offsetof(VexGuestX86State,guest_EBP),
-          .sizeof_FP = 4,
 
           /* Describe the instruction pointer. */
           .offset_IP = offsetof(VexGuestX86State,guest_EIP),

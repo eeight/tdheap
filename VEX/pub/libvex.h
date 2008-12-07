@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2007 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -319,9 +319,6 @@ typedef
       /* Whereabouts is the stack pointer? */
       Int offset_SP;
       Int sizeof_SP; /* 4 or 8 */
-      /* Whereabouts is the frame pointer? */
-      Int offset_FP;
-      Int sizeof_FP; /* 4 or 8 */
       /* Whereabouts is the instruction pointer? */
       Int offset_IP;
       Int sizeof_IP; /* 4 or 8 */
@@ -338,18 +335,14 @@ typedef
 /* A note about guest state layout.
 
    LibVEX defines the layout for the guest state, in the file
-   pub/libvex_guest_<arch>.h.  The struct will have an 16-aligned
-   size.  Each translated bb is assumed to be entered with a specified
-   register pointing at such a struct.  Beyond that is two copies of
-   the shadow state area with the same size as the struct.  Beyond
-   that is a spill area that LibVEX may spill into.  It must have size
+   pub/libvex_guest_<arch>.h.  The struct will have an 8-aligned size.
+   Each translated bb is assumed to be entered with a specified
+   register pointing at such a struct.  Beyond that is a shadow
+   state area with the same size as the struct.  Beyond that is
+   a spill area that LibVEX may spill into.  It must have size
    LibVEX_N_SPILL_BYTES, and this must be a 16-aligned number.
 
-   On entry, the baseblock pointer register must be 16-aligned.
-
-   There must be no holes in between the primary guest state, its two
-   copies, and the spill area.  In short, all 4 areas must have a
-   16-aligned size and be 16-aligned, and placed back-to-back.
+   On entry, the baseblock pointer register must be 8-aligned.
 */
 
 #define LibVEX_N_SPILL_BYTES 2048

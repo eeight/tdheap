@@ -1,1 +1,0 @@
-valgrind: ./rwlock_vgtest: No such file or directory

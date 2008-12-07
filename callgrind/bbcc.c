@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2008, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2007, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -48,8 +48,7 @@ void CLG_(init_bbcc_hash)(bbcc_hash* bbccs)
 
    bbccs->size    = N_BBCC_INITIAL_ENTRIES;
    bbccs->entries = 0;
-   bbccs->table = (BBCC**) CLG_MALLOC("cl.bbcc.ibh.1",
-                                      bbccs->size * sizeof(BBCC*));
+   bbccs->table = (BBCC**) CLG_MALLOC(bbccs->size * sizeof(BBCC*));
 
    for (i = 0; i < bbccs->size; i++) bbccs->table[i] = NULL;
 }
@@ -86,7 +85,7 @@ void CLG_(zero_bbcc)(BBCC* bbcc)
   jCC* jcc;
 
   CLG_ASSERT(bbcc->cxt != 0);
-  CLG_DEBUG(1, "  zero_bbcc: BB %#lx, Cxt %d "
+  CLG_DEBUG(1, "  zero_bbcc: BB %p, Cxt %d "
 	   "(fn '%s', rec %d)\n", 
 	   bb_addr(bbcc->bb),
 	   bbcc->cxt->base_number + bbcc->rec_index,
@@ -178,7 +177,7 @@ BBCC* lookup_bbcc(BB* bb, Context* cxt)
        bbcc = bbcc->next;
    }
    
-   CLG_DEBUG(2,"  lookup_bbcc(BB %#lx, Cxt %d, fn '%s'): %p (tid %d)\n",
+   CLG_DEBUG(2,"  lookup_bbcc(BB %p, Cxt %d, fn '%s'): %p (tid %d)\n",
 	    bb_addr(bb), cxt->base_number, cxt->fn[0]->name, 
 	    bbcc, bbcc ? bbcc->tid : 0);
 
@@ -198,8 +197,7 @@ static void resize_bbcc_hash(void)
     BBCC *curr_BBCC, *next_BBCC;
 
     new_size = 2*current_bbccs.size+3;
-    new_table = (BBCC**) CLG_MALLOC("cl.bbcc.rbh.1",
-                                    new_size * sizeof(BBCC*));
+    new_table = (BBCC**) CLG_MALLOC(new_size * sizeof(BBCC*));
  
     if (!new_table) return;
  
@@ -248,7 +246,7 @@ BBCC** new_recursion(int size)
     BBCC** bbccs;
     int i;
     
-    bbccs = (BBCC**) CLG_MALLOC("cl.bbcc.nr.1", sizeof(BBCC*) * size);
+    bbccs = (BBCC**) CLG_MALLOC(sizeof(BBCC*) * size);
     for(i=0;i<size;i++)
 	bbccs[i] = 0;
 
@@ -273,8 +271,7 @@ BBCC* new_bbcc(BB* bb)
    /* We need cjmp_count+1 JmpData structs:
     * the last is for the unconditional jump/call/ret at end of BB
     */
-   new = (BBCC*)CLG_MALLOC("cl.bbcc.nb.1",
-                           sizeof(BBCC) +
+   new = (BBCC*)CLG_MALLOC(sizeof(BBCC) +
 			   (bb->cjmp_count+1) * sizeof(JmpData));
    new->bb  = bb;
    new->tid = CLG_(current_tid);
@@ -297,7 +294,7 @@ BBCC* new_bbcc(BB* bb)
    
    CLG_(stat).distinct_bbccs++;
 
-   CLG_DEBUG(3, "  new_bbcc(BB %#lx): %p (now %d)\n",
+   CLG_DEBUG(3, "  new_bbcc(BB %p): %p (now %d)\n", 
 	    bb_addr(bb), new, CLG_(stat).distinct_bbccs);
 
    return new;
@@ -322,7 +319,7 @@ void insert_bbcc_into_hash(BBCC* bbcc)
     
     CLG_ASSERT(bbcc->cxt != 0);
 
-    CLG_DEBUG(3,"+ insert_bbcc_into_hash(BB %#lx, fn '%s')\n",
+    CLG_DEBUG(3,"+ insert_bbcc_into_hash(BB %p, fn '%s')\n",
 	     bb_addr(bbcc->bb), bbcc->cxt->fn[0]->name);
 
     /* check fill degree of hash and resize if needed (>90%) */
@@ -371,7 +368,7 @@ static BBCC* clone_bbcc(BBCC* orig, Context* cxt, Int rec_index)
 {
     BBCC*      new;
 
-    CLG_DEBUG(3,"+ clone_bbcc(BB %#lx, rec %d, fn %s)\n",
+    CLG_DEBUG(3,"+ clone_bbcc(BB %p, rec %d, fn %s)\n",
 	     bb_addr(orig->bb), rec_index, cxt->fn[0]->name);
 
     new  = new_bbcc(orig->bb);
@@ -413,7 +410,7 @@ static BBCC* clone_bbcc(BBCC* orig, Context* cxt, Int rec_index)
     CLG_DEBUGIF(3)
       CLG_(print_bbcc)(-2, new, False);
 
-    CLG_DEBUG(2,"- clone_BBCC(%p, %d) for BB %#lx\n"
+    CLG_DEBUG(2,"- clone_BBCC(%p, %d) for BB %p\n"
 		"   orig %s\n"
 		"   new  %s\n",
 	     orig, rec_index, bb_addr(orig->bb),
@@ -436,7 +433,7 @@ BBCC* CLG_(get_bbcc)(BB* bb)
 {
    BBCC* bbcc;
 
-   CLG_DEBUG(3, "+ get_bbcc(BB %#lx)\n", bb_addr(bb));
+   CLG_DEBUG(3, "+ get_bbcc(BB %p)\n", bb_addr(bb));
 
    bbcc = bb->bbcc_list;
 
@@ -456,7 +453,7 @@ BBCC* CLG_(get_bbcc)(BB* bb)
        CLG_(print_bbcc)(-2, bbcc, False);
    }
 
-   CLG_DEBUG(3, "- get_bbcc(BB %#lx): BBCC %p\n",
+   CLG_DEBUG(3, "- get_bbcc(BB %p): BBCC %p\n",
 		bb_addr(bb), bbcc);
 
    return bbcc;
@@ -561,7 +558,7 @@ void CLG_(setup_bbcc)(BB* bb)
   Bool ret_without_call = False;
   Int popcount_on_return = 1;
 
-  CLG_DEBUG(3,"+ setup_bbcc(BB %#lx)\n", bb_addr(bb));
+  CLG_DEBUG(3,"+ setup_bbcc(BB %p)\n", bb_addr(bb));
 
   /* This is needed because thread switches can not reliable be tracked
    * with callback CLG_(run_thread) only: we have otherwise no way to get
@@ -717,7 +714,7 @@ void CLG_(setup_bbcc)(BB* bb)
       else
 	  ppIRJumpKind( jmpkind );
 
-      VG_(printf)(" %08lx -> %08lx, SP %08lx\n",
+      VG_(printf)(" %08lx -> %08x, SP %08x\n",
 		  last_bb ? bb_jmpaddr(last_bb) : 0,
 		  bb_addr(bb), sp);
   }
@@ -873,7 +870,7 @@ void CLG_(setup_bbcc)(BB* bb)
     VG_(printf)("\n");
   }
   
-  CLG_DEBUG(3,"- setup_bbcc (BB %#lx): Cost %p (Len %d), Instrs %d (Len %d)\n",
+  CLG_DEBUG(3,"- setup_bbcc (BB %p): Cost %p (Len %d), Instrs %d (Len %d)\n",
 	   bb_addr(bb), bbcc->cost, bb->cost_count, 
 	   bb->instr_count, bb->instr_len);
   CLG_DEBUGIF(3)

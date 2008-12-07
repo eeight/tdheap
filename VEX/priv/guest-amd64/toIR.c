@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2007 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -1653,7 +1653,7 @@ static void setFlags_INC_DEC ( Bool inc, IRTemp res, IRType ty )
       may require reading all four thunk fields. */
    stmt( IRStmt_Put( OFFB_CC_NDEP, mk_amd64g_calculate_rflags_c()) );
    stmt( IRStmt_Put( OFFB_CC_OP,   mkU64(ccOp)) );
-   stmt( IRStmt_Put( OFFB_CC_DEP1, widenUto64(mkexpr(res))) );
+   stmt( IRStmt_Put( OFFB_CC_DEP1, mkexpr(res)) );
    stmt( IRStmt_Put( OFFB_CC_DEP2, mkU64(0)) );
 }
 
@@ -1944,15 +1944,12 @@ void jcc_01 ( AMD64Condcode cond, Addr64 d64_false, Addr64 d64_true )
    }
 }
 
-/* Let new_rsp be the %rsp value after a call/return.  Let nia be the
-   guest address of the next instruction to be executed.
-
-   This function generates an AbiHint to say that -128(%rsp)
-   .. -1(%rsp) should now be regarded as uninitialised.
+/* Let new_rsp be the %rsp value after a call/return.  This function
+   generates an AbiHint to say that -128(%rsp) .. -1(%rsp) should now
+   be regarded as uninitialised.
 */
 static 
-void make_redzone_AbiHint ( VexAbiInfo* vbi,
-                            IRTemp new_rsp, IRTemp nia, HChar* who )
+void make_redzone_AbiHint ( VexAbiInfo* vbi, IRTemp new_rsp, HChar* who )
 {
    Int szB = vbi->guest_stack_redzone_size;
    vassert(szB >= 0);
@@ -1964,12 +1961,10 @@ void make_redzone_AbiHint ( VexAbiInfo* vbi,
 
    if (0) vex_printf("AbiHint: %s\n", who);
    vassert(typeOfIRTemp(irsb->tyenv, new_rsp) == Ity_I64);
-   vassert(typeOfIRTemp(irsb->tyenv, nia) == Ity_I64);
    if (szB > 0)
       stmt( IRStmt_AbiHint( 
                binop(Iop_Sub64, mkexpr(new_rsp), mkU64(szB)), 
-               szB,
-               mkexpr(nia)
+               szB
             ));
 }
 
@@ -3718,7 +3713,7 @@ ULong dis_Grp5 ( VexAbiInfo* vbi,
             assign(t2, binop(Iop_Sub64, getIReg64(R_RSP), mkU64(8)));
             putIReg64(R_RSP, mkexpr(t2));
             storeLE( mkexpr(t2), mkU64(guest_RIP_bbstart+delta+1));
-            make_redzone_AbiHint(vbi, t2, t3/*nia*/, "call-Ev(reg)");
+            make_redzone_AbiHint(vbi, t2, "call-Ev(reg)");
             jmp_treg(Ijk_Call,t3);
             dres->whatNext = Dis_StopHere;
             showSz = False;
@@ -3772,7 +3767,7 @@ ULong dis_Grp5 ( VexAbiInfo* vbi,
             assign(t2, binop(Iop_Sub64, getIReg64(R_RSP), mkU64(8)));
             putIReg64(R_RSP, mkexpr(t2));
             storeLE( mkexpr(t2), mkU64(guest_RIP_bbstart+delta+len));
-            make_redzone_AbiHint(vbi, t2, t3/*nia*/, "call-Ev(mem)");
+            make_redzone_AbiHint(vbi, t2, "call-Ev(mem)");
             jmp_treg(Ijk_Call,t3);
             dres->whatNext = Dis_StopHere;
             showSz = False;
@@ -7684,7 +7679,7 @@ void dis_ret ( VexAbiInfo* vbi, ULong d64 )
    assign(t2, loadLE(Ity_I64,mkexpr(t1)));
    assign(t3, binop(Iop_Add64, mkexpr(t1), mkU64(8+d64)));
    putIReg64(R_RSP, mkexpr(t3));
-   make_redzone_AbiHint(vbi, t3, t2/*nia*/, "ret");
+   make_redzone_AbiHint(vbi, t3, "ret");
    jmp_treg(Ijk_Ret,t2);
 }
 
@@ -13499,9 +13494,7 @@ DisResult disInstr_AMD64_WRK (
       assign(t1, binop(Iop_Sub64, getIReg64(R_RSP), mkU64(8)));
       putIReg64(R_RSP, mkexpr(t1));
       storeLE( mkexpr(t1), mkU64(guest_RIP_bbstart+delta));
-      t2 = newTemp(Ity_I64);
-      assign(t2, mkU64((Addr64)d64));
-      make_redzone_AbiHint(vmi, t1, t2/*nia*/, "call-d32");
+      make_redzone_AbiHint(vmi, t1, "call-d32");
       if (resteerOkFn( callback_opaque, (Addr64)d64) ) {
          /* follow into the call target. */
          dres.whatNext   = Dis_Resteer;

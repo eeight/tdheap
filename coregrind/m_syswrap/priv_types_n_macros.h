@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2007 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -87,8 +87,8 @@ typedef
       Int o_arg4;
       Int o_arg5;
       Int o_arg6;
-      Int o_arg7;
       Int o_arg8;
+      Int o_arg7;
       Int o_retval;
    }
    SyscallArgLayout;

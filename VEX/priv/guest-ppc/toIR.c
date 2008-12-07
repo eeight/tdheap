@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2007 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -1211,31 +1211,24 @@ static IRExpr* addr_align( IRExpr* addr, UChar align )
 /* Generate AbiHints which mark points at which the ELF or PowerOpen
    ABIs say that the stack red zone (viz, -N(r1) .. -1(r1), for some
    N) becomes undefined.  That is at function calls and returns.  ELF
-   ppc32 doesn't have this "feature" (how fortunate for it).  nia is
-   the address of the next instruction to be executed.
+   ppc32 doesn't have this "feature" (how fortunate for it).
 */
-static void make_redzone_AbiHint ( VexAbiInfo* vbi, 
-                                   IRTemp nia, HChar* who )
+static void make_redzone_AbiHint ( VexAbiInfo* vbi, HChar* who )
 {
    Int szB = vbi->guest_stack_redzone_size;
    if (0) vex_printf("AbiHint: %s\n", who);
    vassert(szB >= 0);
    if (szB > 0) {
-      if (mode64) {
-         vassert(typeOfIRTemp(irsb->tyenv, nia) == Ity_I64);
+      if (mode64)
          stmt( IRStmt_AbiHint( 
                   binop(Iop_Sub64, getIReg(1), mkU64(szB)), 
-                  szB,
-                  mkexpr(nia)
+                  szB
          ));
-      } else {
-         vassert(typeOfIRTemp(irsb->tyenv, nia) == Ity_I32);
+      else
          stmt( IRStmt_AbiHint( 
                   binop(Iop_Sub32, getIReg(1), mkU32(szB)), 
-                  szB,
-                  mkexpr(nia)
+                  szB
          ));
-      }
    }
 }
 
@@ -4315,12 +4308,9 @@ static Bool dis_branch ( UInt theInstr,
       if (flag_LK) {
          putGST( PPC_GST_LR, e_nia );
          if (vbi->guest_ppc_zap_RZ_at_bl
-             && vbi->guest_ppc_zap_RZ_at_bl( (ULong)tgt) ) {
-            IRTemp t_tgt = newTemp(ty);
-            assign(t_tgt, mode64 ? mkU64(tgt) : mkU32(tgt) );
-            make_redzone_AbiHint( vbi, t_tgt,
+             && vbi->guest_ppc_zap_RZ_at_bl( (ULong)tgt) )
+            make_redzone_AbiHint( vbi, 
                                   "branch-and-link (unconditional call)" );
-         }
       }
 
       if (resteerOkFn( callback_opaque, tgt )) {
@@ -4389,8 +4379,6 @@ static Bool dis_branch ( UInt theInstr,
          
          assign( cond_ok, branch_cond_ok( BO, BI ) );
 
-         /* FIXME: this is confusing.  lr_old holds the old value
-            of ctr, not lr :-) */
          assign( lr_old, addr_align( getGST( PPC_GST_CTR ), 4 ));
 
          if (flag_LK)
@@ -4400,12 +4388,7 @@ static Bool dis_branch ( UInt theInstr,
                   binop(Iop_CmpEQ32, mkexpr(cond_ok), mkU32(0)),
                   Ijk_Boring,
                   c_nia ));
-
-         if (flag_LK && vbi->guest_ppc_zap_RZ_at_bl) {
-            make_redzone_AbiHint( vbi, lr_old,
-                                  "b-ctr-l (indirect call)" );
-	 }
-
+         
          irsb->jumpkind = flag_LK ? Ijk_Call : Ijk_Boring;
          irsb->next     = mkexpr(lr_old);
          break;
@@ -4441,10 +4424,8 @@ static Bool dis_branch ( UInt theInstr,
                   Ijk_Boring,
                   c_nia ));
 
-         if (vanilla_return && vbi->guest_ppc_zap_RZ_at_blr) {
-            make_redzone_AbiHint( vbi, lr_old,
-                                  "branch-to-lr (unconditional return)" );
-         }
+	 if (vanilla_return && vbi->guest_ppc_zap_RZ_at_blr)
+            make_redzone_AbiHint( vbi, "branch-to-lr (unconditional return)" );
 
          /* blrl is pretty strange; it's like a return that sets the
             return address of its caller to the insn following this
@@ -4852,11 +4833,11 @@ static Bool dis_memsync ( UInt theInstr )
          break;
 
       case 0x014: // lwarx (Load Word and Reserve Indexed, PPC32 p458)
-         /* According to the PowerPC ISA version 2.05, b0 (called EH
-            in the documentation) is merely a hint bit to the
-            hardware, I think as to whether or not contention is
-            likely.  So we can just ignore it. */
-         DIP("lwarx r%u,r%u,r%u,EH=%u\n", rD_addr, rA_addr, rB_addr, (UInt)b0);
+         if (b0 != 0) {
+            vex_printf("dis_memsync(ppc)(lwarx,b0)\n");
+            return False;
+         }
+         DIP("lwarx r%u,r%u,r%u\n", rD_addr, rA_addr, rB_addr);
          putIReg( rD_addr, mkSzWiden32(ty, loadBE(Ity_I32, mkexpr(EA)),
                                        False) );
          /* Take a reservation */
@@ -4895,13 +4876,9 @@ static Bool dis_memsync ( UInt theInstr )
             If resaddr != lwarx_resaddr, CR0[EQ] is undefined, and
             whether rS is stored is dependent on that value. */
 
-         /* Success?  Do the (32bit) store.  Mark the store as
-            snooped, so that threading tools can handle it differently
-            if necessary. */
-         stmt( IRStmt_MBE(Imbe_SnoopedStoreBegin) );
+         /* Success?  Do the (32bit) store */
          storeBE( mkexpr(EA), mkSzNarrow32(ty, mkexpr(rS)) );
-         stmt( IRStmt_MBE(Imbe_SnoopedStoreEnd) );
-
+         
          // Set CR0[LT GT EQ S0] = 0b001 || XER[SO]
          putCR321(0, mkU8(1<<1));
          break;
@@ -4946,11 +4923,11 @@ static Bool dis_memsync ( UInt theInstr )
 
       /* 64bit Memsync */
       case 0x054: // ldarx (Load DWord and Reserve Indexed, PPC64 p473)
-         /* According to the PowerPC ISA version 2.05, b0 (called EH
-            in the documentation) is merely a hint bit to the
-            hardware, I think as to whether or not contention is
-            likely.  So we can just ignore it. */
-         DIP("ldarx r%u,r%u,r%u,EH=%u\n", rD_addr, rA_addr, rB_addr, (UInt)b0);
+         if (b0 != 0) {
+            vex_printf("dis_memsync(ppc)(ldarx,b0)\n");
+            return False;
+         }
+         DIP("ldarx r%u,r%u,r%u\n", rD_addr, rA_addr, rB_addr);
          putIReg( rD_addr, loadBE(Ity_I64, mkexpr(EA)) );
          // Take a reservation
          putGST( PPC_GST_RESVN, mkexpr(EA) );
@@ -8845,68 +8822,6 @@ static Bool dis_av_fp_convert ( UInt theInstr )
 
 
 
-/*------------------------------------------------------------*/
-/*--- POWER6 Instruction Translation                       ---*/
-/*------------------------------------------------------------*/
-
-static
-Bool dis_P6 ( UInt theInstr,
-              Bool allow_F, Bool allow_V, Bool allow_FX, Bool allow_GX)
-{
-   UInt opc, rd, ra, rb, opc2, dot;
-
-   /* This is a hack.  We should do P6 capability checking properly.
-      But anyway, make a guess at whether we should even try to handle
-      this instruction.  All P6 capable CPUs should be able to handle
-      F, V, FX and GX, so that seems like a good check. */
-   if (! (allow_F && allow_V && allow_FX && allow_GX) )
-      return False;
-   if (!mode64)
-      return False; /* only support P6 in 64-bit mode for now */
-
-   opc  = ifieldOPC(theInstr);     /* primary opcode */
-   rd   = ifieldRegDS(theInstr);   /* dst reg */
-   ra   = ifieldRegA(theInstr);    /* first source reg */
-   rb   = ifieldRegB(theInstr);    /* second source reg */
-   opc2 = ifieldOPClo10(theInstr); /* secondary opc, 10:1 */
-   dot  = ifieldBIT0(theInstr);    /* Rc field, bit 0 */
-
-   if (opc == 63 && ra == 0/*presumably*/ && opc2 == 488) {
-      /* frim (Floating Round to Integer Minus, PPC ISA 2.05 p137) */
-      if (dot) return False;
-      putFReg( rd, unop(Iop_RoundF64toF64_NegINF, getFReg( rb )) );
-      DIP("frim%s fr%u,fr%u\n", dot ? "." : "", rd, rb);
-      return True;
-   }
-
-   if (opc == 63 && ra == 0/*presumably*/ && opc2 == 456) {
-      /* frip (Floating Round to Integer Plus, PPC ISA 2.05 p137) */
-      if (dot) return False;
-      putFReg( rd, unop(Iop_RoundF64toF64_PosINF, getFReg( rb )) );
-      DIP("frip%s fr%u,fr%u\n", dot ? "." : "", rd, rb);
-      return True;
-   }
-
-   if (opc == 63 && ra == 0/*presumably*/ && opc2 == 392) {
-      /* frin (Floating Round to Integer Nearest, PPC ISA 2.05 p137) */
-      if (dot) return False;
-      putFReg( rd, unop(Iop_RoundF64toF64_NEAREST, getFReg( rb )) );
-      DIP("frin%s fr%u,fr%u\n", dot ? "." : "", rd, rb);
-      return True;
-   }
-
-   if (opc == 63 && ra == 0/*presumably*/ && opc2 == 424) {
-      /* frin (Floating Round to Integer Zero, PPC ISA 2.05 p137) */
-      if (dot) return False;
-      putFReg( rd, unop(Iop_RoundF64toF64_ZERO, getFReg( rb )) );
-      DIP("friz%s fr%u,fr%u\n", dot ? "." : "", rd, rb);
-      return True;
-   }
-
-   if (0)
-      vex_printf("dis_P6: %u %u %u %u %u %u\n", opc, rd, ra, rb, opc2, dot);
-   return False;
-}
 
 
 
@@ -9225,15 +9140,6 @@ DisResult disInstr_PPC_WRK (
       case 0x32F: // fctidz
       case 0x34E: // fcfid
          if (dis_fp_round(theInstr)) goto decode_success;
-         goto decode_failure;
-
-      /* Power6 rounding stuff */
-      case 0x1E8: // frim
-      case 0x1C8: // frip
-      case 0x188: // frin
-      case 0x1A8: // friz
-         if (dis_P6(theInstr, allow_F, allow_V, allow_FX, allow_GX))
-            goto decode_success;
          goto decode_failure;
          
       /* Floating Point Move Instructions */         

@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2008, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2007, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -43,8 +43,7 @@ ULong* CLG_(get_costarray)(Int size)
 
   if (!cost_chunk_current ||
       (cost_chunk_current->size - cost_chunk_current->used < size)) {
-    CostChunk* cc  = (CostChunk*) CLG_MALLOC("cl.costs.gc.1",
-                                              sizeof(CostChunk) +
+    CostChunk* cc  = (CostChunk*) CLG_MALLOC(sizeof(CostChunk) +
 					      COSTCHUNK_SIZE * sizeof(ULong));
     cc->size = COSTCHUNK_SIZE;
     cc->used = 0;

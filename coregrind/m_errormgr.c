@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2007 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -119,16 +119,15 @@ struct _Error {
    // NULL if unsuppressed; or ptr to suppression record.
    Supp* supp;
    Int count;
+   ThreadId tid;
 
    // The tool-specific part
-   ThreadId tid;           // Initialised by core
    ExeContext* where;      // Initialised by core
    ErrorKind ekind;        // Used by ALL.  Must be in the range (0..)
    Addr addr;              // Used frequently
    Char* string;           // Used frequently
    void* extra;            // For any tool-specific extras
 };
-
 
 ExeContext* VG_(get_error_where) ( Error* err )
 {
@@ -442,8 +441,7 @@ static void gen_suppression(Error* err)
    }
 
    // Print stack trace elements
-   VG_(apply_StackTrace)(printSuppForIp,
-                         VG_(get_ExeContext_StackTrace)(ec), stop_at);
+   VG_(apply_StackTrace)(printSuppForIp, VG_(extract_StackTrace)(ec), stop_at);
 
    VG_(printf)("}\n");
 }
@@ -600,7 +598,7 @@ void VG_(maybe_record_error) ( ThreadId tid,
    */
 
    /* copy main part */
-   p = VG_(arena_malloc)(VG_AR_ERRORS, "errormgr.mre.1", sizeof(Error));
+   p = VG_(arena_malloc)(VG_AR_ERRORS, sizeof(Error));
    *p = err;
 
    /* update 'extra' */
@@ -618,7 +616,7 @@ void VG_(maybe_record_error) ( ThreadId tid,
 
    /* copy block pointed to by 'extra', if there is one */
    if (NULL != p->extra && 0 != extra_size) { 
-      void* new_extra = VG_(malloc)("errormgr.mre.2", extra_size);
+      void* new_extra = VG_(malloc)(extra_size);
       VG_(memcpy)(new_extra, p->extra, extra_size);
       p->extra = new_extra;
    }
@@ -709,12 +707,12 @@ static Bool show_used_suppressions ( void )
          continue;
       any_supp = True;
       if (VG_(clo_xml)) {
-         VG_(message_no_f_c)(Vg_DebugMsg,
-                             "  <pair>\n"
-                             "    <count>%d</count>\n"
-                             "    <name>%t</name>\n"
-                             "  </pair>",
-                             su->count, su->sname);
+         VG_(message)(Vg_DebugMsg, 
+                      "  <pair>\n"
+                      "    <count>%d</count>\n"
+                      "    <name>%t</name>\n"
+                      "  </pair>", 
+                      su->count, su->sname);
       } else {
          VG_(message)(Vg_DebugMsg, "supp: %6d %s", su->count, su->sname);
       }
@@ -789,7 +787,7 @@ void VG_(show_all_errors) ( void )
       pp_Error( p_min );
 
       if ((i+1 == VG_(clo_dump_error))) {
-         StackTrace ips = VG_(get_ExeContext_StackTrace)(p_min->where);
+         StackTrace ips = VG_(extract_StackTrace)(p_min->where);
          VG_(translate) ( 0 /* dummy ThreadId; irrelevant due to debugging*/,
                           ips[0], /*debugging*/True, 0xFE/*verbosity*/,
                           /*bbs_done*/0,
@@ -979,8 +977,7 @@ static void load_one_suppressions_file ( Char* filename )
    while (True) {
       /* Assign and initialise the two suppression halves (core and tool) */
       Supp* supp;
-      supp        = VG_(arena_malloc)(VG_AR_CORE, "errormgr.losf.1",
-                                      sizeof(Supp));
+      supp        = VG_(arena_malloc)(VG_AR_CORE, sizeof(Supp));
       supp->count = 0;
 
       // Initialise temporary reading-in buffer.
@@ -1000,7 +997,7 @@ static void load_one_suppressions_file ( Char* filename )
 
       if (eof || VG_STREQ(buf, "}")) BOMB("unexpected '}'");
 
-      supp->sname = VG_(arena_strdup)(VG_AR_CORE, "errormgr.losf.2", buf);
+      supp->sname = VG_(arena_strdup)(VG_AR_CORE, buf);
 
       eof = VG_(get_line) ( fd, buf, N_BUF );
 
@@ -1070,8 +1067,7 @@ static void load_one_suppressions_file ( Char* filename )
             BOMB("too many callers in stack trace");
          if (i > 0 && i >= VG_(clo_backtrace_size)) 
             break;
-         tmp_callers[i].name = VG_(arena_strdup)(VG_AR_CORE,
-                                                 "errormgr.losf.3", buf);
+         tmp_callers[i].name = VG_(arena_strdup)(VG_AR_CORE, buf);
          if (!setLocationTy(&(tmp_callers[i])))
             BOMB("location should start with 'fun:' or 'obj:'");
          i++;
@@ -1087,8 +1083,7 @@ static void load_one_suppressions_file ( Char* filename )
 
       // Copy tmp_callers[] into supp->callers[]
       supp->n_callers = i;
-      supp->callers = VG_(arena_malloc)(VG_AR_CORE, "errormgr.losf.4",
-                                        i*sizeof(SuppLoc));
+      supp->callers = VG_(arena_malloc)(VG_AR_CORE, i*sizeof(SuppLoc));
       for (i = 0; i < supp->n_callers; i++) {
          supp->callers[i] = tmp_callers[i];
       }
@@ -1152,7 +1147,7 @@ Bool supp_matches_callers(Error* err, Supp* su)
 {
    Int i;
    Char caller_name[ERRTXT_LEN];
-   StackTrace ips = VG_(get_ExeContext_StackTrace)(err->where);
+   StackTrace ips = VG_(extract_StackTrace)(err->where);
 
    for (i = 0; i < su->n_callers; i++) {
       Addr a = ips[i];
@@ -1224,11 +1219,11 @@ static Supp* is_suppressible_error ( Error* err )
 void VG_(print_errormgr_stats) ( void )
 {
    VG_(message)(Vg_DebugMsg, 
-      " errormgr: %'lu supplist searches, %'lu comparisons during search",
+      " errormgr: %,lu supplist searches, %,lu comparisons during search",
       em_supplist_searches, em_supplist_cmps
    );
    VG_(message)(Vg_DebugMsg, 
-      " errormgr: %'lu errlist searches, %'lu comparisons during search",
+      " errormgr: %,lu errlist searches, %,lu comparisons during search",
       em_errlist_searches, em_errlist_cmps
    );
 }

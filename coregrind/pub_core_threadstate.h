@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2007 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -93,21 +93,14 @@ typedef
    struct {
       /* --- BEGIN vex-mandated guest state --- */
 
-      /* Note that for code generation reasons, we require that the
-         guest state area, its two shadows, and the spill area, are
-         16-aligned and have 16-aligned sizes, and there are no holes
-         in between.  This is checked by do_pre_run_checks() in
-         scheduler.c. */
-
       /* Saved machine context. */
-      VexGuestArchState vex __attribute__((aligned(16)));
+      VexGuestArchState vex;
 
-      /* Saved shadow context (2 copies). */
-      VexGuestArchState vex_shadow1 __attribute__((aligned(16)));
-      VexGuestArchState vex_shadow2 __attribute__((aligned(16)));
+      /* Saved shadow context. */
+      VexGuestArchState vex_shadow;
 
       /* Spill area. */
-      UChar vex_spill[LibVEX_N_SPILL_BYTES] __attribute__((aligned(16)));
+      UChar vex_spill[LibVEX_N_SPILL_BYTES];
 
       /* --- END vex-mandated guest state --- */
    } 
@@ -201,7 +194,8 @@ typedef struct {
       apply.  We don't know the size of the stack since we didn't
       allocate it, and furthermore we never reallocate it. */
 
-   /* The allocated size of this thread's stack */
+   /* The allocated size of this thread's stack (permanently zero
+      if this is ThreadId == 1, since we didn't allocate its stack) */
    SizeT client_stack_szB;
 
    /* Address of the highest legitimate word in this stack.  This is

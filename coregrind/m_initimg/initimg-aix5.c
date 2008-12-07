@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2008 OpenWorks LLP
+   Copyright (C) 2006-2007 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -115,7 +115,7 @@ IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo iicii )
                 + VG_(strlen)( _so )
                 + 1 /*NUL*/;
    vg_assert(pltool_len > 0);
-   pltool_str = VG_(malloc)( "initimg-aix5.ici.1", pltool_len );
+   pltool_str = VG_(malloc)( pltool_len );
    pltool_str[0] = 0;
    VG_(strcat)( pltool_str, VG_(libdir) );
    VG_(strcat)( pltool_str, "/" );
@@ -134,7 +134,7 @@ IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo iicii )
                 + VG_(strlen)( vgpreload_core_so )
                 + 1 /*NUL*/;
    vg_assert(plcore_len > 0);
-   plcore_str = VG_(malloc)( "initimg-aix5.ici.2", plcore_len );
+   plcore_str = VG_(malloc)( plcore_len );
    plcore_str[0] = 0;
    VG_(strcat)( plcore_str, VG_(libdir) );
    VG_(strcat)( plcore_str, "/" );
@@ -151,7 +151,7 @@ IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo iicii )
    if (ld_pre_str && VG_(strlen)(ld_pre_str) > 0) {
       have_ld_pre = True;
       ld_pre_len  = VG_(strlen)(ld_pre_str) + 1/*NUL*/;
-      ld_pre_str = VG_(malloc)( "initimg-aix5.ici.3", ld_pre_len );
+      ld_pre_str = VG_(malloc)( ld_pre_len );
       ld_pre_str[0] = 0;
       VG_(strcat)( ld_pre_str, VG_(getenv)("LD_PRELOAD") );
       vg_assert( ld_pre_str[ld_pre_len-1] == 0);
@@ -298,9 +298,8 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
       sane way. */
    LibVEX_GuestPPC32_initialise(&arch->vex);
 
-   /* Zero out the shadow areas. */
-   VG_(memset)(&arch->vex_shadow1, 0, sizeof(VexGuestPPC32State));
-   VG_(memset)(&arch->vex_shadow2, 0, sizeof(VexGuestPPC32State));
+   /* Zero out the shadow area. */
+   VG_(memset)(&arch->vex_shadow, 0, sizeof(VexGuestPPC32State));
 
 #  else /* defined(VGP_ppc64_aix5) */
 
@@ -310,9 +309,8 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
       sane way. */
    LibVEX_GuestPPC64_initialise(&arch->vex);
 
-   /* Zero out the shadow areas. */
-   VG_(memset)(&arch->vex_shadow1, 0, sizeof(VexGuestPPC64State));
-   VG_(memset)(&arch->vex_shadow2, 0, sizeof(VexGuestPPC64State));
+   /* Zero out the shadow area. */
+   VG_(memset)(&arch->vex_shadow, 0, sizeof(VexGuestPPC64State));
 
 #  endif
 

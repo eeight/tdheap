@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2007 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -40,7 +40,7 @@
 /* The version number indicates binary-incompatible changes to the
    interface;  if the core and tool versions don't match, Valgrind
    will abort.  */
-#define VG_CORE_INTERFACE_VERSION   11
+#define VG_CORE_INTERFACE_VERSION   10
 
 typedef struct _ToolInfo {
    Int	sizeof_ToolInfo;
@@ -416,8 +416,8 @@ extern void VG_(needs_sanity_checks) (
    Bool(*expensive_sanity_check)(void)
 );
 
-/* Do we need to see variable type and location information? */
-extern void VG_(needs_var_info) ( void );
+/* Do we need to see data symbols? */
+extern void VG_(needs_data_syms) ( void );
 
 /* Does the tool replace malloc() and friends with its own versions?
    This has to be combined with the use of a vgpreload_<tool>.so module
@@ -453,7 +453,7 @@ extern void VG_(needs_final_IR_tidy_pass) ( IRSB*(*final_tidy)(IRSB*) );
 /* Part of the core from which this call was made.  Useful for determining
    what kind of error message should be emitted. */
 typedef
-   enum { Vg_CoreStartup=1, Vg_CoreSignal, Vg_CoreSysCall,
+   enum { Vg_CoreStartup, Vg_CoreSignal, Vg_CoreSysCall,
           Vg_CoreTranslate, Vg_CoreClientReq }
    CorePart;
 
@@ -469,26 +469,14 @@ typedef
    Memory events (Nb: to track heap allocation/freeing, a tool must replace
    malloc() et al.  See above how to do this.)
 
-   These ones occur at startup, upon some signals, and upon some syscalls.
-
-   For new_mem_brk and new_mem_stack_signal, the supplied ThreadId
-   indicates the thread for whom the new memory is being allocated.
-
-   For new_mem_startup and new_mem_mmap, the di_handle argument is a
-   handle which can be used to retrieve debug info associated with the
-   mapping or allocation (because it is of a file that Valgrind has
-   decided to read debug info from).  If the value is zero, there is
-   no associated debug info.  If the value exceeds zero, it can be
-   supplied as an argument to selected queries in m_debuginfo.
-*/
+   These ones occur at startup, upon some signals, and upon some syscalls
+ */
 void VG_(track_new_mem_startup)     (void(*f)(Addr a, SizeT len,
-                                              Bool rr, Bool ww, Bool xx,
-                                              ULong di_handle));
-void VG_(track_new_mem_stack_signal)(void(*f)(Addr a, SizeT len, ThreadId tid));
-void VG_(track_new_mem_brk)         (void(*f)(Addr a, SizeT len, ThreadId tid));
+                                              Bool rr, Bool ww, Bool xx));
+void VG_(track_new_mem_stack_signal)(void(*f)(Addr a, SizeT len));
+void VG_(track_new_mem_brk)         (void(*f)(Addr a, SizeT len));
 void VG_(track_new_mem_mmap)        (void(*f)(Addr a, SizeT len,
-                                              Bool rr, Bool ww, Bool xx,
-                                              ULong di_handle));
+                                              Bool rr, Bool ww, Bool xx));
 
 void VG_(track_copy_mem_remap)      (void(*f)(Addr from, Addr to, SizeT len));
 void VG_(track_change_mem_mprotect) (void(*f)(Addr a, SizeT len,
@@ -506,29 +494,7 @@ void VG_(track_die_mem_munmap)      (void(*f)(Addr a, SizeT len));
    specialised cases are defined, the general case must be defined too.
 
    Nb: all the specialised ones must use the VG_REGPARM(n) attribute.
-
-   For the _new functions, a tool may specify with with-ECU
-   (ExeContext Unique) or without-ECU version for each size, but not
-   both.  If the with-ECU version is supplied, then the core will
-   arrange to pass, as the ecu argument, a 32-bit int which uniquely
-   identifies the instruction moving the stack pointer down.  This
-   32-bit value is as obtained from VG_(get_ECU_from_ExeContext).
-   VG_(get_ExeContext_from_ECU) can then be used to retrieve the
-   associated depth-1 ExeContext for the location.  All this
-   complexity is provided to support origin tracking in Memcheck.
-*/
-void VG_(track_new_mem_stack_4_w_ECU)  (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
-void VG_(track_new_mem_stack_8_w_ECU)  (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
-void VG_(track_new_mem_stack_12_w_ECU) (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
-void VG_(track_new_mem_stack_16_w_ECU) (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
-void VG_(track_new_mem_stack_32_w_ECU) (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
-void VG_(track_new_mem_stack_112_w_ECU)(VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
-void VG_(track_new_mem_stack_128_w_ECU)(VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
-void VG_(track_new_mem_stack_144_w_ECU)(VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
-void VG_(track_new_mem_stack_160_w_ECU)(VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
-void VG_(track_new_mem_stack_w_ECU)                  (void(*f)(Addr a, SizeT len,
-                                                                       UInt ecu));
-
+ */
 void VG_(track_new_mem_stack_4)  (VG_REGPARM(1) void(*f)(Addr new_ESP));
 void VG_(track_new_mem_stack_8)  (VG_REGPARM(1) void(*f)(Addr new_ESP));
 void VG_(track_new_mem_stack_12) (VG_REGPARM(1) void(*f)(Addr new_ESP));

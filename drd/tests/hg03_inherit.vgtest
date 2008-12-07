@@ -1,3 +1,0 @@
-prereq: ./supported_libpthread
-vgopts: --show-confl-seg=no --var-info=yes
-prog: hg03_inherit

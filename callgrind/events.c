@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2008, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2007, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -46,7 +46,7 @@ EventType* CLG_(register_eventtype)(Char* name)
 
   et = &(eventtype[eventtype_count]);
   et->id = eventtype_count; 
-  et->name = (UChar*) VG_(strdup)("cl.events.re.1", name);
+  et->name = (UChar*) VG_(strdup)(name);
   et->description = 0;
 
   eventtype_count++;
@@ -77,8 +77,7 @@ EventSet* CLG_(get_eventset)(Char* n, Int capacity)
 {
   EventSet* es;
 
-  es = (EventSet*) CLG_MALLOC("cl.events.geSet.1",
-                               sizeof(EventSet) +
+  es = (EventSet*) CLG_MALLOC(sizeof(EventSet) +
 			       capacity * sizeof(EventSetEntry));
   es->capacity = capacity;
   es->size = 0;
@@ -500,8 +499,7 @@ EventMapping* CLG_(get_eventmapping)(EventSet* es)
 
   CLG_ASSERT(es != 0);
 
-  em = (EventMapping*) CLG_MALLOC("cl.events.geMapping.1",
-                                   sizeof(EventMapping) +
+  em = (EventMapping*) CLG_MALLOC(sizeof(EventMapping) +
 				   es->capacity * sizeof(Int));
   em->capacity = es->capacity;
   em->size = 0;

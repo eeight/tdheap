@@ -8,7 +8,7 @@
    This file is part of Helgrind, a Valgrind tool for detecting errors
    in threaded programs.
 
-   Copyright (C) 2007-2008 OpenWorks LLP
+   Copyright (C) 2007-2007 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -177,7 +177,7 @@ static char* lame_strerror ( long err )
    so is mentioned by name in glibc-*helgrind*.supp. */
 static void* mythread_wrapper ( void* xargsV )
 {
-   volatile Word* xargs = (volatile Word*) xargsV;
+   volatile Word volatile* xargs = (volatile Word volatile*) xargsV;
    void*(*fn)(void*) = (void*(*)(void*))xargs[0];
    void* arg         = (void*)xargs[1];
    pthread_t me = pthread_self();

@@ -136,7 +136,7 @@
    struct with uninitialized paddings - libxcb
    Memcheck:Param
    writev(vector[...])
-   obj:/lib*/*.so
+   obj:/lib*/libc-2.6*.so
    obj:/usr/lib*/libxcb.so.1.0.0
    obj:/usr/lib*/libxcb.so.1.0.0
    fun:xcb_send_request
@@ -147,7 +147,7 @@
    struct with uninitialized paddings - libxcb
    Memcheck:Param
    writev(vector[...])
-   obj:/lib*/*.so
+   obj:/lib*/libc-2.6*.so
    obj:/usr/lib*/libxcb.so.1.0.0
    obj:/usr/lib*/libxcb.so.1.0.0
    obj:/usr/lib*/libxcb.so.1.0.0
@@ -246,7 +246,7 @@
    obj:/usr/lib*/libORBit*.so*
    obj:/usr/lib*/libORBit*.so*
 }
- 
+
 
 # There's something strange about a % 127 in XftFontOpenInfo
 # (hashing) which gcc turns into a multiply by 33818641 and
@@ -301,19 +301,6 @@
    fun:hash
    fun:for__add_to_lf_table
 }
-
-# zlib-1.2.x uses uninitialised memory in some tricky way which
-# apparently is harmless (it must amount to a vectorised while-loop,
-# nothing else makes sense).  Fools Memcheck though.  See the mentioned
-# URL for details.
-{
-   zlib-1.2.x trickyness: See http://www.zlib.net/zlib_faq.html#faq36
-   Memcheck:Cond
-   obj:/lib64/libz.so.1.2.*
-   obj:/lib64/libz.so.1.2.*
-   fun:deflate
-}
-
 
 ##----------------------------------------------------------------------##
 

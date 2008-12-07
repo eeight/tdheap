@@ -1,0 +1,1128 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+<title>7. Helgrind: a thread error detector</title>
+<link rel="stylesheet" href="vg_basic.css" type="text/css">
+<meta name="generator" content="DocBook XSL Stylesheets V1.69.1">
+<link rel="start" href="index.html" title="Valgrind Documentation">
+<link rel="up" href="manual.html" title="Valgrind User Manual">
+<link rel="prev" href="cl-manual.html" title="6. Callgrind: a call graph profiler">
+<link rel="next" href="ms-manual.html" title="8. Massif: a heap profiler">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<div><table class="nav" width="100%" cellspacing="3" cellpadding="3" border="0" summary="Navigation header"><tr>
+<td width="22px" align="center" valign="middle"><a accesskey="p" href="cl-manual.html"><img src="images/prev.png" width="18" height="21" border="0" alt="Prev"></a></td>
+<td width="25px" align="center" valign="middle"><a accesskey="u" href="manual.html"><img src="images/up.png" width="21" height="18" border="0" alt="Up"></a></td>
+<td width="31px" align="center" valign="middle"><a accesskey="h" href="index.html"><img src="images/home.png" width="27" height="20" border="0" alt="Up"></a></td>
+<th align="center" valign="middle">Valgrind User Manual</th>
+<td width="22px" align="center" valign="middle"><a accesskey="n" href="ms-manual.html"><img src="images/next.png" width="18" height="21" border="0" alt="Next"></a></td>
+</tr></table></div>
+<div class="chapter" lang="en">
+<div class="titlepage"><div><div><h2 class="title">
+<a name="hg-manual"></a>7. Helgrind: a thread error detector</h2></div></div></div>
+<div class="toc">
+<p><b>Table of Contents</b></p>
+<dl>
+<dt><span class="sect1"><a href="hg-manual.html#hg-manual.overview">7.1. Overview</a></span></dt>
+<dt><span class="sect1"><a href="hg-manual.html#hg-manual.api-checks">7.2. Detected errors: Misuses of the POSIX pthreads API</a></span></dt>
+<dt><span class="sect1"><a href="hg-manual.html#hg-manual.lock-orders">7.3. Detected errors: Inconsistent Lock Orderings</a></span></dt>
+<dt><span class="sect1"><a href="hg-manual.html#hg-manual.data-races">7.4. Detected errors: Data Races</a></span></dt>
+<dd><dl>
+<dt><span class="sect2"><a href="hg-manual.html#hg-manual.data-races.example">7.4.1. A Simple Data Race</a></span></dt>
+<dt><span class="sect2"><a href="hg-manual.html#hg-manual.data-races.memstates">7.4.2. Helgrind's Memory State Machine</a></span></dt>
+<dt><span class="sect2"><a href="hg-manual.html#hg-manual.data-races.exclusive">7.4.3. Transfers of Exclusive Ownership Between Threads</a></span></dt>
+<dt><span class="sect2"><a href="hg-manual.html#hg-manual.data-races.re-excl">7.4.4. Restoration of Exclusive Ownership</a></span></dt>
+<dt><span class="sect2"><a href="hg-manual.html#hg-manual.data-races.summary">7.4.5. A Summary of the Race Detection Algorithm</a></span></dt>
+<dt><span class="sect2"><a href="hg-manual.html#hg-manual.data-races.errmsgs">7.4.6. Interpreting Race Error Messages</a></span></dt>
+</dl></dd>
+<dt><span class="sect1"><a href="hg-manual.html#hg-manual.effective-use">7.5. Hints and Tips for Effective Use of Helgrind</a></span></dt>
+<dt><span class="sect1"><a href="hg-manual.html#hg-manual.options">7.6. Helgrind Options</a></span></dt>
+<dt><span class="sect1"><a href="hg-manual.html#hg-manual.todolist">7.7. A To-Do List for Helgrind</a></span></dt>
+</dl>
+</div>
+<p>To use this tool, you must specify
+<code class="computeroutput">--tool=helgrind</code> on the Valgrind
+command line.</p>
+<div class="sect1" lang="en">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="hg-manual.overview"></a>7.1. Overview</h2></div></div></div>
+<p>Helgrind is a Valgrind tool for detecting synchronisation errors
+in C, C++ and Fortran programs that use the POSIX pthreads
+threading primitives.</p>
+<p>The main abstractions in POSIX pthreads are: a set of threads
+sharing a common address space, thread creation, thread joinage,
+thread exit, mutexes (locks), condition variables (inter-thread event
+notifications), reader-writer locks, and semaphores.</p>
+<p>Helgrind is aware of all these abstractions and tracks their
+effects as accurately as it can.  Currently it does not correctly
+handle pthread barriers and pthread spinlocks, although it will not
+object if you use them.  On x86 and amd64 platforms, it understands
+and partially handles implicit locking arising from the use of the
+LOCK instruction prefix.
+</p>
+<p>Helgrind can detect three classes of errors, which are discussed
+in detail in the next three sections:</p>
+<div class="orderedlist"><ol type="1">
+<li><p><a href="hg-manual.html#hg-manual.api-checks" title="7.2. Detected errors: Misuses of the POSIX pthreads API">
+        Misuses of the POSIX pthreads API.</a></p></li>
+<li><p><a href="hg-manual.html#hg-manual.lock-orders" title="7.3. Detected errors: Inconsistent Lock Orderings">
+        Potential deadlocks arising from lock
+        ordering problems.</a></p></li>
+<li><p><a href="hg-manual.html#hg-manual.data-races" title="7.4. Detected errors: Data Races">
+        Data races -- accessing memory without adequate locking.
+        </a></p></li>
+</ol></div>
+<p>Following those is a section containing 
+<a href="hg-manual.html#hg-manual.effective-use" title="7.5. Hints and Tips for Effective Use of Helgrind">
+hints and tips on how to get the best out of Helgrind.</a>
+</p>
+<p>Then there is a
+<a href="hg-manual.html#hg-manual.options" title="7.6. Helgrind Options">summary of command-line
+options.</a>
+</p>
+<p>Finally, there is 
+<a href="hg-manual.html#hg-manual.todolist" title="7.7. A To-Do List for Helgrind">a brief summary of areas in which Helgrind
+could be improved.</a>
+</p>
+</div>
+<div class="sect1" lang="en">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="hg-manual.api-checks"></a>7.2. Detected errors: Misuses of the POSIX pthreads API</h2></div></div></div>
+<p>Helgrind intercepts calls to many POSIX pthreads functions, and
+is therefore able to report on various common problems.  Although
+these are unglamourous errors, their presence can lead to undefined
+program behaviour and hard-to-find bugs later in execution.  The
+detected errors are:</p>
+<div class="itemizedlist"><ul type="disc">
+<li><p>unlocking an invalid mutex</p></li>
+<li><p>unlocking a not-locked mutex</p></li>
+<li><p>unlocking a mutex held by a different
+                 thread</p></li>
+<li><p>destroying an invalid or a locked mutex</p></li>
+<li><p>recursively locking a non-recursive mutex</p></li>
+<li><p>deallocation of memory that contains a
+                 locked mutex</p></li>
+<li><p>passing mutex arguments to functions expecting
+                 reader-writer lock arguments, and vice
+                 versa</p></li>
+<li><p>when a POSIX pthread function fails with an
+                 error code that must be handled</p></li>
+<li><p>when a thread exits whilst still holding locked
+                 locks</p></li>
+<li><p>calling <code class="computeroutput">pthread_cond_wait</code>
+                 with a not-locked mutex, or one locked by a different
+                 thread</p></li>
+</ul></div>
+<p>Checks pertaining to the validity of mutexes are generally also
+performed for reader-writer locks.</p>
+<p>Various kinds of this-can't-possibly-happen events are also
+reported.  These usually indicate bugs in the system threading
+library.</p>
+<p>Reported errors always contain a primary stack trace indicating
+where the error was detected.  They may also contain auxiliary stack
+traces giving additional information.  In particular, most errors
+relating to mutexes will also tell you where that mutex first came to
+Helgrind's attention (the "<code class="computeroutput">was first observed
+at</code>" part), so you have a chance of figuring out which
+mutex it is referring to.  For example:</p>
+<pre class="programlisting">
+Thread #1 unlocked a not-locked lock at 0x7FEFFFA90
+   at 0x4C2408D: pthread_mutex_unlock (hg_intercepts.c:492)
+   by 0x40073A: nearly_main (tc09_bad_unlock.c:27)
+   by 0x40079B: main (tc09_bad_unlock.c:50)
+  Lock at 0x7FEFFFA90 was first observed
+   at 0x4C25D01: pthread_mutex_init (hg_intercepts.c:326)
+   by 0x40071F: nearly_main (tc09_bad_unlock.c:23)
+   by 0x40079B: main (tc09_bad_unlock.c:50)
+</pre>
+<p>Helgrind has a way of summarising thread identities, as
+evidenced here by the text "<code class="computeroutput">Thread
+#1</code>".  This is so that it can speak about threads and
+sets of threads without overwhelming you with details.  See 
+<a href="hg-manual.html#hg-manual.data-races.errmsgs" title="7.4.6. Interpreting Race Error Messages">below</a>
+for more information on interpreting error messages.</p>
+</div>
+<div class="sect1" lang="en">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="hg-manual.lock-orders"></a>7.3. Detected errors: Inconsistent Lock Orderings</h2></div></div></div>
+<p>In this section, and in general, to "acquire" a lock simply
+means to lock that lock, and to "release" a lock means to unlock
+it.</p>
+<p>Helgrind monitors the order in which threads acquire locks.
+This allows it to detect potential deadlocks which could arise from
+the formation of cycles of locks.  Detecting such inconsistencies is
+useful because, whilst actual deadlocks are fairly obvious, potential
+deadlocks may never be discovered during testing and could later lead
+to hard-to-diagnose in-service failures.</p>
+<p>The simplest example of such a problem is as
+follows.</p>
+<div class="itemizedlist"><ul type="disc">
+<li><p>Imagine some shared resource R, which, for whatever
+  reason, is guarded by two locks, L1 and L2, which must both be held
+  when R is accessed.</p></li>
+<li><p>Suppose a thread acquires L1, then L2, and proceeds
+  to access R.  The implication of this is that all threads in the
+  program must acquire the two locks in the order first L1 then L2.
+  Not doing so risks deadlock.</p></li>
+<li><p>The deadlock could happen if two threads -- call them
+  T1 and T2 -- both want to access R.  Suppose T1 acquires L1 first,
+  and T2 acquires L2 first.  Then T1 tries to acquire L2, and T2 tries
+  to acquire L1, but those locks are both already held.  So T1 and T2
+  become deadlocked.</p></li>
+</ul></div>
+<p>Helgrind builds a directed graph indicating the order in which
+locks have been acquired in the past.  When a thread acquires a new
+lock, the graph is updated, and then checked to see if it now contains
+a cycle.  The presence of a cycle indicates a potential deadlock involving
+the locks in the cycle.</p>
+<p>In simple situations, where the cycle only contains two locks,
+Helgrind will show where the required order was established:</p>
+<pre class="programlisting">
+Thread #1: lock order "0x7FEFFFAB0 before 0x7FEFFFA80" violated
+   at 0x4C23C91: pthread_mutex_lock (hg_intercepts.c:388)
+   by 0x40081F: main (tc13_laog1.c:24)
+  Required order was established by acquisition of lock at 0x7FEFFFAB0
+   at 0x4C23C91: pthread_mutex_lock (hg_intercepts.c:388)
+   by 0x400748: main (tc13_laog1.c:17)
+  followed by a later acquisition of lock at 0x7FEFFFA80
+   at 0x4C23C91: pthread_mutex_lock (hg_intercepts.c:388)
+   by 0x400773: main (tc13_laog1.c:18)
+</pre>
+<p>When there are more than two locks in the cycle, the error is
+equally serious.  However, at present Helgrind does not show the locks
+involved, so as to avoid flooding you with information.  That could be
+fixed in future.  For example, here is a an example involving a cycle
+of five locks from a naive implementation the famous Dining
+Philosophers problem
+(see <code class="computeroutput">helgrind/tests/tc14_laog_dinphils.c</code>).
+In this case Helgrind has detected that all 5 philosophers could
+simultaneously pick up their left fork and then deadlock whilst
+waiting to pick up their right forks.</p>
+<pre class="programlisting">
+Thread #6: lock order "0x6010C0 before 0x601160" violated
+   at 0x4C23C91: pthread_mutex_lock (hg_intercepts.c:388)
+   by 0x4007C0: dine (tc14_laog_dinphils.c:19)
+   by 0x4C25DF7: mythread_wrapper (hg_intercepts.c:178)
+   by 0x4E2F09D: start_thread (in /lib64/libpthread-2.5.so)
+   by 0x51054CC: clone (in /lib64/libc-2.5.so)
+</pre>
+</div>
+<div class="sect1" lang="en">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="hg-manual.data-races"></a>7.4. Detected errors: Data Races</h2></div></div></div>
+<p>A data race happens, or could happen, when two threads
+access a shared memory location without using suitable locks to
+ensure single-threaded access.  Such missing locking can cause
+obscure timing dependent bugs.  Ensuring programs are race-free is
+one of the central difficulties of threaded programming.</p>
+<p>Reliably detecting races is a difficult problem, and most
+of Helgrind's internals are devoted to do dealing with it.  
+As a consequence this section is somewhat long and involved.
+We begin with a simple example.</p>
+<div class="sect2" lang="en">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="hg-manual.data-races.example"></a>7.4.1. A Simple Data Race</h3></div></div></div>
+<p>About the simplest possible example of a race is as follows.  In
+this program, it is impossible to know what the value
+of <code class="computeroutput">var</code> is at the end of the program.
+Is it 2 ?  Or 1 ?</p>
+<pre class="programlisting">
+#include &lt;pthread.h&gt;
+
+int var = 0;
+
+void* child_fn ( void* arg ) {
+   var++; /* Unprotected relative to parent */ /* this is line 6 */
+   return NULL;
+}
+
+int main ( void ) {
+   pthread_t child;
+   pthread_create(&amp;child, NULL, child_fn, NULL);
+   var++; /* Unprotected relative to child */ /* this is line 13 */
+   pthread_join(child, NULL);
+   return 0;
+}
+</pre>
+<p>The problem is there is nothing to
+stop <code class="computeroutput">var</code> being updated simultaneously
+by both threads.  A correct program would 
+protect <code class="computeroutput">var</code> with a lock of type
+<code class="computeroutput">pthread_mutex_t</code>, which is acquired
+before each access and released afterwards.  Helgrind's output for
+this program is:</p>
+<pre class="programlisting">
+Thread #1 is the program's root thread
+
+Thread #2 was created
+   at 0x510548E: clone (in /lib64/libc-2.5.so)
+   by 0x4E2F305: do_clone (in /lib64/libpthread-2.5.so)
+   by 0x4E2F7C5: pthread_create@@GLIBC_2.2.5 (in /lib64/libpthread-2.5.so)
+   by 0x4C23870: pthread_create@* (hg_intercepts.c:198)
+   by 0x4005F1: main (simple_race.c:12)
+
+Possible data race during write of size 4 at 0x601034
+   at 0x4005F2: main (simple_race.c:13)
+  Old state: shared-readonly by threads #1, #2
+  New state: shared-modified by threads #1, #2
+  Reason:    this thread, #1, holds no consistent locks
+  Location 0x601034 has never been protected by any lock
+</pre>
+<p>This is quite a lot of detail for an apparently simple error.
+The last clause is the main error message.  It says there is a race as
+a result of a write of size 4 (bytes), at 0x601034, which is
+presumably the address of <code class="computeroutput">var</code>,
+happening in function <code class="computeroutput">main</code> at line 13
+in the program.</p>
+<p>Note that it is purely by chance that the race is
+reported for the parent thread's access.  It could equally have been
+reported instead for the child's access, at line 6.  The error will
+only be reported for one of the locations, since neither the parent
+nor child is, by itself, incorrect.  It is only when both access
+<code class="computeroutput">var</code> without a lock that an error
+exists.</p>
+<p>The error message shows some other interesting details.  The
+sections below explain them.  Here we merely note their presence:</p>
+<div class="itemizedlist"><ul type="disc">
+<li><p>Helgrind maintains some kind of state machine for the
+  memory location in question, hence the "<code class="computeroutput">Old
+  state:</code>" and "<code class="computeroutput">New
+  state:</code>" lines.</p></li>
+<li><p>Helgrind keeps track of which threads have accessed
+  the location: "<code class="computeroutput">threads #1, #2</code>".
+  Before printing the main error message, it prints the creation
+  points of these two threads, so you can see which threads it is
+  referring to.</p></li>
+<li><p>Helgrind tries to provide an explanation of why the
+  race exists: "<code class="computeroutput">Location 0x601034 has never been
+  protected by any lock</code>".</p></li>
+</ul></div>
+<p>Understanding the memory state machine is central to
+understanding Helgrind's race-detection algorithm.  The next three
+subsections explain this.</p>
+</div>
+<div class="sect2" lang="en">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="hg-manual.data-races.memstates"></a>7.4.2. Helgrind's Memory State Machine</h3></div></div></div>
+<p>Helgrind tracks the state of every byte of memory used by your
+program.  There are a number of states, but only three are
+interesting:</p>
+<div class="itemizedlist"><ul type="disc">
+<li><p>Exclusive: memory in this state is regarded as owned
+  exclusively by one particular thread.  That thread may read and
+  write it without a lock.  Even in highly threaded programs, the
+  majority of locations never leave the Exclusive state, since most
+  data is thread-private.</p></li>
+<li><p>Shared-Readonly: memory in this state is regarded as
+  shared by multiple threads.  In this state, any thread may read the
+  memory without a lock, reflecting the fact that readonly data may
+  safely be shared between threads without locking.</p></li>
+<li><p>Shared-Modified: memory in this state is regarded as
+  shared by multiple threads, at least one of which has written to it.
+  All participating threads must hold at least one lock in common when
+  accessing the memory.  If no such lock exists, Helgrind reports a
+  race error.</p></li>
+</ul></div>
+<p>Let's review the simple example above with this in mind.  When
+the program starts, <code class="computeroutput">var</code> is not in any
+of these states.  Either the parent or child thread gets to its
+<code class="computeroutput">var++</code> first, and thereby
+thereby gets Exclusive ownership of the location.</p>
+<p>The later-running thread now arrives at
+its <code class="computeroutput">var++</code> statement.  It first reads
+the existing value from memory.
+Because <code class="computeroutput">var</code> is currently marked as
+owned exclusively by the other thread, its state is changed to
+shared-readonly by both threads.</p>
+<p>This same thread adds one to the value it has and stores it back
+in <code class="computeroutput">var</code>.  This causes another state
+change, this time to the shared-modified state.  Because Helgrind has
+also been tracking which threads hold which locks, it can see that
+<code class="computeroutput">var</code> is in shared-modified state but
+no lock has been used to consistently protect it.  Hence a race is
+reported exactly at the transition from shared-readonly to
+shared-modified.</p>
+<p>The essence of the algorithm is this.  Helgrind keeps track of
+each memory location that has been accessed by more than one thread.
+For each such location it incrementally infers the set of locks which
+have consistently been used to protect that location.  If the
+location's lockset becomes empty, and at some point one of the threads
+attempts to write to it, a race is then reported.</p>
+<p>This technique is known as "lockset inference" and was
+introduced in: "Eraser: A Dynamic Data Race Detector for Multithreaded
+Programs" (Stefan Savage, Michael Burrows, Greg Nelson, Patrick
+Sobalvarro and Thomas Anderson, ACM Transactions on Computer Systems,
+15(4):391-411, November 1997).</p>
+<p>Lockset inference has since been widely implemented, studied and
+extended.  Helgrind incorporates several refinements aimed at avoiding
+the high false error rate that naive versions of the algorithm suffer
+from.  A 
+<a href="hg-manual.html#hg-manual.data-races.summary" title="7.4.5. A Summary of the Race Detection Algorithm">summary of the complete
+algorithm used by Helgrind</a> is presented below.  First, however,
+it is important to understand details of transitions pertaining to the
+Exclusive-ownership state.</p>
+</div>
+<div class="sect2" lang="en">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="hg-manual.data-races.exclusive"></a>7.4.3. Transfers of Exclusive Ownership Between Threads</h3></div></div></div>
+<p>As presented, the algorithm is far too strict.  It reports many
+errors in perfectly correct, widely used parallel programming
+constructions, for example, using child worker threads and worker
+thread pools.</p>
+<p>To avoid these false errors, we must refine the algorithm so
+that it keeps memory in an Exclusive ownership state in cases where it
+would otherwise decay into a shared-readonly or shared-modified state.
+Recall that Exclusive ownership is special in that it grants the
+owning thread the right to access memory without use of any locks.  In
+order to support worker-thread and worker-thread-pool idioms, we will
+allow threads to steal exclusive ownership of memory from other
+threads under certain circumstances.</p>
+<p>Here's an example.  Imagine a parent thread creates child
+threads to do units of work.  For each unit of work, the parent
+allocates a work buffer, fills it in, and creates the child thread,
+handing it a pointer to the buffer.  The child reads/writes the buffer
+and eventually exits, and the waiting parent then extracts the results
+from the buffer:</p>
+<pre class="programlisting">
+typedef ... Buffer;
+
+pthread_t child;
+Buffer    buf;
+
+/* ---- Parent ---- */                          /* ---- Child ---- */
+
+/* parent writes workload into buf */
+pthread_create( &amp;child, child_fn, &amp;buf );
+
+/* parent does not read */                      void child_fn ( Buffer* buf ) {
+/* or write buf */                                 /* read/write buf */
+                                                }
+
+pthread_join ( child );
+/* parent reads results from buf */
+</pre>
+<p>Although <code class="computeroutput">buf</code> is accessed by
+both threads, neither uses locks, yet the program is race-free.  The
+essential observation is that the child's creation and exit create
+synchronisation events between it and the parent.  These force the
+child's accesses to <code class="computeroutput">buf</code> to happen
+after the parent initialises <code class="computeroutput">buf</code>, and
+before the parent reads the results
+from <code class="computeroutput">buf</code>.</p>
+<p>To model this, Helgrind allows the child to steal, from the
+parent, exclusive ownership of any memory exclusively owned by the
+parent before the pthread_create call.  Similarly, once the parent's
+pthread_join call returns, it can steal back ownership of memory
+exclusively owned by the child.  In this way ownership
+of <code class="computeroutput">buf</code> is transferred from parent to
+child and back, so the basic algorithm does not report any races
+despite the absence of any locking.</p>
+<p>Note that the child may only steal memory owned by the parent
+prior to the pthread_create call.  If the child attempts to read or
+write memory which is also accessed by the parent in between the
+pthread_create and pthread_join calls, an error is still
+reported.</p>
+<p>This technique was introduced with the name "thread lifetime
+segments" in "Runtime Checking of Multithreaded Applications with
+Visual Threads" (Jerry J. Harrow, Jr, Proceedings of the 7th
+International SPIN Workshop on Model Checking of Software Stanford,
+California, USA, August 2000, LNCS 1885, pp331--342).  Helgrind
+implements an extended version of it.  Specifically, Helgrind allows
+transfer of exclusive ownership in the following situations:</p>
+<div class="itemizedlist"><ul type="disc">
+<li><p>At thread creation: a child can acquire ownership of
+  memory held exclusively by the parent prior to the child's
+  creation.</p></li>
+<li><p>At thread joining: the joiner (thread not exiting)
+  can acquire ownership of memory held exclusively by the joinee
+  (thread that is exiting) at the point it exited.</p></li>
+<li><p>At condition variable signallings and broadcasts.  A
+  thread Tw which completes a pthread_cond_wait call as a result of
+  a signal or broadcast on the same condition variable by some other
+  thread Ts, may acquire ownership of memory held exclusively by
+  Ts prior to the pthread_cond_signal/broadcast
+  call.</p></li>
+<li><p>At semaphore posts (sem_post) calls.  A thread Tw
+  which completes a sem_wait call call as a result of a sem_post call
+  on the same semaphore by some other thread Tp, may acquire
+  ownership of memory held exclusively by Tp prior to the sem_post
+  call.</p></li>
+</ul></div>
+</div>
+<div class="sect2" lang="en">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="hg-manual.data-races.re-excl"></a>7.4.4. Restoration of Exclusive Ownership</h3></div></div></div>
+<p>Another common idiom is to partition the lifetime of the program
+as a whole into several distinct phases.  In some of those phases, a
+memory location may be accessed by multiple threads and so require
+locking.  In other phases only one thread exists and so can access the
+memory without locking.  For example:</p>
+<pre class="programlisting">
+int             var = 0;                         /* shared variable */
+pthread_mutex_t mx  = PTHREAD_MUTEX_INITIALIZER; /* guard for var */
+pthread_t       child;
+
+/* ---- Parent ---- */                          /* ---- Child ---- */
+
+var += 1; /* no lock used */
+
+pthread_create( &amp;child, child_fn, NULL );
+
+                                                void child_fn ( void* uu ) {
+pthread_mutex_lock(&amp;mx);                           pthread_mutex_lock(&amp;mx);         
+var += 2;                                          var += 3;
+pthread_mutex_unlock(&amp;mx);                         pthread_mutex_unlock(&amp;mx);
+                                                }
+
+pthread_join ( child );
+
+var += 4; /* no lock used */
+</pre>
+<p>This program is correct, but using only the mechanisms described
+so far, Helgrind would report an error at
+<code class="computeroutput">var += 4</code>.  This is because, by that
+point, <code class="computeroutput">var</code> is marked as being in the
+state "shared-modified and protected by the
+lock <code class="computeroutput">mx</code>", but is being accessed
+without locking.  Really, what we want is
+for <code class="computeroutput">var</code> to return to the parent
+thread's exclusive ownership after the child thread has exited.</p>
+<p>To make this possible, for every memory location Helgrind also keeps
+track of all the threads that have accessed that location
+-- its threadset.  When a thread Tquitter joins back to Tstayer,
+Helgrind examines the locksets of all memory in shared-modified or
+shared-readable state.  In each such lockset, if Tquitter is
+mentioned, it is removed and replaced by Tstayer.  If, as a result, a
+lockset becomes a singleton set containing Tstayer, then the
+location's state is changed to belongs-exclusively-to-Tstayer.</p>
+<p>In our example, the result is exactly as we desire:
+<code class="computeroutput">var</code> is reacquired exclusively by the
+parent after the child exits.</p>
+<p>More generally, when a group of threads merges back to a single
+thread via a cascade of pthread_join calls, any memory shared by the
+group (or a subset of it) ends up being owned exclusively by the sole
+surviving thread.  This significantly enhances Helgrind's flexibility,
+since it means that each memory location may make arbitrarily many
+transitions between exclusive and shared ownership.  Furthermore, a
+different lock may protect the location during each period of shared
+ownership.</p>
+</div>
+<div class="sect2" lang="en">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="hg-manual.data-races.summary"></a>7.4.5. A Summary of the Race Detection Algorithm</h3></div></div></div>
+<p>Helgrind looks for memory locations which are accessed by more
+than one thread.  For each such location, Helgrind records which of
+the program's locks were held by the accessing thread at the time of
+each access.  The hope is to discover that there is indeed at least
+one lock which is consistently used by all threads to protect that
+location.  If no such lock can be found, then there is apparently no
+consistent locking strategy being applied for that location, and so a
+possible data race might result.  Helgrind accordingly reports an
+error.</p>
+<p>In practice this discipline is far too simplistic, and is
+unusable since it reports many races in some widely used and
+known-correct programming disciplines.  Helgrind's checking therefore
+incorporates many refinements to this basic idea, and can be
+summarised as follows:</p>
+<p>The following thread events are intercepted and monitored:</p>
+<div class="itemizedlist"><ul type="disc">
+<li><p>thread creation and exiting (pthread_create,
+           pthread_join, pthread_exit)</p></li>
+<li><p>lock acquisition and release (pthread_mutex_lock,
+        pthread_mutex_unlock, pthread_rwlock_rdlock,
+        pthread_rwlock_wrlock,
+        pthread_rwlock_unlock)</p></li>
+<li><p>inter-thread event notifications (pthread_cond_wait,
+        pthread_cond_signal, pthread_cond_broadcast, 
+        sem_wait, sem_post)</p></li>
+</ul></div>
+<p>Memory allocation and deallocation events are intercepted and
+monitored:</p>
+<div class="itemizedlist"><ul type="disc">
+<li><p>malloc/new/free/delete and variants</p></li>
+<li><p>stack allocation and deallocation</p></li>
+</ul></div>
+<p>All memory accesses are intercepted and monitored.</p>
+<p>By observing the above events, Helgrind can infer certain
+aspects of the program's locking discipline.  Programs which adhere to
+the following rules are considered to be acceptable:
+</p>
+<div class="itemizedlist"><ul type="disc">
+<li><p>A thread may allocate memory, and write initial values into
+  it, without locking.  That thread is regarded as owning the memory
+  exclusively.</p></li>
+<li><p>A thread may read and write memory which it owns exclusively,
+  without locking.</p></li>
+<li><p>Memory which is owned exclusively by one thread may be read by
+  that thread and others without locking.  However, in this situation
+  no thread may do unlocked writes to the memory (except for the owner
+  thread's initializing write).</p></li>
+<li><p>Memory which is shared between multiple threads, one or more
+  of which writes to it, must be protected by a lock which is
+  correctly acquired and released by all threads accessing the
+  memory.</p></li>
+</ul></div>
+<p>Any violation of this discipline will cause an error to be reported.
+However, two exemptions apply:</p>
+<div class="itemizedlist"><ul type="disc">
+<li>
+<p>A thread Y can acquire exclusive ownership of memory
+  previously owned exclusively by a different thread X providing
+  X's last access and Y's first access are separated by one of the
+  following synchronization events:</p>
+<div class="itemizedlist"><ul type="circle">
+<li><p>X creates thread Y</p></li>
+<li><p>X joins back to Y</p></li>
+<li><p>X uses a condition-variable to signal at Y, and Y is
+   waiting for that event</p></li>
+<li><p>Y completes a semaphore wait as a result of X signalling 
+   on that same semaphore</p></li>
+</ul></div>
+<p>
+  This refinement allows Helgrind to correctly track the ownership
+  state of inter-thread buffers used in the worker-thread and
+  worker-thread-pool concurrent programming idioms (styles).</p>
+</li>
+<li>
+<p>Similarly, if thread Y joins back to thread X, memory
+  exclusively owned by Y becomes exclusively owned by X instead.
+  Also, memory that has been shared only by X and Y becomes
+  exclusively owned by X.  More generally, memory that has been shared
+  by X, Y and some arbitrary other set S of threads is re-marked as
+  shared by X and S.  Hence, under the right circumstances, memory
+  shared amongst multiple threads, all of which join into just one,
+  can revert to the exclusive ownership state.</p>
+<p>
+  In effect, each memory location may make arbitrarily many
+  transitions between exclusive and shared ownership.  Furthermore, a
+  different lock may protect the location during each period of shared
+  ownership.  This significantly enhances the flexibility of the
+  algorithm.</p>
+</li>
+</ul></div>
+<p>The ownership state, accessing thread-set and related lock-set
+for each memory location are tracked at 8-bit granularity.  This means
+the algorithm is precise even for 16- and 8-bit memory
+accesses.</p>
+<p>Helgrind correctly handles reader-writer locks in this
+framework.  Locations shared between multiple threads can be protected
+during reads by locks held in either read-mode or write-mode, but can
+only be protected during writes by locks held in write-mode.  Normal
+POSIX mutexes are treated as if they are reader-writer locks which are
+only ever held in write-mode.</p>
+<p>Helgrind correctly handles POSIX mutexes for which recursive
+locking is allowed.</p>
+<p>Helgrind partially correctly handles x86 and amd64 memory access
+instructions preceded by a LOCK prefix.  Writes are correctly handled,
+by pretending that the LOCK prefix implies acquisition and release of
+a magic "bus hardware lock" mutex before and after the instruction.
+This unfortunately requires subsequent reads from such locations to
+also use a LOCK prefix, which is not required by the real hardware.
+Helgrind does not offer any equivalent handling for atomic sequences
+on PowerPC/POWER platforms created by the use of lwarx/stwcx
+instructions.</p>
+</div>
+<div class="sect2" lang="en">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="hg-manual.data-races.errmsgs"></a>7.4.6. Interpreting Race Error Messages</h3></div></div></div>
+<p>Helgrind's race detection algorithm collects a lot of
+information, and tries to present it in a helpful way when a race is
+detected.  Here's an example:</p>
+<pre class="programlisting">
+Thread #2 was created
+   at 0x510548E: clone (in /lib64/libc-2.5.so)
+   by 0x4E2F305: do_clone (in /lib64/libpthread-2.5.so)
+   by 0x4E2F7C5: pthread_create@@GLIBC_2.2.5 (in /lib64/libpthread-2.5.so)
+   by 0x4C23870: pthread_create@* (hg_intercepts.c:198)
+   by 0x400CEF: main (tc17_sembar.c:195)
+
+// And the same for threads #3, #4 and #5 -- omitted for conciseness
+
+Possible data race during read of size 4 at 0x602174
+   at 0x400BE5: gomp_barrier_wait (tc17_sembar.c:122)
+   by 0x400C44: child (tc17_sembar.c:161)
+   by 0x4C25DF7: mythread_wrapper (hg_intercepts.c:178)
+   by 0x4E2F09D: start_thread (in /lib64/libpthread-2.5.so)
+   by 0x51054CC: clone (in /lib64/libc-2.5.so)
+  Old state: shared-modified by threads #2, #3, #4, #5
+  New state: shared-modified by threads #2, #3, #4, #5
+  Reason:    this thread, #2, holds no consistent locks
+  Last consistently used lock for 0x602174 was first observed
+   at 0x4C25D01: pthread_mutex_init (hg_intercepts.c:326)
+   by 0x4009E4: gomp_barrier_init (tc17_sembar.c:46)
+   by 0x400CBC: main (tc17_sembar.c:192)
+</pre>
+<p>Helgrind first announces the creation points of any threads
+referenced in the error message.  This is so it can speak concisely
+about threads and sets of threads without repeatedly printing their
+creation point call stacks.  Each thread is only ever announced once,
+the first time it appears in any Helgrind error message.</p>
+<p>The main error message begins at the text
+"<code class="computeroutput">Possible data race during read</code>".
+At the start is information you would expect to see -- address and
+size of the racing access, whether a read or a write, and the call
+stack at the point it was detected.</p>
+<p>More interesting is the state transition caused by this access.
+This memory is already in the shared-modified state, and up to now has
+been consistently protected by at least one lock.  However, the thread
+making the access in question (thread #2, here) does not hold any
+locks in common with those held during all previous accesses to the
+location -- "no consistent locks", in other words.</p>
+<p>Finally, Helgrind shows the lock which has protected this
+location in all previous accesses.  (If there is more than one, only
+one is shown).  This can be a useful hint, because it typically shows
+the lock that the programmers intended to use to protect the location,
+but in this case forgot.</p>
+<p>Here are some more examples of race reports.  This not an
+exhaustive list of combinations, but should give you some insight into
+how to interpret the output.</p>
+<pre class="programlisting">
+Possible data race during write ...
+  Old state: shared-readonly by threads #1, #2, #3
+  New state: shared-modified by threads #1, #2, #3
+  Reason:    this thread, #3, holds no consistent locks
+  Location ... has never been protected by any lock
+</pre>
+<p>The location is shared by 3 threads, all of which have been
+reading it without locking ("has never been protected by any lock").
+Now one of them is writing it.  Regardless of whether the writer has a
+lock or not, this is still an error, because the write races against
+the previously observed reads.</p>
+<pre class="programlisting">
+Possible data race during read ...
+  Old state: shared-modified by threads #1, #2, #3
+  New state: shared-modified by threads #1, #2, #3
+  Reason:    this thread, #3, holds no consistent locks
+  Last consistently used lock for ... was first observed ...
+</pre>
+<p>The location is shared by 3 threads, all of which have been
+reading and writing it while (as required) holding at least one lock
+in common.  Now it is being read without that lock being held.  In the
+"Last consistently used lock" part, Helgrind offers its best guess as
+to the identity of the lock that should have been used.</p>
+<pre class="programlisting">
+Possible data race during write ...
+  Old state: owned exclusively by thread #4
+  New state: shared-modified by threads #4, #5
+  Reason:    this thread, #5, holds no locks at all
+</pre>
+<p>A location that has so far been accessed exclusively by thread
+#4 has now been written by thread #5, without use of any lock.  This
+can be a sign that the programmer did not consider the possibility of
+the location being shared between threads, or, alternatively, forgot
+to use the appropriate lock.</p>
+<p>Note that thread #4 exclusively owns the location, and so has
+the right to access it without holding a lock.  However, this message
+does not say that thread #4 is not using a lock for this location.
+Indeed, it could be using a lock for the location because it intends
+to make it available to other threads, one of which is thread #5 --
+and thread #5 has forgotten to use the lock.</p>
+<p>Also, this message implies that Helgrind did not see any
+synchronisation event between threads #4 and #5 that would have
+allowed #5 to acquire exclusive ownership from #4.  See
+<a href="hg-manual.html#hg-manual.data-races.exclusive" title="7.4.3. Transfers of Exclusive Ownership Between Threads">above</a>
+for a discussion of transfers of exclusive ownership states between
+threads.</p>
+</div>
+</div>
+<div class="sect1" lang="en">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="hg-manual.effective-use"></a>7.5. Hints and Tips for Effective Use of Helgrind</h2></div></div></div>
+<p>Helgrind can be very helpful in finding and resolving
+threading-related problems.  Like all sophisticated tools, it is most
+effective when you understand how to play to its strengths.</p>
+<p>Helgrind will be less effective when you merely throw an
+existing threaded program at it and try to make sense of any reported
+errors.  It will be more effective if you design threaded programs
+from the start in a way that helps Helgrind verify correctness.  The
+same is true for finding memory errors with Memcheck, but applies more
+here, because thread checking is a harder problem.  Consequently it is
+much easier to write a correct program for which Helgrind falsely
+reports (threading) errors than it is to write a correct program for
+which Memcheck falsely reports (memory) errors.</p>
+<p>With that in mind, here are some tips, listed most important first,
+for getting reliable results and avoiding false errors.  The first two
+are critical.  Any violations of them will swamp you with huge numbers
+of false data-race errors.</p>
+<div class="orderedlist"><ol type="1">
+<li>
+<p>Make sure your application, and all the libraries it uses,
+    use the POSIX threading primitives.  Helgrind needs to be able to
+    see all events pertaining to thread creation, exit, locking and
+    other synchronisation events.  To do so it intercepts many POSIX
+    pthread_ functions.</p>
+<p>Do not roll your own threading primitives (mutexes, etc)
+    from combinations of the Linux futex syscall, counters and wotnot.
+    These throw Helgrind's internal what's-going-on models way off
+    course and will give bogus results.</p>
+<p>Also, do not reimplement existing POSIX abstractions using
+    other POSIX abstractions.  For example, don't build your own
+    semaphore routines or reader-writer locks from POSIX mutexes and
+    condition variables.  Instead use POSIX reader-writer locks and
+    semaphores directly, since Helgrind supports them directly.</p>
+<p>Helgrind directly supports the following POSIX threading
+    abstractions: mutexes, reader-writer locks, condition variables
+    (but see below), and semaphores.  Currently spinlocks and barriers
+    are not supported, although they could be in future.  A prototype
+    "safe" implementation of barriers, based on semaphores, is
+    available: please contact the Valgrind authors for details.</p>
+<p>At the time of writing, the following popular Linux packages
+    are known to implement their own threading primitives:</p>
+<div class="itemizedlist"><ul type="disc">
+<li><p>Qt version 4.X.  Qt 3.X is fine, but not 4.X.
+      Helgrind contains partial direct support for Qt 4.X threading,
+      but this is not yet in a usable state.  Assistance from folks
+      knowledgeable in Qt 4 threading internals would be
+      appreciated.</p></li>
+<li><p>Runtime support library for GNU OpenMP (part of
+      GCC), at least GCC versions 4.2 and 4.3.  With some minor effort
+      of modifying the GNU OpenMP runtime support sources, it is
+      possible to use Helgrind on GNU OpenMP compiled codes.  Please
+      contact the Valgrind authors for details.</p></li>
+</ul></div>
+</li>
+<li>
+<p>Avoid memory recycling.  If you can't avoid it, you must use
+    tell Helgrind what is going on via the VALGRIND_HG_CLEAN_MEMORY
+    client request
+    (in <code class="computeroutput">helgrind.h</code>).</p>
+<p>Helgrind is aware of standard memory allocation and
+    deallocation that occurs via malloc/free/new/delete and from entry
+    and exit of stack frames.  In particular, when memory is
+    deallocated via free, delete, or function exit, Helgrind considers
+    that memory clean, so when it is eventually reallocated, its
+    history is irrelevant.</p>
+<p>However, it is common practice to implement memory recycling
+    schemes.  In these, memory to be freed is not handed to
+    malloc/delete, but instead put into a pool of free buffers to be
+    handed out again as required.  The problem is that Helgrind has no
+    way to know that such memory is logically no longer in use, and
+    its history is irrelevant.  Hence you must make that explicit,
+    using the VALGRIND_HG_CLEAN_MEMORY client request to specify the
+    relevant address ranges.  It's easiest to put these requests into
+    the pool manager code, and use them either when memory is returned
+    to the pool, or is allocated from it.</p>
+</li>
+<li>
+<p>Avoid POSIX condition variables.  If you can, use POSIX
+    semaphores (sem_t, sem_post, sem_wait) to do inter-thread event
+    signalling.  Semaphores with an initial value of zero are
+    particularly useful for this.</p>
+<p>Helgrind only partially correctly handles POSIX condition
+    variables.  This is because Helgrind can see inter-thread
+    dependencies between a pthread_cond_wait call and a
+    pthread_cond_signal/broadcast call only if the waiting thread
+    actually gets to the rendezvous first (so that it actually calls
+    pthread_cond_wait).  It can't see dependencies between the threads
+    if the signaller arrives first.  In the latter case, POSIX
+    guidelines imply that the associated boolean condition still
+    provides an inter-thread synchronisation event, but one which is
+    invisible to Helgrind.</p>
+<p>The result of Helgrind missing some inter-thread
+    synchronisation events is to cause it to report false positives.
+    That's because missing such events reduces the extent to which it
+    can transfer exclusive memory ownership between threads.  So
+    memory may end up in a shared-modified state when that was not
+    intended by the application programmers.</p>
+<p>The root cause of this synchronisation lossage is
+    particularly hard to understand, so an example is helpful.  It was
+    discussed at length by Arndt Muehlenfeld ("Runtime Race Detection
+    in Multi-Threaded Programs", Dissertation, TU Graz, Austria).  The
+    canonical POSIX-recommended usage scheme for condition variables
+    is as follows:</p>
+<pre class="programlisting">
+b   is a Boolean condition, which is False most of the time
+cv  is a condition variable
+mx  is its associated mutex
+
+Signaller:                             Waiter:
+
+lock(mx)                               lock(mx)
+b = True                               while (b == False)
+signal(cv)                                wait(cv,mx)
+unlock(mx)                             unlock(mx)
+</pre>
+<p>Assume <code class="computeroutput">b</code> is False most of
+    the time.  If the waiter arrives at the rendezvous first, it
+    enters its while-loop, waits for the signaller to signal, and
+    eventually proceeds.  Helgrind sees the signal, notes the
+    dependency, and all is well.</p>
+<p>If the signaller arrives
+    first, <code class="computeroutput">b</code> is set to true, and the
+    signal disappears into nowhere.  When the waiter later arrives, it
+    does not enter its while-loop and simply carries on.  But even in
+    this case, the waiter code following the while-loop cannot execute
+    until the signaller sets <code class="computeroutput">b</code> to
+    True.  Hence there is still the same inter-thread dependency, but
+    this time it is through an arbitrary in-memory condition, and
+    Helgrind cannot see it.</p>
+<p>By comparison, Helgrind's detection of inter-thread
+    dependencies caused by semaphore operations is believed to be
+    exactly correct.</p>
+<p>As far as I know, a solution to this problem that does not
+    require source-level annotation of condition-variable wait loops
+    is beyond the current state of the art.</p>
+</li>
+<li>
+<p>Make sure you are using a supported Linux distribution.  At
+    present, Helgrind only properly supports x86-linux and amd64-linux
+    with glibc-2.3 or later.  The latter restriction means we only
+    support glibc's NPTL threading implementation.  The old
+    LinuxThreads implementation is not supported.</p>
+<p>Unsupported targets may work to varying degrees.  In
+    particular ppc32-linux and ppc64-linux running NTPL should work,
+    but you will get false race errors because Helgrind does not know
+    how to properly handle atomic instruction sequences created using
+    the lwarx/stwcx instructions.</p>
+</li>
+<li>
+<p>Round up all finished threads using pthread_join.  Avoid
+    detaching threads: don't create threads in the detached state, and
+    don't call pthread_detach on existing threads.</p>
+<p>Using pthread_join to round up finished threads provides a
+    clear synchronisation point that both Helgrind and programmers can
+    see.  This synchronisation point allows Helgrind to adjust its
+    memory ownership
+    models <a href="hg-manual.html#hg-manual.data-races.exclusive" title="7.4.3. Transfers of Exclusive Ownership Between Threads">as described
+    extensively above</a>, which helps Helgrind produce more
+    accurate error reports.</p>
+<p>If you don't call pthread_join on a thread, Helgrind has no
+    way to know when it finishes, relative to any significant
+    synchronisation points for other threads in the program.  So it
+    assumes that the thread lingers indefinitely and can potentially
+    interfere indefinitely with the memory state of the program.  It
+    has every right to assume that -- after all, it might really be
+    the case that, for scheduling reasons, the exiting thread did run
+    very slowly in the last stages of its life.</p>
+</li>
+<li>
+<p>Perform thread debugging (with Helgrind) and memory
+    debugging (with Memcheck) together.</p>
+<p>Helgrind tracks the state of memory in detail, and memory
+    management bugs in the application are liable to cause confusion.
+    In extreme cases, applications which do many invalid reads and
+    writes (particularly to freed memory) have been known to crash
+    Helgrind.  So, ideally, you should make your application
+    Memcheck-clean before using Helgrind.</p>
+<p>It may be impossible to make your application Memcheck-clean
+    unless you first remove threading bugs.  In particular, it may be
+    difficult to remove all reads and writes to freed memory in
+    multithreaded C++ destructor sequences at program termination.
+    So, ideally, you should make your application Helgrind-clean
+    before using Memcheck.</p>
+<p>Since this circularity is obviously unresolvable, at least
+    bear in mind that Memcheck and Helgrind are to some extent
+    complementary, and you may need to use them together.</p>
+</li>
+<li>
+<p>POSIX requires that implementations of standard I/O (printf,
+    fprintf, fwrite, fread, etc) are thread safe.  Unfortunately GNU
+    libc implements this by using internal locking primitives that
+    Helgrind is unable to intercept.  Consequently Helgrind generates
+    many false race reports when you use these functions.</p>
+<p>Helgrind attempts to hide these errors using the standard
+    Valgrind error-suppression mechanism.  So, at least for simple
+    test cases, you don't see any.  Nevertheless, some may slip
+    through.  Just something to be aware of.</p>
+</li>
+<li>
+<p>Helgrind's error checks do not work properly inside the
+    system threading library itself
+    (<code class="computeroutput">libpthread.so</code>), and it usually
+    observes large numbers of (false) errors in there.  Valgrind's
+    suppression system then filters these out, so you should not see
+    them.</p>
+<p>If you see any race errors reported
+    where <code class="computeroutput">libpthread.so</code> or
+    <code class="computeroutput">ld.so</code> is the object associated
+    with the innermost stack frame, please file a bug report at
+    http://www.valgrind.org.</p>
+</li>
+</ol></div>
+</div>
+<div class="sect1" lang="en">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="hg-manual.options"></a>7.6. Helgrind Options</h2></div></div></div>
+<p>The following end-user options are available:</p>
+<div class="variablelist">
+<a name="hg.opts.list"></a><dl>
+<dt>
+<a name="opt.happens-before"></a><span class="term">
+      <code class="option">--happens-before=none|threads|all
+      [default: all] </code>
+    </span>
+</dt>
+<dd>
+<p>Helgrind always regards locks as the basis for
+       inter-thread synchronisation.  However, by default, before
+       reporting a race error, Helgrind will also check whether
+       certain other kinds of inter-thread synchronisation events
+       happened.  It may be that if such events took place, then no
+       race really occurred, and so no error needs to be reported.
+       See <a href="hg-manual.html#hg-manual.data-races.exclusive" title="7.4.3. Transfers of Exclusive Ownership Between Threads">above</a>
+       for a discussion of transfers of exclusive ownership states
+       between threads.
+      </p>
+<p>With <code class="varname">--happens-before=all</code>, the
+       following events are regarded as sources of synchronisation:
+       thread creation/joinage, condition variable
+       signal/broadcast/waits, and semaphore posts/waits.
+      </p>
+<p>With <code class="varname">--happens-before=threads</code>, only
+       thread creation/joinage events are regarded as sources of
+       synchronisation.
+      </p>
+<p>With <code class="varname">--happens-before=none</code>, no events
+       (apart, of course, from locking) are regarded as sources of
+       synchronisation.
+      </p>
+<p>Changing this setting from the default will increase your
+       false-error rate but give little or no gain.  The only advantage
+       is that <code class="option">--happens-before=threads</code> and 
+       <code class="option">--happens-before=none</code> should make Helgrind
+       less and less sensitive to the scheduling of threads, and hence
+       the output more and more repeatable across runs.
+      </p>
+</dd>
+<dt>
+<a name="opt.trace-addr"></a><span class="term">
+      <code class="option">--trace-addr=0xXXYYZZ
+      </code> and
+      <code class="option">--trace-level=0|1|2 [default: 1]
+      </code>
+    </span>
+</dt>
+<dd><p>Requests that Helgrind produces a log of all state changes
+      to location 0xXXYYZZ.  This can be helpful in tracking down
+      tricky races.  <code class="varname">--trace-level</code> controls the
+      verbosity of the log.  At the default setting (1), a one-line
+      summary of is printed for each state change.  At level 2 a
+      complete stack trace is printed for each state change.</p></dd>
+</dl>
+</div>
+<p>In addition, the following debugging options are available for
+Helgrind:</p>
+<div class="variablelist">
+<a name="hg.debugopts.list"></a><dl>
+<dt>
+<a name="opt.trace-malloc"></a><span class="term">
+      <code class="option">--trace-malloc=no|yes [no]
+      </code>
+    </span>
+</dt>
+<dd><p>Show all client malloc (etc) and free (etc) requests.</p></dd>
+<dt>
+<a name="opt.gen-vcg"></a><span class="term">
+      <code class="option">--gen-vcg=no|yes|yes-w-vts [no]
+      </code>
+    </span>
+</dt>
+<dd>
+<p>At exit, write to stderr a dump of the happens-before
+	graph computed by Helgrind, in a format suitable for the VCG 
+        graph visualisation tool.  A suitable command line is:</p>
+<p><code class="computeroutput">valgrind --tool=helgrind 
+        --gen-vcg=yes my_app 2&gt;&amp;1
+        | grep xxxxxx | sed "s/xxxxxx//g"
+        | xvcg -</code></p>
+<p>With <code class="varname">--gen-vcg=yes</code>, the basic
+        happens-before graph is shown.  With 
+        <code class="varname">--gen-vcg=yes-w-vts</code>, the vector timestamp 
+        for each node is also shown.</p>
+</dd>
+<dt>
+<a name="opt.cmp-race-err-addrs"></a><span class="term">
+      <code class="option">--cmp-race-err-addrs=no|yes [no]
+      </code>
+    </span>
+</dt>
+<dd><p>Controls whether or not race (data) addresses should be
+        taken into account when removing duplicates of race errors.
+        With <code class="varname">--cmp-race-err-addrs=no</code>, two otherwise
+        identical race errors will be considered to be the same if
+        their race addresses differ.  With
+        With <code class="varname">--cmp-race-err-addrs=yes</code> they will be
+        considered different.  This is provided to help make certain
+        regression tests work reliably.</p></dd>
+<dt>
+<a name="opt.hg-sanity-flags"></a><span class="term">
+      <code class="option">--hg-sanity-flags=&lt;XXXXXX&gt; (X = 0|1) [000000]
+      </code>
+    </span>
+</dt>
+<dd>
+<p>Run extensive sanity checks on Helgrind's internal
+        data structures at events defined by the bitstring, as
+        follows:</p>
+<p><code class="computeroutput">100000 </code>at every query
+        to the happens-before graph</p>
+<p><code class="computeroutput">010000 </code>after changes to
+        the lock order acquisition graph</p>
+<p><code class="computeroutput">001000 </code>after every client
+        memory access (NB: not currently used)</p>
+<p><code class="computeroutput">000100 </code>after every client
+        memory range permission setting of 256 bytes or greater</p>
+<p><code class="computeroutput">000010 </code>after every client
+        lock or unlock event</p>
+<p><code class="computeroutput">000001 </code>after every client
+        thread creation or joinage event</p>
+<p>Note these will make Helgrind run very slowly, often to
+        the point of being completely unusable.</p>
+</dd>
+</dl>
+</div>
+</div>
+<div class="sect1" lang="en">
+<div class="titlepage"><div><div><h2 class="title" style="clear: both">
+<a name="hg-manual.todolist"></a>7.7. A To-Do List for Helgrind</h2></div></div></div>
+<p>The following is a list of loose ends which should be tidied up
+some time.</p>
+<div class="itemizedlist"><ul type="disc">
+<li><p>Track which mutexes are associated with which
+    condition variables, and emit a warning if this becomes
+    inconsistent.</p></li>
+<li><p>For lock order errors, print the complete lock
+    cycle, rather than only doing for size-2 cycles as at
+    present.</p></li>
+<li><p>Document the VALGRIND_HG_CLEAN_MEMORY client
+    request.</p></li>
+<li><p>Possibly a client request to forcibly transfer
+    ownership of memory from one thread to another.  Requires further
+    consideration.</p></li>
+<li><p>Add a new client request that marks an address range
+    as being "shared-modified with empty lockset" (the error state),
+    and describe how to use it.</p></li>
+<li><p>Document races caused by gcc's thread-unsafe code
+    generation for speculative stores.  In the interim see
+    <code class="computeroutput">http://gcc.gnu.org/ml/gcc/2007-10/msg00266.html
+    </code>
+    and <code class="computeroutput">http://lkml.org/lkml/2007/10/24/673</code>.
+    </p></li>
+<li><p>Don't update the lock-order graph, and don't check
+    for errors, when a "try"-style lock operation happens (eg
+    pthread_mutex_trylock).  Such calls do not add any real
+    restrictions to the locking order, since they can always fail to
+    acquire the lock, resulting in the caller going off and doing Plan
+    B (presumably it will have a Plan B).  Doing such checks could
+    generate false lock-order errors and confuse users.</p></li>
+<li><p> Performance can be very poor.  Slowdowns on the
+    order of 100:1 are not unusual.  There is quite some scope for
+    performance improvements, though.
+    </p></li>
+</ul></div>
+</div>
+</div>
+<div>
+<br><table class="nav" width="100%" cellspacing="3" cellpadding="2" border="0" summary="Navigation footer">
+<tr>
+<td rowspan="2" width="40%" align="left">
+<a accesskey="p" href="cl-manual.html">&lt;&lt; 6. Callgrind: a call graph profiler</a> </td>
+<td width="20%" align="center"><a accesskey="u" href="manual.html">Up</a></td>
+<td rowspan="2" width="40%" align="right"> <a accesskey="n" href="ms-manual.html">8. Massif: a heap profiler &gt;&gt;</a>
+</td>
+</tr>
+<tr><td width="20%" align="center"><a accesskey="h" href="index.html">Home</a></td></tr>
+</table>
+</div>
+</body>
+</html>

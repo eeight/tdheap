@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2007 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -210,7 +210,6 @@ void ppIROp ( IROp op )
       case Iop_Left16: vex_printf("Left16"); return;
       case Iop_Left32: vex_printf("Left32"); return;
       case Iop_Left64: vex_printf("Left64"); return;
-      case Iop_Max32U: vex_printf("Max32U"); return;
 
       case Iop_CmpORD32U: vex_printf("CmpORD32U"); return;
       case Iop_CmpORD32S: vex_printf("CmpORD32S"); return;
@@ -277,11 +276,6 @@ void ppIROp ( IROp op )
       case Iop_MSubF64r32: vex_printf("MSubF64r32"); return;
 
       case Iop_Est5FRSqrt:    vex_printf("Est5FRSqrt"); return;
-      case Iop_RoundF64toF64_NEAREST: vex_printf("RoundF64toF64_NEAREST"); return;
-      case Iop_RoundF64toF64_NegINF: vex_printf("RoundF64toF64_NegINF"); return;
-      case Iop_RoundF64toF64_PosINF: vex_printf("RoundF64toF64_PosINF"); return;
-      case Iop_RoundF64toF64_ZERO: vex_printf("RoundF64toF64_ZERO"); return;
-
       case Iop_TruncF64asF32: vex_printf("TruncF64asF32"); return;
       case Iop_CalcFPRF:      vex_printf("CalcFPRF"); return;
 
@@ -306,16 +300,16 @@ void ppIROp ( IROp op )
       case Iop_ReinterpF32asI32: vex_printf("ReinterpF32asI32"); return;
       case Iop_ReinterpI32asF32: vex_printf("ReinterpI32asF32"); return;
 
-      case Iop_I32UtoFx4: vex_printf("I32UtoFx4"); return;
-      case Iop_I32StoFx4: vex_printf("I32StoFx4"); return;
+      case Iop_I32UtoFx4: vex_printf("Iop_I32UtoFx4"); return;
+      case Iop_I32StoFx4: vex_printf("Iop_I32StoFx4"); return;
 
-      case Iop_QFtoI32Ux4_RZ: vex_printf("QFtoI32Ux4_RZ"); return;
-      case Iop_QFtoI32Sx4_RZ: vex_printf("QFtoI32Sx4_RZ"); return;
+      case Iop_QFtoI32Ux4_RZ: vex_printf("Iop_QFtoI32Ux4_RZ"); return;
+      case Iop_QFtoI32Sx4_RZ: vex_printf("Iop_QFtoI32Sx4_RZ"); return;
 
-      case Iop_RoundF32x4_RM: vex_printf("RoundF32x4_RM"); return;
-      case Iop_RoundF32x4_RP: vex_printf("RoundF32x4_RP"); return;
-      case Iop_RoundF32x4_RN: vex_printf("RoundF32x4_RN"); return;
-      case Iop_RoundF32x4_RZ: vex_printf("RoundF32x4_RZ"); return;
+      case Iop_RoundF32x4_RM: vex_printf("Iop_RoundF32x4_RM"); return;
+      case Iop_RoundF32x4_RP: vex_printf("Iop_RoundF32x4_RP"); return;
+      case Iop_RoundF32x4_RN: vex_printf("Iop_RoundF32x4_RN"); return;
+      case Iop_RoundF32x4_RZ: vex_printf("Iop_RoundF32x4_RZ"); return;
 
       case Iop_Add8x8: vex_printf("Add8x8"); return;
       case Iop_Add16x4: vex_printf("Add16x4"); return;
@@ -366,7 +360,7 @@ void ppIROp ( IROp op )
       case Iop_InterleaveLO32x2: vex_printf("InterleaveLO32x2"); return;
       case Iop_CatOddLanes16x4: vex_printf("CatOddLanes16x4"); return;
       case Iop_CatEvenLanes16x4: vex_printf("CatEvenLanes16x4"); return;
-      case Iop_Perm8x8: vex_printf("Perm8x8"); return;
+      case Iop_Perm8x8: vex_printf("Iop_Perm8x8"); return;
 
       case Iop_CmpNEZ32x2: vex_printf("CmpNEZ32x2"); return;
       case Iop_CmpNEZ16x4: vex_printf("CmpNEZ16x4"); return;
@@ -750,12 +744,10 @@ void ppIRJumpKind ( IRJumpKind kind )
 void ppIRMBusEvent ( IRMBusEvent event )
 {
    switch (event) {
-      case Imbe_Fence:             vex_printf("Fence"); break;
-      case Imbe_BusLock:           vex_printf("BusLock"); break;
-      case Imbe_BusUnlock:         vex_printf("BusUnlock"); break;
-      case Imbe_SnoopedStoreBegin: vex_printf("SnoopedStoreBegin"); break;
-      case Imbe_SnoopedStoreEnd:   vex_printf("SnoopedStoreEnd"); break;
-      default:                     vpanic("ppIRMBusEvent");
+      case Imbe_Fence:     vex_printf("Fence"); break;
+      case Imbe_BusLock:   vex_printf("BusLock"); break;
+      case Imbe_BusUnlock: vex_printf("BusUnlock"); break;
+      default:             vpanic("ppIRMBusEvent");
    }
 }
 
@@ -776,9 +768,7 @@ void ppIRStmt ( IRStmt* s )
       case Ist_AbiHint:
          vex_printf("====== AbiHint(");
          ppIRExpr(s->Ist.AbiHint.base);
-         vex_printf(", %d, ", s->Ist.AbiHint.len);
-         ppIRExpr(s->Ist.AbiHint.nia);
-         vex_printf(") ======");
+         vex_printf(", %d) ======", s->Ist.AbiHint.len);
          break;
       case Ist_Put:
          vex_printf( "PUT(%d) = ", s->Ist.Put.offset);
@@ -1165,12 +1155,11 @@ IRStmt* IRStmt_IMark ( Addr64 addr, Int len ) {
    s->Ist.IMark.len  = len;
    return s;
 }
-IRStmt* IRStmt_AbiHint ( IRExpr* base, Int len, IRExpr* nia ) {
+IRStmt* IRStmt_AbiHint ( IRExpr* base, Int len ) {
    IRStmt* s           = LibVEX_Alloc(sizeof(IRStmt));
    s->tag              = Ist_AbiHint;
    s->Ist.AbiHint.base = base;
    s->Ist.AbiHint.len  = len;
-   s->Ist.AbiHint.nia  = nia;
    return s;
 }
 IRStmt* IRStmt_Put ( Int off, IRExpr* data ) {
@@ -1394,8 +1383,7 @@ IRStmt* deepCopyIRStmt ( IRStmt* s )
          return IRStmt_NoOp();
       case Ist_AbiHint:
          return IRStmt_AbiHint(deepCopyIRExpr(s->Ist.AbiHint.base),
-                               s->Ist.AbiHint.len,
-                               deepCopyIRExpr(s->Ist.AbiHint.nia));
+                               s->Ist.AbiHint.len);
       case Ist_IMark:
          return IRStmt_IMark(s->Ist.IMark.addr, s->Ist.IMark.len);
       case Ist_Put: 
@@ -1510,7 +1498,6 @@ void typeOfPrimop ( IROp op,
       case Iop_CmpORD32S:
       case Iop_Add32: case Iop_Sub32: case Iop_Mul32:
       case Iop_Or32:  case Iop_And32: case Iop_Xor32:
-      case Iop_Max32U:
          BINARY(Ity_I32,Ity_I32, Ity_I32);
 
       case Iop_Add64: case Iop_Sub64: case Iop_Mul64:
@@ -1714,8 +1701,6 @@ void typeOfPrimop ( IROp op,
          QUATERNARY(ity_RMode,Ity_F64,Ity_F64,Ity_F64, Ity_F64);
 
       case Iop_Est5FRSqrt:
-      case Iop_RoundF64toF64_NEAREST: case Iop_RoundF64toF64_NegINF:
-      case Iop_RoundF64toF64_PosINF: case Iop_RoundF64toF64_ZERO:
          UNARY(Ity_F64, Ity_F64);
       case Iop_RoundF64toF32:
          BINARY(ity_RMode,Ity_F64, Ity_F64);
@@ -1997,8 +1982,7 @@ Bool isFlatIRStmt ( IRStmt* st )
 
    switch (st->tag) {
       case Ist_AbiHint:
-         return isIRAtom(st->Ist.AbiHint.base)
-                && isIRAtom(st->Ist.AbiHint.nia);
+         return isIRAtom(st->Ist.AbiHint.base);
       case Ist_Put:
          return isIRAtom(st->Ist.Put.data);
       case Ist_PutI:
@@ -2208,7 +2192,6 @@ void useBeforeDef_Stmt ( IRSB* bb, IRStmt* stmt, Int* def_counts )
          break;
       case Ist_AbiHint:
          useBeforeDef_Expr(bb,stmt,stmt->Ist.AbiHint.base,def_counts);
-         useBeforeDef_Expr(bb,stmt,stmt->Ist.AbiHint.nia,def_counts);
          break;
       case Ist_Put:
          useBeforeDef_Expr(bb,stmt,stmt->Ist.Put.data,def_counts);
@@ -2462,9 +2445,6 @@ void tcStmt ( IRSB* bb, IRStmt* stmt, IRType gWordTy )
          if (typeOfIRExpr(tyenv, stmt->Ist.AbiHint.base) != gWordTy)
             sanityCheckFail(bb,stmt,"IRStmt.AbiHint.base: "
                                     "not :: guest word type");
-         if (typeOfIRExpr(tyenv, stmt->Ist.AbiHint.nia) != gWordTy)
-            sanityCheckFail(bb,stmt,"IRStmt.AbiHint.nia: "
-                                    "not :: guest word type");
          break;
       case Ist_Put:
          tcExpr( bb, stmt, stmt->Ist.Put.data, gWordTy );
@@ -2543,7 +2523,6 @@ void tcStmt ( IRSB* bb, IRStmt* stmt, IRType gWordTy )
       case Ist_MBE:
          switch (stmt->Ist.MBE.event) {
             case Imbe_Fence: case Imbe_BusLock: case Imbe_BusUnlock:
-            case Imbe_SnoopedStoreBegin: case Imbe_SnoopedStoreEnd:
                break;
             default: sanityCheckFail(bb,stmt,"IRStmt.MBE.event: unknown");
                break;

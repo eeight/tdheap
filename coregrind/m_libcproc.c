@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2007 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -89,8 +89,7 @@ Char **VG_(env_setenv) ( Char ***envp, const Char* varname, const Char *val )
    Char **env = (*envp);
    Char **cpp;
    Int len = VG_(strlen)(varname);
-   Char *valstr = VG_(arena_malloc)(VG_AR_CORE, "libcproc.es.1",
-                                    len + VG_(strlen)(val) + 2);
+   Char *valstr = VG_(arena_malloc)(VG_AR_CORE, len + VG_(strlen)(val) + 2);
    Char **oldenv = NULL;
 
    VG_(sprintf)(valstr, "%s=%s", varname, val);
@@ -103,7 +102,7 @@ Char **VG_(env_setenv) ( Char ***envp, const Char* varname, const Char *val )
    }
 
    if (env == NULL) {
-      env = VG_(arena_malloc)(VG_AR_CORE, "libcproc.es.2", sizeof(Char **) * 2);
+      env = VG_(arena_malloc)(VG_AR_CORE, sizeof(Char **) * 2);
       env[0] = valstr;
       env[1] = NULL;
 
@@ -111,8 +110,7 @@ Char **VG_(env_setenv) ( Char ***envp, const Char* varname, const Char *val )
 
    }  else {
       Int envlen = (cpp-env) + 2;
-      Char **newenv = VG_(arena_malloc)(VG_AR_CORE, "libcproc.es.3",
-                                        envlen * sizeof(Char **));
+      Char **newenv = VG_(arena_malloc)(VG_AR_CORE, envlen * sizeof(Char **));
 
       for (cpp = newenv; *env; )
 	 *cpp++ = *env++;
@@ -205,8 +203,7 @@ void VG_(env_remove_valgrind_env_stuff)(Char** envp)
          ld_library_path_str = &envp[i][16];
    }
 
-   buf = VG_(arena_malloc)(VG_AR_CORE, "libcproc.erves.1",
-                           VG_(strlen)(VG_(libdir)) + 20);
+   buf = VG_(arena_malloc)(VG_AR_CORE, VG_(strlen)(VG_(libdir)) + 20);
 
    // Remove Valgrind-specific entries from LD_*.
    VG_(sprintf)(buf, "%s*/vgpreload_*.so", VG_(libdir));
@@ -237,7 +234,7 @@ Int VG_(waitpid)(Int pid, Int *status, Int options)
       POSIX. */
    SysRes res = VG_(do_syscall5)(__NR_AIX5_kwaitpid, 
                                  (UWord)status, pid, 4 | options,0,0);
-   if (0) VG_(printf)("waitpid: got 0x%lx 0x%lx\n", res.res, res.err);
+   if (0) VG_(printf)("waitpid: got 0x%x 0x%x\n", res.res, res.err);
    return res.isError ? -1 : res.res;
 #  else
 #    error Unknown OS
@@ -256,8 +253,7 @@ Char **VG_(env_clone) ( Char **oldenv )
 
    envlen = oldenvp - oldenv + 1;
    
-   newenv = VG_(arena_malloc)(VG_AR_CORE, "libcproc.ec.1",
-                              envlen * sizeof(Char **));
+   newenv = VG_(arena_malloc)(VG_AR_CORE, envlen * sizeof(Char **));
 
    oldenvp = oldenv;
    newenvp = newenv;
@@ -545,21 +541,10 @@ UInt VG_(read_millisecond_timer) ( void )
    now += (ULong)(nsec / 1000);
 #  else
 
-   struct vki_timespec ts_now;
+   struct vki_timeval tv_now;
    SysRes res;
-   res = VG_(do_syscall2)(__NR_clock_gettime, VKI_CLOCK_MONOTONIC,
-                          (UWord)&ts_now);
-   if (res.isError == 0)
-   {
-     now = ts_now.tv_sec * 1000000ULL + ts_now.tv_nsec / 1000;
-   }
-   else
-   {
-     struct vki_timeval tv_now;
-     res = VG_(do_syscall2)(__NR_gettimeofday, (UWord)&tv_now, (UWord)NULL);
-     vg_assert(! res.isError);
-     now = tv_now.tv_sec * 1000000ULL + tv_now.tv_usec;
-   }
+   res = VG_(do_syscall2)(__NR_gettimeofday, (UWord)&tv_now, (UWord)NULL);
+   now = tv_now.tv_sec * 1000000ULL + tv_now.tv_usec;
 #  endif
    
    if (base == 0)

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2007 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -47,7 +47,8 @@
 
 static inline Bool fd_exists(Int fd)
 {
-   struct vg_stat st;
+   struct vki_stat st;
+
    return VG_(fstat)(fd, &st) == 0;
 }
 
@@ -138,98 +139,28 @@ OffT VG_(lseek) ( Int fd, OffT offset, Int whence )
       change VG_(pread) and all other usage points. */
 }
 
-
-/* stat/fstat support.  It's uggerly.  We have impedance-match into a
-   'struct vg_stat' in order to have a single structure that callers
-   can use consistently on all platforms. */
-
-#define TRANSLATE_TO_vg_stat(_p_vgstat, _p_vkistat) \
-   do { \
-      (_p_vgstat)->st_dev        = (ULong)( (_p_vkistat)->st_dev ); \
-      (_p_vgstat)->st_ino        = (ULong)( (_p_vkistat)->st_ino ); \
-      (_p_vgstat)->st_nlink      = (ULong)( (_p_vkistat)->st_nlink ); \
-      (_p_vgstat)->st_mode       = (UInt)( (_p_vkistat)->st_mode ); \
-      (_p_vgstat)->st_uid        = (UInt)( (_p_vkistat)->st_uid ); \
-      (_p_vgstat)->st_gid        = (UInt)( (_p_vkistat)->st_gid ); \
-      (_p_vgstat)->st_rdev       = (ULong)( (_p_vkistat)->st_rdev ); \
-      (_p_vgstat)->st_size       = (Long)( (_p_vkistat)->st_size ); \
-      (_p_vgstat)->st_blksize    = (ULong)( (_p_vkistat)->st_blksize ); \
-      (_p_vgstat)->st_blocks     = (ULong)( (_p_vkistat)->st_blocks ); \
-      (_p_vgstat)->st_atime      = (ULong)( (_p_vkistat)->st_atime ); \
-      (_p_vgstat)->st_atime_nsec = (ULong)( (_p_vkistat)->st_atime_nsec ); \
-      (_p_vgstat)->st_mtime      = (ULong)( (_p_vkistat)->st_mtime ); \
-      (_p_vgstat)->st_mtime_nsec = (ULong)( (_p_vkistat)->st_mtime_nsec ); \
-      (_p_vgstat)->st_ctime      = (ULong)( (_p_vkistat)->st_ctime ); \
-      (_p_vgstat)->st_ctime_nsec = (ULong)( (_p_vkistat)->st_ctime_nsec ); \
-   } while (0)
-
-SysRes VG_(stat) ( Char* file_name, struct vg_stat* vgbuf )
+SysRes VG_(stat) ( Char* file_name, struct vki_stat* buf )
 {
-   SysRes res;
-   VG_(memset)(vgbuf, 0, sizeof(*vgbuf));
 #  if defined(VGO_linux)
-#  if defined(__NR_stat64)
-   { struct vki_stat64 buf64;
-     res = VG_(do_syscall2)(__NR_stat64, (UWord)file_name, (UWord)&buf64);
-     if (!(res.isError && res.err == VKI_ENOSYS)) {
-        /* Success, or any failure except ENOSYS */
-        if (!res.isError)
-           TRANSLATE_TO_vg_stat(vgbuf, &buf64);
-        return res;
-     }
-   }
-#  endif /* if defined(__NR_stat64) */
-   { struct vki_stat buf;
-     res = VG_(do_syscall2)(__NR_stat, (UWord)file_name, (UWord)&buf);
-     if (!res.isError)
-        TRANSLATE_TO_vg_stat(vgbuf, &buf);
-     return res;
-   }
+   SysRes res = VG_(do_syscall2)(__NR_stat, (UWord)file_name, (UWord)buf);
+   return res;
 #  elif defined(VGO_aix5)
-   { struct vki_stat buf;
-     res = VG_(do_syscall4)(__NR_AIX5_statx,
-                            (UWord)file_name,
-                            (UWord)&buf,
-                            sizeof(struct vki_stat),
-                            VKI_STX_NORMAL);
-     if (!res.isError) {
-        VG_(memset)(vgbuf, 0, sizeof(*vgbuf));
-        vgbuf->st_dev  = (ULong)buf.st_dev;
-        vgbuf->st_ino  = (ULong)buf.st_ino;
-        vgbuf->st_mode = (UInt)buf.st_mode;
-        vgbuf->st_uid  = (UInt)buf.st_uid;
-        vgbuf->st_gid  = (UInt)buf.st_gid;
-        vgbuf->st_size = (Long)buf.st_size;
-     }
-     return res;
-   }
+   SysRes res = VG_(do_syscall4)(__NR_AIX5_statx,
+                                 (UWord)file_name,
+                                 (UWord)buf,
+                                 sizeof(struct vki_stat),
+                                 VKI_STX_NORMAL);
+   return res;
 #  else
 #    error Unknown OS
 #  endif
 }
 
-Int VG_(fstat) ( Int fd, struct vg_stat* vgbuf )
+Int VG_(fstat) ( Int fd, struct vki_stat* buf )
 {
-   SysRes res;
-   VG_(memset)(vgbuf, 0, sizeof(*vgbuf));
 #  if defined(VGO_linux)
-#  if defined(__NR_fstat64)
-   { struct vki_stat64 buf64;
-     res = VG_(do_syscall2)(__NR_fstat64, (UWord)fd, (UWord)&buf64);
-     if (!(res.isError && res.err == VKI_ENOSYS)) {
-        /* Success, or any failure except ENOSYS */
-        if (!res.isError)
-           TRANSLATE_TO_vg_stat(vgbuf, &buf64);
-        return res.isError ? (-1) : 0;
-     }
-   }
-#  endif /* if defined(__NR_fstat64) */
-   { struct vki_stat buf;
-     res = VG_(do_syscall2)(__NR_fstat, (UWord)fd, (UWord)&buf);
-     if (!res.isError)
-        TRANSLATE_TO_vg_stat(vgbuf, &buf);
-     return res.isError ? (-1) : 0;
-   }
+   SysRes res = VG_(do_syscall2)(__NR_fstat, fd, (UWord)buf);
+   return res.isError ? (-1) : 0;
 #  elif defined(VGO_aix5)
    I_die_here;
 #  else
@@ -237,19 +168,26 @@ Int VG_(fstat) ( Int fd, struct vg_stat* vgbuf )
 #  endif
 }
 
-#undef TRANSLATE_TO_vg_stat
-
-
-Long VG_(fsize) ( Int fd )
+Int VG_(fsize) ( Int fd )
 {
-   struct vg_stat buf;
-   Int res = VG_(fstat)( fd, &buf );
-   return (res == -1) ? (-1LL) : buf.st_size;
+#  if defined(VGO_linux) && defined(__NR_fstat64)
+   struct vki_stat64 buf;
+   SysRes res = VG_(do_syscall2)(__NR_fstat64, fd, (UWord)&buf);
+   return res.isError ? (-1) : buf.st_size;
+#  elif defined(VGO_linux) && !defined(__NR_fstat64)
+   struct vki_stat buf;
+   SysRes res = VG_(do_syscall2)(__NR_fstat, fd, (UWord)&buf);
+   return res.isError ? (-1) : buf.st_size;
+#  elif defined(VGO_aix5)
+   I_die_here;
+#  else
+#  error Unknown OS
+#  endif
 }
 
 Bool VG_(is_dir) ( HChar* f )
 {
-   struct vg_stat buf;
+   struct vki_stat buf;
    SysRes res = VG_(stat)(f, &buf);
    return res.isError ? False
                       : VKI_S_ISDIR(buf.st_mode) ? True : False;
@@ -410,8 +348,17 @@ Int VG_(access) ( HChar* path, Bool irusr, Bool iwusr, Bool ixusr )
 Int VG_(check_executable)(/*OUT*/Bool* is_setuid,
                           HChar* f, Bool allow_setuid)
 {
-   struct vg_stat st;
+  /* This is something of a kludge.  Really we should fix VG_(stat) to
+     do this itself, but not clear how to do it as it depends on
+     having a 'struct vki_stat64' which is different from 'struct
+     vki_stat'. */
+#  if defined(VGO_linux) && defined(__NR_stat64)
+   struct vki_stat64 st;
+   SysRes res = VG_(do_syscall2)(__NR_stat64, (UWord)f, (UWord)&st);
+#  else
+   struct vki_stat st;
    SysRes res = VG_(stat)(f, &st);
+#  endif
 
    if (is_setuid)
       *is_setuid = False;

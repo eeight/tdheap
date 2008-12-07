@@ -6,7 +6,7 @@
    This file is part of Massif, a Valgrind tool for profiling memory
    usage of programs.
 
-   Copyright (C) 2003-2008 Nicholas Nethercote
+   Copyright (C) 2003-2007 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -292,8 +292,7 @@ static XArray* alloc_fns;
 static void init_alloc_fns(void)
 {
    // Create the list, and add the default elements.
-   alloc_fns = VG_(newXA)(VG_(malloc), "ms.main.iaf.1",
-                                       VG_(free), sizeof(Char*));
+   alloc_fns = VG_(newXA)(VG_(malloc), VG_(free), sizeof(Char*));
    #define DO(x)  { Char* s = x; VG_(addToXA)(alloc_fns, &s); }
 
    // Ordered according to (presumed) frequency.
@@ -584,13 +583,11 @@ static void add_child_xpt(XPt* parent, XPt* child)
    if (parent->n_children == parent->max_children) {
       if (parent->max_children == 0) {
          parent->max_children = 4;
-         parent->children = VG_(malloc)( "ms.main.acx.1",
-                                         parent->max_children * sizeof(XPt*) );
+         parent->children = VG_(malloc)( parent->max_children * sizeof(XPt*) );
          n_xpt_init_expansions++;
       } else {
          parent->max_children *= 2;    // Double size
-         parent->children = VG_(realloc)( "ms.main.acx.2",
-                                          parent->children,
+         parent->children = VG_(realloc)( parent->children,
                                           parent->max_children * sizeof(XPt*) );
          n_xpt_later_expansions++;
       }
@@ -653,7 +650,7 @@ static SXPt* dup_XTree(XPt* xpt, SizeT total_szB)
    n_child_sxpts = n_sig_children + ( n_insig_children > 0 ? 1 : 0 );
 
    // Duplicate the XPt.
-   sxpt                 = VG_(malloc)("ms.main.dX.1", sizeof(SXPt));
+   sxpt                 = VG_(malloc)(sizeof(SXPt));
    n_sxpt_allocs++;
    sxpt->tag            = SigSXPt;
    sxpt->szB            = xpt->szB;
@@ -664,8 +661,7 @@ static SXPt* dup_XTree(XPt* xpt, SizeT total_szB)
    if (n_child_sxpts > 0) {
       Int j;
       SizeT sig_children_szB = 0, insig_children_szB = 0;
-      sxpt->Sig.children = VG_(malloc)("ms.main.dX.2", 
-                                       n_child_sxpts * sizeof(SXPt*));
+      sxpt->Sig.children = VG_(malloc)(n_child_sxpts * sizeof(SXPt*));
 
       // Duplicate the significant children.  (Nb: sig_children_szB +
       // insig_children_szB doesn't necessarily equal xpt->szB.)
@@ -684,7 +680,7 @@ static SXPt* dup_XTree(XPt* xpt, SizeT total_szB)
       if (n_insig_children > 0) {
          // Nb: We 'n_sxpt_allocs' here because creating an Insig SXPt
          // doesn't involve a call to dup_XTree().
-         SXPt* insig_sxpt = VG_(malloc)("ms.main.dX.3", sizeof(SXPt));
+         SXPt* insig_sxpt = VG_(malloc)(sizeof(SXPt));
          n_sxpt_allocs++;
          insig_sxpt->tag = InsigSXPt;
          insig_sxpt->szB = insig_children_szB;
@@ -817,9 +813,7 @@ Int get_IPs( ThreadId tid, Bool is_custom_alloc, Addr ips[])
 
       // Ask for more IPs than clo_depth suggests we need.
       n_ips = VG_(get_StackTrace)( tid, ips, clo_depth + overestimate,
-                                   NULL/*array to dump SP values in*/,
-                                   NULL/*array to dump FP values in*/,
-                                   0/*first_ip_delta*/ );
+                                        0/*first_ip_delta*/ );
       tl_assert(n_ips > 0);
 
       // If the original stack trace is smaller than asked-for, redo=False.
@@ -1482,7 +1476,7 @@ void* new_block ( ThreadId tid, void* p, SizeT req_szB, SizeT req_alignB,
    }
 
    // Make new HP_Chunk node, add to malloc_list
-   hc           = VG_(malloc)("ms.main.nb.1", sizeof(HP_Chunk));
+   hc           = VG_(malloc)(sizeof(HP_Chunk));
    hc->req_szB  = req_szB;
    hc->slop_szB = slop_szB;
    hc->data     = (Addr)p;
@@ -1736,7 +1730,7 @@ static void die_mem_stack(Addr a, SizeT len)
    die_mem_stack_2(a, len, "stk-die");
 }
 
-static void new_mem_stack_signal(Addr a, SizeT len, ThreadId tid)
+static void new_mem_stack_signal(Addr a, SizeT len)
 {
    new_mem_stack_2(a, len, "sig-new");
 }
@@ -2020,8 +2014,7 @@ static void pp_snapshot(Int fd, Snapshot* snapshot, Int snapshot_n)
    if (is_detailed_snapshot(snapshot)) {
       // Detailed snapshot -- print heap tree.
       Int   depth_str_len = clo_depth + 3;
-      Char* depth_str = VG_(malloc)("ms.main.pps.1", 
-                                    sizeof(Char) * depth_str_len);
+      Char* depth_str = VG_(malloc)(sizeof(Char) * depth_str_len);
       SizeT snapshot_total_szB =
          snapshot->heap_szB + snapshot->heap_extra_szB + snapshot->stacks_szB;
       depth_str[0] = '\0';   // Initialise depth_str to "".
@@ -2189,8 +2182,7 @@ static void ms_post_clo_init(void)
    }
 
    // Initialise snapshot array, and sanity-check it.
-   snapshots = VG_(malloc)("ms.main.mpoci.1", 
-                           sizeof(Snapshot) * clo_max_snapshots);
+   snapshots = VG_(malloc)(sizeof(Snapshot) * clo_max_snapshots);
    // We don't want to do snapshot sanity checks here, because they're
    // currently uninitialised.
    for (i = 0; i < clo_max_snapshots; i++) {
@@ -2205,7 +2197,7 @@ static void ms_pre_clo_init(void)
    VG_(details_version)         (NULL);
    VG_(details_description)     ("a heap profiler");
    VG_(details_copyright_author)(
-      "Copyright (C) 2003-2008, and GNU GPL'd, by Nicholas Nethercote");
+      "Copyright (C) 2003-2007, and GNU GPL'd, by Nicholas Nethercote");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
 
    // Basic functions
@@ -2242,8 +2234,7 @@ static void ms_pre_clo_init(void)
    init_alloc_fns();
 
    // Initialise args_for_massif.
-   args_for_massif = VG_(newXA)(VG_(malloc), "ms.main.mprci.1", 
-                                VG_(free), sizeof(HChar*));
+   args_for_massif = VG_(newXA)(VG_(malloc), VG_(free), sizeof(HChar*));
 }
 
 VG_DETERMINE_INTERFACE_VERSION(ms_pre_clo_init)

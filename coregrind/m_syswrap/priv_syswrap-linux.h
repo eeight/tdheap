@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Nicholas Nethercote
+   Copyright (C) 2000-2007 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -229,10 +229,6 @@ DECL_TEMPLATE(linux, sys_rt_sigsuspend);
 
 // Linux-specific?
 DECL_TEMPLATE(linux, sys_sync_file_range);
-
-// Linux specific (kernel modules)
-DECL_TEMPLATE(linux, sys_init_module);
-DECL_TEMPLATE(linux, sys_delete_module);
 
 /* ---------------------------------------------------------------------
    Wrappers for sockets and ipc-ery.  These are split into standalone

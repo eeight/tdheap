@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2007 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -288,7 +288,7 @@ typedef
    PPCRI;
 
 extern PPCRI* PPCRI_Imm ( ULong );
-extern PPCRI* PPCRI_Reg( HReg );
+extern PPCRI* PPCRI_Reg ( HReg );
 
 extern void ppPPCRI ( PPCRI* );
 
@@ -377,8 +377,7 @@ typedef
       Pfp_ADDS, Pfp_SUBS, Pfp_MULS, Pfp_DIVS, 
 
       /* Unary */
-      Pfp_SQRT, Pfp_ABS, Pfp_NEG, Pfp_MOV, Pfp_RES, Pfp_RSQRTE,
-      Pfp_FRIN, Pfp_FRIM, Pfp_FRIP, Pfp_FRIZ
+      Pfp_SQRT, Pfp_ABS, Pfp_NEG, Pfp_MOV, Pfp_RES, Pfp_RSQRTE
    }
    PPCFpOp;
 

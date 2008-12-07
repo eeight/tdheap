@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2008, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2007, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -100,8 +100,7 @@ thread_info* new_thread(void)
 {
     thread_info* t;
 
-    t = (thread_info*) CLG_MALLOC("cl.threads.nt.1",
-                                  sizeof(thread_info));
+    t = (thread_info*) CLG_MALLOC(sizeof(thread_info));
 
     /* init state */
     CLG_(init_exec_stack)( &(t->states) );
@@ -324,8 +323,7 @@ void CLG_(init_exec_state)(exec_state* es)
 static exec_state* new_exec_state(Int sigNum)
 {
     exec_state* es;
-    es = (exec_state*) CLG_MALLOC("cl.threads.nes.1",
-                                  sizeof(exec_state));
+    es = (exec_state*) CLG_MALLOC(sizeof(exec_state));
 
     /* allocate real cost space: needed as incremented by
      * simulation functions */

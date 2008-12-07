@@ -11,7 +11,7 @@
    Copyright (C) 2003-2005, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This tool is derived from and contains code from Cachegrind
-   Copyright (C) 2002-2008 Nicholas Nethercote (njn@valgrind.org)
+   Copyright (C) 2002-2007 Nicholas Nethercote (njn@valgrind.org)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -214,8 +214,7 @@ static void cachesim_initcache(cache_t config, cache_t2* c)
 		   c->sectored ? ", sectored":"");
    }
 
-   c->tags = (UWord*) CLG_MALLOC("cl.sim.cs_ic.1",
-                                 sizeof(UWord) * c->sets * c->assoc);
+   c->tags = (UWord*) CLG_MALLOC(sizeof(UWord) * c->sets * c->assoc);
    if (clo_collect_cacheuse)
        cacheuse_initcache(c);
    else
@@ -612,15 +611,12 @@ void cacheuse_initcache(cache_t2* c)
     unsigned int start_mask, start_val;
     unsigned int end_mask, end_val;
 
-    c->use    = CLG_MALLOC("cl.sim.cu_ic.1",
-                           sizeof(line_use) * c->sets * c->assoc);
-    c->loaded = CLG_MALLOC("cl.sim.cu_ic.2",
-                           sizeof(line_loaded) * c->sets * c->assoc);
-    c->line_start_mask = CLG_MALLOC("cl.sim.cu_ic.3",
-                                    sizeof(int) * c->line_size);
-    c->line_end_mask = CLG_MALLOC("cl.sim.cu_ic.4",
-                                  sizeof(int) * c->line_size);
+    c->use    = CLG_MALLOC(sizeof(line_use) * c->sets * c->assoc);
+    c->loaded = CLG_MALLOC(sizeof(line_loaded) * c->sets * c->assoc);
+    c->line_start_mask = CLG_MALLOC(sizeof(int) * c->line_size);
+    c->line_end_mask = CLG_MALLOC(sizeof(int) * c->line_size);
     
+
     c->line_size_mask = c->line_size-1;
 
     /* Meaning of line_start_mask/line_end_mask
@@ -695,7 +691,7 @@ void cacheuse_update_hit(cache_t2* c, UInt high_idx, UInt low_idx, UInt use_mask
     c->use[idx].count ++;
     c->use[idx].mask |= use_mask;
 
-    CLG_DEBUG(6," Hit [idx %d] (line %#lx from %#lx): %x => %08x, count %d\n",
+    CLG_DEBUG(6," Hit [idx %d] (line %p from %p): %x => %08x, count %d\n",
 	      idx, c->loaded[idx].memline,  c->loaded[idx].iaddr,
 	      use_mask, c->use[idx].mask, c->use[idx].count);
 }
@@ -794,7 +790,7 @@ static CacheModelResult cacheuse##_##L##_doRead(Addr a, UChar size)         \
    UWord *set, tmp_tag; 						    \
    UInt use_mask;							    \
                                                                             \
-   CLG_DEBUG(6,"%s.Acc(Addr %#lx, size %d): Sets [%d/%d]\n",                  \
+   CLG_DEBUG(6,"%s.Acc(Addr %p, size %d): Sets [%d/%d]\n",                  \
 	    L.name, a, size, set1, set2);				    \
                                                                             \
    /* First case: word entirely within line. */                             \
@@ -812,7 +808,7 @@ static CacheModelResult cacheuse##_##L##_doRead(Addr a, UChar size)         \
         idx = (set1 << L.assoc_bits) | (set[0] & ~L.tag_mask);              \
         L.use[idx].count ++;                                                \
         L.use[idx].mask |= use_mask;                                        \
-	CLG_DEBUG(6," Hit0 [idx %d] (line %#lx from %#lx): %x => %08x, count %d\n",\
+	CLG_DEBUG(6," Hit0 [idx %d] (line %p from %p): %x => %08x, count %d\n",\
 		 idx, L.loaded[idx].memline,  L.loaded[idx].iaddr,          \
 		 use_mask, L.use[idx].mask, L.use[idx].count);              \
 	return L1_Hit;							    \
@@ -829,7 +825,7 @@ static CacheModelResult cacheuse##_##L##_doRead(Addr a, UChar size)         \
             idx = (set1 << L.assoc_bits) | (tmp_tag & ~L.tag_mask);         \
             L.use[idx].count ++;                                            \
             L.use[idx].mask |= use_mask;                                    \
-	CLG_DEBUG(6," Hit%d [idx %d] (line %#lx from %#lx): %x => %08x, count %d\n",\
+	CLG_DEBUG(6," Hit%d [idx %d] (line %p from %p): %x => %08x, count %d\n",\
 		 i, idx, L.loaded[idx].memline,  L.loaded[idx].iaddr,       \
 		 use_mask, L.use[idx].mask, L.use[idx].count);              \
             return L1_Hit;                                                  \
@@ -856,7 +852,7 @@ static CacheModelResult cacheuse##_##L##_doRead(Addr a, UChar size)         \
          idx = (set1 << L.assoc_bits) | (set[0] & ~L.tag_mask);             \
          L.use[idx].count ++;                                               \
          L.use[idx].mask |= use_mask;                                       \
-	CLG_DEBUG(6," Hit0 [idx %d] (line %#lx from %#lx): %x => %08x, count %d\n",\
+	CLG_DEBUG(6," Hit0 [idx %d] (line %p from %p): %x => %08x, count %d\n",\
 		 idx, L.loaded[idx].memline,  L.loaded[idx].iaddr,          \
 		 use_mask, L.use[idx].mask, L.use[idx].count);              \
          goto block2;                                                       \
@@ -871,7 +867,7 @@ static CacheModelResult cacheuse##_##L##_doRead(Addr a, UChar size)         \
             idx = (set1 << L.assoc_bits) | (tmp_tag & ~L.tag_mask);         \
             L.use[idx].count ++;                                            \
             L.use[idx].mask |= use_mask;                                    \
-	CLG_DEBUG(6," Hit%d [idx %d] (line %#lx from %#lx): %x => %08x, count %d\n",\
+	CLG_DEBUG(6," Hit%d [idx %d] (line %p from %p): %x => %08x, count %d\n",\
 		 i, idx, L.loaded[idx].memline,  L.loaded[idx].iaddr,       \
 		 use_mask, L.use[idx].mask, L.use[idx].count);              \
             goto block2;                                                    \
@@ -893,7 +889,7 @@ block2:                                                                     \
          idx = (set2 << L.assoc_bits) | (set[0] & ~L.tag_mask);             \
          L.use[idx].count ++;                                               \
          L.use[idx].mask |= use_mask;                                       \
-	CLG_DEBUG(6," Hit0 [idx %d] (line %#lx from %#lx): %x => %08x, count %d\n",\
+	CLG_DEBUG(6," Hit0 [idx %d] (line %p from %p): %x => %08x, count %d\n",\
 		 idx, L.loaded[idx].memline,  L.loaded[idx].iaddr,          \
 		 use_mask, L.use[idx].mask, L.use[idx].count);              \
          return miss1;                                                      \
@@ -908,7 +904,7 @@ block2:                                                                     \
             idx = (set2 << L.assoc_bits) | (tmp_tag & ~L.tag_mask);         \
             L.use[idx].count ++;                                            \
             L.use[idx].mask |= use_mask;                                    \
-	CLG_DEBUG(6," Hit%d [idx %d] (line %#lx from %#lx): %x => %08x, count %d\n",\
+	CLG_DEBUG(6," Hit%d [idx %d] (line %p from %p): %x => %08x, count %d\n",\
 		 i, idx, L.loaded[idx].memline,  L.loaded[idx].iaddr,       \
 		 use_mask, L.use[idx].mask, L.use[idx].count);              \
             return miss1;                                                   \
@@ -925,7 +921,7 @@ block2:                                                                     \
       return (miss1==MemAccess || miss2==MemAccess) ? MemAccess:L2_Hit;     \
                                                                             \
    } else {                                                                 \
-       VG_(printf)("addr: %#lx  size: %u  sets: %d %d", a, size, set1, set2); \
+       VG_(printf)("addr: %p  size: %u  sets: %d %d", a, size, set1, set2); \
        VG_(tool_panic)("item straddles more than two cache sets");          \
    }                                                                        \
    return 0;                                                                \
@@ -956,10 +952,10 @@ static void update_L2_use(int idx, Addr memline)
   line_use* use = &(L2.use[idx]);
   int i = ((32 - countBits(use->mask)) * L2.line_size)>>5;
   
-  CLG_DEBUG(2, " L2.miss [%d]: at %#lx accessing memline %#lx\n",
+  CLG_DEBUG(2, " L2.miss [%d]: at %p accessing memline %p\n",
 	   idx, bb_base + current_ii->instr_offset, memline);
   if (use->count>0) {
-    CLG_DEBUG(2, "   old: used %d, loss bits %d (%08x) [line %#lx from %#lx]\n",
+    CLG_DEBUG(2, "   old: used %d, loss bits %d (%08x) [line %p from %p]\n",
 	     use->count, i, use->mask, loaded->memline, loaded->iaddr);
     CLG_DEBUG(2, "   collect: %d, use_base %p\n",
 	     CLG_(current_state).collect, loaded->use_base);
@@ -990,13 +986,13 @@ CacheModelResult cacheuse_L2_access(Addr memline, line_loaded* l1_loaded)
    int i, j, idx;
    UWord tmp_tag;
    
-   CLG_DEBUG(6,"L2.Acc(Memline %#lx): Set %d\n", memline, setNo);
+   CLG_DEBUG(6,"L2.Acc(Memline %p): Set %d\n", memline, setNo);
 
    if (tag == (set[0] & L2.tag_mask)) {
      idx = (setNo << L2.assoc_bits) | (set[0] & ~L2.tag_mask);
      l1_loaded->dep_use = &(L2.use[idx]);
 
-     CLG_DEBUG(6," Hit0 [idx %d] (line %#lx from %#lx): => %08x, count %d\n",
+     CLG_DEBUG(6," Hit0 [idx %d] (line %p from %p): => %08x, count %d\n",
 		 idx, L2.loaded[idx].memline,  L2.loaded[idx].iaddr,
 		 L2.use[idx].mask, L2.use[idx].count);
      return L2_Hit;
@@ -1011,7 +1007,7 @@ CacheModelResult cacheuse_L2_access(Addr memline, line_loaded* l1_loaded)
        idx = (setNo << L2.assoc_bits) | (tmp_tag & ~L2.tag_mask);
        l1_loaded->dep_use = &(L2.use[idx]);
 
-	CLG_DEBUG(6," Hit%d [idx %d] (line %#lx from %#lx): => %08x, count %d\n",
+	CLG_DEBUG(6," Hit%d [idx %d] (line %p from %p): => %08x, count %d\n",
 		 i, idx, L2.loaded[idx].memline,  L2.loaded[idx].iaddr,
 		 L2.use[idx].mask, L2.use[idx].count);
 	return L2_Hit;
@@ -1044,10 +1040,10 @@ static CacheModelResult update##_##L##_use(cache_t2* cache, int idx, \
   line_use* use = &(cache->use[idx]);				     \
   int c = ((32 - countBits(use->mask)) * cache->line_size)>>5;       \
                                                                      \
-  CLG_DEBUG(2, " %s.miss [%d]: at %#lx accessing memline %#lx (mask %08x)\n", \
+  CLG_DEBUG(2, " %s.miss [%d]: at %p accessing memline %p (mask %08x)\n", \
 	   cache->name, idx, bb_base + current_ii->instr_offset, memline, mask); \
   if (use->count>0) {                                                \
-    CLG_DEBUG(2, "   old: used %d, loss bits %d (%08x) [line %#lx from %#lx]\n",\
+    CLG_DEBUG(2, "   old: used %d, loss bits %d (%08x) [line %p from %p]\n",\
 	     use->count, c, use->mask, loaded->memline, loaded->iaddr);	\
     CLG_DEBUG(2, "   collect: %d, use_base %p\n", \
 	     CLG_(current_state).collect, loaded->use_base);	     \
@@ -1153,7 +1149,7 @@ static void log_1I0D(InstrInfo* ii)
     current_ii = ii;
     IrRes = (*simulator.I1_Read)(bb_base + ii->instr_offset, ii->instr_size);
 
-    CLG_DEBUG(6, "log_1I0D:  Ir=%#lx/%u => Ir %d\n",
+    CLG_DEBUG(6, "log_1I0D:  Ir=%p/%u => Ir %d\n",
 	      bb_base + ii->instr_offset, ii->instr_size, IrRes);
 
     if (CLG_(current_state).collect) {
@@ -1181,7 +1177,7 @@ static void log_1I1Dr(InstrInfo* ii, Addr data)
     IrRes = (*simulator.I1_Read)(bb_base + ii->instr_offset, ii->instr_size);
     DrRes = (*simulator.D1_Read)(data, ii->data_size);
 
-    CLG_DEBUG(6, "log_1I1Dr: Ir=%#lx/%u, Dr=%#lx/%u => Ir %d, Dr %d\n",
+    CLG_DEBUG(6, "log_1I1Dr: Ir=%p/%u, Dr=%p/%u => Ir %d, Dr %d\n",
 	      bb_base + ii->instr_offset, ii->instr_size,
 	      data, ii->data_size, IrRes, DrRes);
 
@@ -1213,7 +1209,7 @@ static void log_0I1Dr(InstrInfo* ii, Addr data)
     current_ii = ii;
     DrRes = (*simulator.D1_Read)(data, ii->data_size);
 
-    CLG_DEBUG(6, "log_0I1Dr: Dr=%#lx/%u => Dr %d\n",
+    CLG_DEBUG(6, "log_0I1Dr: Dr=%p/%u => Dr %d\n",
 	      data, ii->data_size, DrRes);
 
     if (CLG_(current_state).collect) {
@@ -1243,7 +1239,7 @@ static void log_1I1Dw(InstrInfo* ii, Addr data)
     IrRes = (*simulator.I1_Read)(bb_base + ii->instr_offset, ii->instr_size);
     DwRes = (*simulator.D1_Write)(data, ii->data_size);
 
-    CLG_DEBUG(6, "log_1I1Dw: Ir=%#lx/%u, Dw=%#lx/%u => Ir %d, Dw %d\n",
+    CLG_DEBUG(6, "log_1I1Dw: Ir=%p/%u, Dw=%p/%u => Ir %d, Dw %d\n",
 	      bb_base + ii->instr_offset, ii->instr_size,
 	      data, ii->data_size, IrRes, DwRes);
 
@@ -1274,7 +1270,7 @@ static void log_0I1Dw(InstrInfo* ii, Addr data)
     current_ii = ii;
     DwRes = (*simulator.D1_Write)(data, ii->data_size);
 
-    CLG_DEBUG(6, "log_0I1Dw: Dw=%#lx/%u => Dw %d\n",
+    CLG_DEBUG(6, "log_0I1Dw: Dw=%p/%u => Dw %d\n",
 	      data, ii->data_size, DwRes);
 
     if (CLG_(current_state).collect) {
@@ -1305,7 +1301,7 @@ static void log_1I2D(InstrInfo* ii, Addr data1, Addr data2)
     DwRes = (*simulator.D1_Write)(data2, ii->data_size);
 
     CLG_DEBUG(6,
-	      "log_1I2D: Ir=%#lx/%u, Dr=%#lx/%u, Dw=%#lx/%u => Ir %d, Dr %d, Dw %d\n",
+	      "log_1I2D: Ir=%p/%u, Dr=%p/%u, Dw=%p/%u => Ir %d, Dr %d, Dw %d\n",
 	      bb_base + ii->instr_offset, ii->instr_size,
 	      data1, ii->data_size, data2, ii->data_size, IrRes, DrRes, DwRes);
 
@@ -1342,7 +1338,7 @@ static void log_0I2D(InstrInfo* ii, Addr data1, Addr data2)
     DwRes = (*simulator.D1_Write)(data2, ii->data_size);
 
     CLG_DEBUG(6,
-	      "log_0D2D: Dr=%#lx/%u, Dw=%#lx/%u => Dr %d, Dw %d\n",
+	      "log_0D2D: Dr=%p/%u, Dw=%p/%u => Dr %d, Dw %d\n",
 	      data1, ii->data_size, data2, ii->data_size, DrRes, DwRes);
 
     if (CLG_(current_state).collect) {
@@ -1618,7 +1614,7 @@ static void parse_opt ( cache_t* cache, char* orig_opt, int opt_len )
 {
    int   i1, i2, i3;
    int   i;
-   char *opt = VG_(strdup)("cl.sim.po.1", orig_opt);
+   char *opt = VG_(strdup)(orig_opt);
 
    i = i1 = opt_len;
 

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2007 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -446,7 +446,7 @@ static void emit ( HChar* buf, Int n )
 #define VG_MSG_LJUSTIFY  4 /* Must justify on the left. */
 #define VG_MSG_PAREN     8 /* Parenthesize if present (for %y) */
 #define VG_MSG_COMMA    16 /* Add commas to numbers (for %d, %u) */
-#define VG_MSG_ALTFORMAT 32 /* Convert the value to alternate format */
+
 
 /* Copy a string into the buffer. */
 static 
@@ -647,34 +647,25 @@ VG_(debugLog_vprintf) (
       flags = 0;
       n_ls  = 0;
       width = 0; /* length of the field. */
-      while (1) {
-         switch (format[i]) {
-         case '(':
-            flags |= VG_MSG_PAREN;
-            break;
-         case ',':
-         case '\'':
-            /* If ',' or '\'' follows '%', commas will be inserted. */
-            flags |= VG_MSG_COMMA;
-            break;
-         case '-':
-            /* If '-' follows '%', justify on the left. */
-            flags |= VG_MSG_LJUSTIFY;
-            break;
-         case '0':
-            /* If '0' follows '%', pads will be inserted. */
-            flags |= VG_MSG_ZJUSTIFY;
-            break;
-         case '#':
-            /* If '#' follows '%', alternative format will be used. */
-            flags |= VG_MSG_ALTFORMAT;
-            break;
-         default:
-            goto parse_fieldwidth;
-         }
+      if (format[i] == '(') {
+         flags |= VG_MSG_PAREN;
          i++;
       }
-     parse_fieldwidth:
+      /* If ',' follows '%', commas will be inserted. */
+      if (format[i] == ',') {
+         flags |= VG_MSG_COMMA;
+         i++;
+      }
+      /* If '-' follows '%', justify on the left. */
+      if (format[i] == '-') {
+         flags |= VG_MSG_LJUSTIFY;
+         i++;
+      }
+      /* If '0' follows '%', pads will be inserted. */
+      if (format[i] == '0') {
+         flags |= VG_MSG_ZJUSTIFY;
+         i++;
+      }
       /* Compute the field length. */
       while (format[i] >= '0' && format[i] <= '9') {
          width *= 10;
@@ -720,11 +711,6 @@ VG_(debugLog_vprintf) (
          case 'x': /* %x */
          case 'X': /* %X */
             caps = toBool(format[i] == 'X');
-            if (flags & VG_MSG_ALTFORMAT) {
-               ret += 2;
-               send('0',send_arg2);
-               send('x',send_arg2);
-            }
             if (is_long)
                ret += myvprintf_int64(send, send_arg2, flags, 16, width, caps,
                                       (ULong)(va_arg (vargs, ULong)));

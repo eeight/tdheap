@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2007 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -56,8 +56,6 @@
 #include "pub_core_threadstate.h"  // VexGuestArchState
 #include "pub_core_trampoline.h"   // VG_(ppctoc_magic_redirect_return_stub)
 
-#include "pub_core_execontext.h"  // VG_(make_depth_1_ExeContext_from_Addr)
-
 
 /*------------------------------------------------------------*/
 /*--- Stats                                                ---*/
@@ -74,17 +72,17 @@ void VG_(print_translation_stats) ( void )
                                          + n_SP_updates_generic_unknown;
    VG_(percentify)(n_SP_updates_fast, n_SP_updates, 1, 6, buf);
    VG_(message)(Vg_DebugMsg,
-      "translate:            fast SP updates identified: %'u (%s)",
+      "translate:            fast SP updates identified: %,u (%s)",
       n_SP_updates_fast, buf );
 
    VG_(percentify)(n_SP_updates_generic_known, n_SP_updates, 1, 6, buf);
    VG_(message)(Vg_DebugMsg,
-      "translate:   generic_known SP updates identified: %'u (%s)",
+      "translate:   generic_known SP updates identified: %,u (%s)",
       n_SP_updates_generic_known, buf );
 
    VG_(percentify)(n_SP_updates_generic_unknown, n_SP_updates, 1, 6, buf);
    VG_(message)(Vg_DebugMsg,
-      "translate: generic_unknown SP updates identified: %'u (%s)",
+      "translate: generic_unknown SP updates identified: %,u (%s)",
       n_SP_updates_generic_unknown, buf );
 }
 
@@ -193,22 +191,6 @@ static void update_SP_aliases(Long delta)
    }
 }
 
-/* Given a guest IP, get an origin tag for a 1-element stack trace,
-   and wrap it up in an IR atom that can be passed as the origin-tag
-   value for a stack-adjustment helper function. */
-static IRExpr* mk_ecu_Expr ( Addr64 guest_IP )
-{
-   UInt ecu;
-   ExeContext* ec
-      = VG_(make_depth_1_ExeContext_from_Addr)( (Addr)guest_IP );
-   vg_assert(ec);
-   ecu = VG_(get_ECU_from_ExeContext)( ec );
-   vg_assert(VG_(is_plausible_ECU)(ecu));
-   /* This is always safe to do, since ecu is only 32 bits, and
-      HWord is 32 or 64. */
-   return mkIRExpr_HWord( (HWord)ecu );
-}
-
 
 /* For tools that want to know about SP changes, this pass adds
    in the appropriate hooks.  We have to do it after the tool's
@@ -245,10 +227,6 @@ IRSB* vg_SP_update_pass ( void*             closureV,
    IRType      typeof_SP;
    Long        delta, con;
 
-   /* Set up stuff for tracking the guest IP */
-   Bool   curr_IP_known = False;
-   Addr64 curr_IP       = 0;
-
    /* Set up BB */
    IRSB* bb     = emptyIRSB();
    bb->tyenv    = deepCopyIRTypeEnv(sb_in->tyenv);
@@ -262,8 +240,6 @@ IRSB* vg_SP_update_pass ( void*             closureV,
    typeof_SP = sizeof_SP==4 ? Ity_I32 : Ity_I64;
    vg_assert(sizeof_SP == 4 || sizeof_SP == 8);
 
-   /* --- Start of #defines --- */
-
 #  define IS_ADD(op) (sizeof_SP==4 ? ((op)==Iop_Add32) : ((op)==Iop_Add64))
 #  define IS_SUB(op) (sizeof_SP==4 ? ((op)==Iop_Sub32) : ((op)==Iop_Sub64))
 
@@ -273,62 +249,19 @@ IRSB* vg_SP_update_pass ( void*             closureV,
        (sizeof_SP==4 ? (Long)(Int)(con->Ico.U32)                        \
                      : (Long)(con->Ico.U64))
 
-#  define DO_NEW(syze, tmpp)                                            \
+// XXX: convert this to a function
+#  define DO(kind, syze, tmpp)                                          \
       do {                                                              \
-         Bool vanilla, w_ecu;                                           \
-         vg_assert(curr_IP_known);                                      \
-         vanilla = NULL != VG_(tdict).track_new_mem_stack_##syze;       \
-         w_ecu   = NULL != VG_(tdict).track_new_mem_stack_##syze##_w_ECU; \
-         vg_assert(!(vanilla && w_ecu)); /* can't have both */          \
-         if (!(vanilla || w_ecu))                                       \
-            goto generic;                                               \
-                                                                        \
-         /* I don't know if it's really necessary to say that the */    \
-         /* call reads the stack pointer.  But anyway, we do. */        \
-         if (w_ecu) {                                                   \
-            dcall = unsafeIRDirty_0_N(                                  \
-                       2/*regparms*/,                                   \
-                       "track_new_mem_stack_" #syze "_w_ECU",           \
-                       VG_(fnptr_to_fnentry)(                           \
-                          VG_(tdict).track_new_mem_stack_##syze##_w_ECU ), \
-                       mkIRExprVec_2(IRExpr_RdTmp(tmpp),                \
-                                     mk_ecu_Expr(curr_IP))              \
-                    );                                                  \
-         } else {                                                       \
-            dcall = unsafeIRDirty_0_N(                                  \
-                       1/*regparms*/,                                   \
-                       "track_new_mem_stack_" #syze ,                   \
-                       VG_(fnptr_to_fnentry)(                           \
-                          VG_(tdict).track_new_mem_stack_##syze ),      \
-                       mkIRExprVec_1(IRExpr_RdTmp(tmpp))                \
-                    );                                                  \
-         }                                                              \
-         dcall->nFxState = 1;                                           \
-         dcall->fxState[0].fx     = Ifx_Read;                           \
-         dcall->fxState[0].offset = layout->offset_SP;                  \
-         dcall->fxState[0].size   = layout->sizeof_SP;                  \
-                                                                        \
-         addStmtToIRSB( bb, IRStmt_Dirty(dcall) );                      \
-                                                                        \
-         tl_assert(syze > 0);                                           \
-         update_SP_aliases(syze);                                       \
-                                                                        \
-         n_SP_updates_fast++;                                           \
-                                                                        \
-      } while (0)
-
-#  define DO_DIE(syze, tmpp)                                            \
-      do {                                                              \
-         if (!VG_(tdict).track_die_mem_stack_##syze)                    \
+         if (!VG_(tdict).track_##kind##_mem_stack_##syze)               \
             goto generic;                                               \
                                                                         \
          /* I don't know if it's really necessary to say that the */    \
          /* call reads the stack pointer.  But anyway, we do. */        \
          dcall = unsafeIRDirty_0_N(                                     \
                     1/*regparms*/,                                      \
-                    "track_die_mem_stack_" #syze,                       \
+                    "track_" #kind "_mem_stack_" #syze,                 \
                     VG_(fnptr_to_fnentry)(                              \
-                       VG_(tdict).track_die_mem_stack_##syze ),         \
+                       VG_(tdict).track_##kind##_mem_stack_##syze ),    \
                     mkIRExprVec_1(IRExpr_RdTmp(tmpp))                   \
                  );                                                     \
          dcall->nFxState = 1;                                           \
@@ -338,25 +271,17 @@ IRSB* vg_SP_update_pass ( void*             closureV,
                                                                         \
          addStmtToIRSB( bb, IRStmt_Dirty(dcall) );                      \
                                                                         \
-         tl_assert(syze > 0);                                           \
-         update_SP_aliases(-(syze));                                    \
+         update_SP_aliases(-delta);                                     \
                                                                         \
          n_SP_updates_fast++;                                           \
                                                                         \
       } while (0)
-
-   /* --- End of #defines --- */
 
    clear_SP_aliases();
 
    for (i = 0; i <  sb_in->stmts_used; i++) {
 
       st = sb_in->stmts[i];
-
-      if (st->tag == Ist_IMark) {
-         curr_IP_known = True;
-         curr_IP       = st->Ist.IMark.addr;
-      }
 
       /* t = Get(sp):   curr = t, delta = 0 */
       if (st->tag != Ist_WrTmp) goto case2;
@@ -434,24 +359,24 @@ IRSB* vg_SP_update_pass ( void*             closureV,
          vg_assert(last_SP == last_Put);
          switch (delta) {
             case    0:                      addStmtToIRSB(bb,st); continue;
-            case    4: DO_DIE(  4,  tttmp); addStmtToIRSB(bb,st); continue;
-            case   -4: DO_NEW(  4,  tttmp); addStmtToIRSB(bb,st); continue;
-            case    8: DO_DIE(  8,  tttmp); addStmtToIRSB(bb,st); continue;
-            case   -8: DO_NEW(  8,  tttmp); addStmtToIRSB(bb,st); continue;
-            case   12: DO_DIE(  12, tttmp); addStmtToIRSB(bb,st); continue;
-            case  -12: DO_NEW(  12, tttmp); addStmtToIRSB(bb,st); continue;
-            case   16: DO_DIE(  16, tttmp); addStmtToIRSB(bb,st); continue;
-            case  -16: DO_NEW(  16, tttmp); addStmtToIRSB(bb,st); continue;
-            case   32: DO_DIE(  32, tttmp); addStmtToIRSB(bb,st); continue;
-            case  -32: DO_NEW(  32, tttmp); addStmtToIRSB(bb,st); continue;
-            case  112: DO_DIE( 112, tttmp); addStmtToIRSB(bb,st); continue;
-            case -112: DO_NEW( 112, tttmp); addStmtToIRSB(bb,st); continue;
-            case  128: DO_DIE( 128, tttmp); addStmtToIRSB(bb,st); continue;
-            case -128: DO_NEW( 128, tttmp); addStmtToIRSB(bb,st); continue;
-            case  144: DO_DIE( 144, tttmp); addStmtToIRSB(bb,st); continue;
-            case -144: DO_NEW( 144, tttmp); addStmtToIRSB(bb,st); continue;
-            case  160: DO_DIE( 160, tttmp); addStmtToIRSB(bb,st); continue;
-            case -160: DO_NEW( 160, tttmp); addStmtToIRSB(bb,st); continue;
+            case    4: DO(die,  4,  tttmp); addStmtToIRSB(bb,st); continue;
+            case   -4: DO(new,  4,  tttmp); addStmtToIRSB(bb,st); continue;
+            case    8: DO(die,  8,  tttmp); addStmtToIRSB(bb,st); continue;
+            case   -8: DO(new,  8,  tttmp); addStmtToIRSB(bb,st); continue;
+            case   12: DO(die,  12, tttmp); addStmtToIRSB(bb,st); continue;
+            case  -12: DO(new,  12, tttmp); addStmtToIRSB(bb,st); continue;
+            case   16: DO(die,  16, tttmp); addStmtToIRSB(bb,st); continue;
+            case  -16: DO(new,  16, tttmp); addStmtToIRSB(bb,st); continue;
+            case   32: DO(die,  32, tttmp); addStmtToIRSB(bb,st); continue;
+            case  -32: DO(new,  32, tttmp); addStmtToIRSB(bb,st); continue;
+            case  112: DO(die, 112, tttmp); addStmtToIRSB(bb,st); continue;
+            case -112: DO(new, 112, tttmp); addStmtToIRSB(bb,st); continue;
+            case  128: DO(die, 128, tttmp); addStmtToIRSB(bb,st); continue;
+            case -128: DO(new, 128, tttmp); addStmtToIRSB(bb,st); continue;
+            case  144: DO(die, 144, tttmp); addStmtToIRSB(bb,st); continue;
+            case -144: DO(new, 144, tttmp); addStmtToIRSB(bb,st); continue;
+            case  160: DO(die, 160, tttmp); addStmtToIRSB(bb,st); continue;
+            case -160: DO(new, 160, tttmp); addStmtToIRSB(bb,st); continue;
             default:  
                /* common values for ppc64: 144 128 160 112 176 */
                n_SP_updates_generic_known++;
@@ -470,15 +395,14 @@ IRSB* vg_SP_update_pass ( void*             closureV,
                 we must assume it can be anything allowed in flat IR (tmp
                 or const).
          */
-         IRTemp  old_SP;
+         IRTemp old_SP;
          n_SP_updates_generic_unknown++;
 
          // Nb: if all is well, this generic case will typically be
          // called something like every 1000th SP update.  If it's more than
          // that, the above code may be missing some cases.
         generic:
-         /* Pass both the old and new SP values to this helper.  Also,
-            pass an origin tag, even if it isn't needed. */
+         /* Pass both the old and new SP values to this helper. */
          old_SP = newIRTemp(bb->tyenv, typeof_SP);
          addStmtToIRSB( 
             bb,
@@ -490,13 +414,11 @@ IRSB* vg_SP_update_pass ( void*             closureV,
          if (first_Put == first_SP && last_Put == last_SP) {
            /* The common case, an exact write to SP.  So st->Ist.Put.data
               does hold the new value; simple. */
-            vg_assert(curr_IP_known);
             dcall = unsafeIRDirty_0_N( 
-                       3/*regparms*/, 
+                       2/*regparms*/, 
                        "VG_(unknown_SP_update)", 
                        VG_(fnptr_to_fnentry)( &VG_(unknown_SP_update) ),
-                       mkIRExprVec_3( IRExpr_RdTmp(old_SP), st->Ist.Put.data,
-                                      mk_ecu_Expr(curr_IP) ) 
+                       mkIRExprVec_2( IRExpr_RdTmp(old_SP), st->Ist.Put.data ) 
                     );
             addStmtToIRSB( bb, IRStmt_Dirty(dcall) );
             /* don't forget the original assignment */
@@ -525,14 +447,12 @@ IRSB* vg_SP_update_pass ( void*             closureV,
             /* 3 */
             addStmtToIRSB( bb, IRStmt_Put(offset_SP, IRExpr_RdTmp(old_SP) ));
             /* 4 */
-            vg_assert(curr_IP_known);
             dcall = unsafeIRDirty_0_N( 
-                       3/*regparms*/, 
+                       2/*regparms*/, 
                        "VG_(unknown_SP_update)", 
                        VG_(fnptr_to_fnentry)( &VG_(unknown_SP_update) ),
-                       mkIRExprVec_3( IRExpr_RdTmp(old_SP),
-                                      IRExpr_RdTmp(new_SP), 
-                                      mk_ecu_Expr(curr_IP) )
+                       mkIRExprVec_2( IRExpr_RdTmp(old_SP),
+                                      IRExpr_RdTmp(new_SP))
                     );
             addStmtToIRSB( bb, IRStmt_Dirty(dcall) );
             /* 5 */
@@ -590,12 +510,6 @@ IRSB* vg_SP_update_pass ( void*             closureV,
   complain:
    VG_(core_panic)("vg_SP_update_pass: PutI or Dirty which overlaps SP");
 
-#undef IS_ADD
-#undef IS_SUB
-#undef IS_ADD_OR_SUB
-#undef GET_CONST
-#undef DO_NEW
-#undef DO_DIE
 }
 
 /*------------------------------------------------------------*/
@@ -1097,9 +1011,9 @@ Bool mk_preamble__ppctoc_magic_return_stub ( void* closureV, IRSB* bb )
    wrapped/redirected function to lead to our magic return stub, which
    restores LR and R2 from said stack and returns for real.
 
-   VG_(get_StackTrace_wrk) understands that the LR value may point to
-   the return stub address, and that in that case it can get the real
-   LR value from the hidden stack instead. */
+   VG_(get_StackTrace2) understands that the LR value may point to the
+   return stub address, and that in that case it can get the real LR
+   value from the hidden stack instead. */
 static 
 Bool mk_preamble__set_NRADDR_to_zero ( void* closureV, IRSB* bb )
 {

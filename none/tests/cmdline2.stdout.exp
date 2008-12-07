@@ -40,8 +40,6 @@ usage: valgrind [options] prog-and-args
     --input-fd=<number>       file descriptor for input [0=stdin]
     --max-stackframe=<number> assume stack switch for SP changes larger
                               than <number> bytes [2000000]
-    --main-stacksize=<number> set size of main thread's stack (in bytes)
-                              [use current 'ulimit' value]
 
   user options for Nulgrind:
     (none)
@@ -63,7 +61,6 @@ usage: valgrind [options] prog-and-args
     --trace-sched=no|yes      show thread scheduler details? [no]
     --wait-for-gdb=yes|no     pause on startup to wait for gdb attach
     --sym-offsets=yes|no      show syms in form 'name+offset' ? [no]
-    --read-var-info=yes|no    read variable type & location info? [no]
     --command-line-only=no|yes  only use command line options [no]
 
     --vex-iropt-verbosity             0 .. 9 [0]
@@ -93,7 +90,7 @@ usage: valgrind [options] prog-and-args
 
   Extra options read from ~/.valgrindrc, $VALGRIND_OPTS, ./.valgrindrc
 
-  Valgrind is Copyright (C) 2000-2008 Julian Seward et al.
+  Valgrind is Copyright (C) 2000-2007 Julian Seward et al.
   and licensed under the GNU General Public License, version 2.
   Bug reports, feedback, admiration, abuse, etc, to: www.valgrind.org.
 

@@ -8,11 +8,11 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2007 Julian Seward
       jseward@acm.org
-   Copyright (C) 2005-2008 Nicholas Nethercote
+   Copyright (C) 2005-2007 Nicholas Nethercote
       njn@valgrind.org
-   Copyright (C) 2006-2008 OpenWorks LLP
+   Copyright (C) 2006-2007 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -51,6 +51,9 @@
 /* Bind the given syscall name to the given number.  Returns True if
    successful, False if the name is unknown. */
 extern Bool VG_(aix5_register_syscall)( Int, UChar* );
+/* Look up in said binding later, for the purposes of making error
+   messages. */
+extern UChar* VG_(aix5_sysno_to_sysname)( Int sysno );
 #endif
 
 #endif /* !defined(VG_IN_ASSEMBLY_SOURCE) */

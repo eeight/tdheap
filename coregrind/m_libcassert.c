@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2007 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -142,13 +142,8 @@ static void report_and_quit ( const Char* report,
  
    stacktop = tst->os_state.valgrind_stack_init_SP;
  
-   VG_(get_StackTrace_wrk)(
-      0/*tid is unknown*/, 
-      ips, BACKTRACE_DEPTH, 
-      NULL/*array to dump SP values in*/,
-      NULL/*array to dump FP values in*/,
-      ip, sp, fp, lr, sp, stacktop
-   );
+   VG_(get_StackTrace2)(0/*tid is unknown*/, 
+                        ips, BACKTRACE_DEPTH, ip, sp, fp, lr, sp, stacktop);
    VG_(pp_StackTrace)  (ips, BACKTRACE_DEPTH);
  
    VG_(show_sched_status)();

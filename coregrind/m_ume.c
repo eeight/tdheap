@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2007 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -120,7 +120,7 @@ static
 struct elfinfo *readelf(Int fd, const char *filename)
 {
    SysRes sres;
-   struct elfinfo *e = VG_(malloc)("ume.re.1", sizeof(*e));
+   struct elfinfo *e = VG_(malloc)(sizeof(*e));
    Int phsz;
 
    vg_assert(e);
@@ -163,7 +163,7 @@ struct elfinfo *readelf(Int fd, const char *filename)
    }
 
    phsz = sizeof(ESZ(Phdr)) * e->e.e_phnum;
-   e->p = VG_(malloc)("ume.re.2", phsz);
+   e->p = VG_(malloc)(phsz);
    vg_assert(e->p);
 
    sres = VG_(pread)(fd, e->p, phsz, e->e.e_phoff);
@@ -355,15 +355,7 @@ static Int load_ELF(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
    /* The kernel maps position-independent executables at TASK_SIZE*2/3;
       duplicate this behavior as close as we can. */
    if (e->e.e_type == ET_DYN && ebase == 0) {
-      ebase = VG_PGROUNDDN(info->exe_base 
-                           + (info->exe_end - info->exe_base) * 2 / 3);
-      /* We really don't want to load PIEs at zero or too close.  It
-         works, but it's unrobust (NULL pointer reads and writes
-         become legit, which is really bad) and causes problems for
-         exp-ptrcheck, which assumes all numbers below 1MB are
-         nonpointers.  So, hackily, move it above 1MB. */
-      if (ebase < 0x100000)
-         ebase = 0x100000;
+      ebase = VG_PGROUNDDN(info->exe_base + (info->exe_end - info->exe_base) * 2 / 3);
    }
 
    info->phnum = e->e.e_phnum;
@@ -386,7 +378,7 @@ static Int load_ELF(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
 	 break;
 			
       case PT_INTERP: {
-         HChar *buf = VG_(malloc)("ume.LE.1", ph->p_filesz+1);
+	 char *buf = VG_(malloc)(ph->p_filesz+1);
 	 Int j;
 	 Int intfd;
 	 Int baseaddr_set;
@@ -621,10 +613,10 @@ static Int load_script(Int fd, const HChar* name, ExeInfo* info)
       *cp = '\0';
    }
    
-   info->interp_name = VG_(strdup)("ume.ls.1", interp);
+   info->interp_name = VG_(strdup)(interp);
    vg_assert(NULL != info->interp_name);
    if (arg != NULL && *arg != '\0') {
-      info->interp_args = VG_(strdup)("ume.ls.2", arg);
+      info->interp_args = VG_(strdup)(arg);
       vg_assert(NULL != info->interp_args);
    }
 
@@ -677,7 +669,7 @@ VG_(pre_exec_check)(const HChar* exe_name, Int* out_fd, Bool allow_setuid)
       return VG_(mk_SysRes_Error)(ret);
    }
 
-   fsz = (SizeT)VG_(fsize)(fd);
+   fsz = VG_(fsize)(fd);
    if (fsz < bufsz)
       bufsz = fsz;
 
@@ -781,7 +773,7 @@ static Int do_exec_shell_followup(Int ret, HChar* exe_name,
 {
    Char*  default_interp_name = "/bin/sh";
    SysRes res;
-   struct vg_stat st;
+   struct vki_stat st;
 
    if (VKI_ENOEXEC == ret) {
       // It was an executable file, but in an unacceptable format.  Probably
@@ -796,7 +788,7 @@ static Int do_exec_shell_followup(Int ret, HChar* exe_name,
       // Looks like a script.  Run it with /bin/sh.  This includes
       // zero-length files.
 
-      info->interp_name = VG_(strdup)("ume.desf.1", default_interp_name);
+      info->interp_name = VG_(strdup)(default_interp_name);
       info->interp_args = NULL;
       if (info->argv && info->argv[0] != NULL)
          info->argv[0] = (char *)exe_name;

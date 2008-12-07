@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2007 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -47,12 +47,6 @@
 // #define DEBUG_MALLOC      // turn on heavyweight debugging machinery
 // #define VERBOSE_MALLOC    // make verbose, esp. in debugging machinery
 
-/* Number and total size of blocks in free queue. Used by mallinfo(). */
-Long VG_(free_queue_volume) = 0;
-Long VG_(free_queue_length) = 0;
-
-static void cc_analyse_alloc_arena ( ArenaId aid ); /* fwds */
-
 /*------------------------------------------------------------*/
 /*--- Main types                                           ---*/
 /*------------------------------------------------------------*/
@@ -70,7 +64,6 @@ typedef UChar UByte;
 
 /* Layout of an in-use block:
 
-      cost center (OPTIONAL)   (sizeof(ULong) bytes, only when h-p enabled)
       this block total szB     (sizeof(SizeT) bytes)
       red zone bytes           (depends on Arena.rz_szB, but >= sizeof(void*))
       (payload bytes)
@@ -79,7 +72,6 @@ typedef UChar UByte;
 
    Layout of a block on the free list:
 
-      cost center (OPTIONAL)   (sizeof(ULong) bytes, only when h-p enabled)
       this block total szB     (sizeof(SizeT) bytes)
       freelist previous ptr    (sizeof(void*) bytes)
       excess red zone bytes    (if Arena.rz_szB > sizeof(void*))
@@ -93,23 +85,14 @@ typedef UChar UByte;
 
       bszB == pszB + 2*sizeof(SizeT) + 2*a->rz_szB
 
-   when heap profiling is not enabled, and
-
-      bszB == pszB + 2*sizeof(SizeT) + 2*a->rz_szB + sizeof(ULong)
-
-   when it is enabled.  It follows that the minimum overhead per heap
-   block for arenas used by the core is:
+   The minimum overhead per heap block for arenas used by
+   the core is:   
 
       32-bit platforms:  2*4 + 2*4 == 16 bytes
       64-bit platforms:  2*8 + 2*8 == 32 bytes
 
-   when heap profiling is not enabled, and
-
-      32-bit platforms:  2*4 + 2*4 + 8 == 24 bytes
-      64-bit platforms:  2*8 + 2*8 + 8 == 40 bytes
-
-   when it is enabled.  In all cases, extra overhead may be incurred
-   when rounding the payload size up to VG_MIN_MALLOC_SZB.
+   In both cases extra overhead may be incurred when rounding the payload
+   size up to VG_MIN_MALLOC_SZB.
 
    Furthermore, both size fields in the block have their least-significant
    bit set if the block is not in use, and unset if it is in use.
@@ -124,13 +107,6 @@ typedef UChar UByte;
    - Superblock admin section lengths (due to elastic padding)
    - Block admin section (low and high) lengths (due to elastic redzones)
    - Block payload lengths (due to req_pszB rounding up)
-
-   The heap-profile cost-center field is 8 bytes even on 32 bit
-   platforms.  This is so as to keep the payload field 8-aligned.  On
-   a 64-bit platform, this cc-field contains a pointer to a const
-   HChar*, which is the cost center name.  On 32-bit platforms, the
-   pointer lives in the lower-addressed half of the field, regardless
-   of the endianness of the host.
 */
 typedef
    struct {
@@ -189,7 +165,6 @@ typedef
       SizeT        bytes_on_loan;
       SizeT        bytes_mmaped;
       SizeT        bytes_on_loan_max;
-      SizeT        next_profile_at;
    }
    Arena;
 
@@ -220,14 +195,6 @@ SizeT mk_plain_bszB ( SizeT bszB )
    return bszB & (~SIZE_T_0x1);
 }
 
-// return either 0 or sizeof(ULong) depending on whether or not
-// heap profiling is engaged
-static __inline__
-SizeT hp_overhead_szB ( void )
-{
-   return VG_(clo_profile_heap)  ? sizeof(ULong)  : 0;
-}
-
 //---------------------------------------------------------------------------
 
 // Get a block's size as stored, ie with the in-use/free attribute.
@@ -235,7 +202,7 @@ static __inline__
 SizeT get_bszB_as_is ( Block* b )
 {
    UByte* b2     = (UByte*)b;
-   SizeT bszB_lo = *(SizeT*)&b2[0 + hp_overhead_szB()];
+   SizeT bszB_lo = *(SizeT*)&b2[0];
    SizeT bszB_hi = *(SizeT*)&b2[mk_plain_bszB(bszB_lo) - sizeof(SizeT)];
    vg_assert2(bszB_lo == bszB_hi, 
       "Heap block lo/hi size mismatch: lo = %llu, hi = %llu.\n"
@@ -256,7 +223,7 @@ static __inline__
 void set_bszB ( Block* b, SizeT bszB )
 {
    UByte* b2 = (UByte*)b;
-   *(SizeT*)&b2[0 + hp_overhead_szB()]               = bszB;
+   *(SizeT*)&b2[0]                                   = bszB;
    *(SizeT*)&b2[mk_plain_bszB(bszB) - sizeof(SizeT)] = bszB;
 }
 
@@ -278,7 +245,7 @@ Bool is_inuse_block ( Block* b )
 static __inline__
 SizeT overhead_szB_lo ( Arena* a )
 {
-   return hp_overhead_szB() + sizeof(SizeT) + a->rz_szB;
+   return sizeof(SizeT) + a->rz_szB;
 }
 static __inline__
 SizeT overhead_szB_hi ( Arena* a )
@@ -348,7 +315,7 @@ static __inline__
 void set_prev_b ( Block* b, Block* prev_p )
 { 
    UByte* b2 = (UByte*)b;
-   *(Block**)&b2[hp_overhead_szB() + sizeof(SizeT)] = prev_p;
+   *(Block**)&b2[sizeof(SizeT)] = prev_p;
 }
 static __inline__
 void set_next_b ( Block* b, Block* next_p )
@@ -360,31 +327,13 @@ static __inline__
 Block* get_prev_b ( Block* b )
 { 
    UByte* b2 = (UByte*)b;
-   return *(Block**)&b2[hp_overhead_szB() + sizeof(SizeT)];
+   return *(Block**)&b2[sizeof(SizeT)];
 }
 static __inline__
 Block* get_next_b ( Block* b )
 { 
    UByte* b2 = (UByte*)b;
    return *(Block**)&b2[get_bszB(b) - sizeof(SizeT) - sizeof(void*)];
-}
-
-//---------------------------------------------------------------------------
-
-// Set and get the cost-center field of a block.
-static __inline__
-void set_cc ( Block* b, HChar* cc )
-{ 
-   UByte* b2 = (UByte*)b;
-   vg_assert( VG_(clo_profile_heap) );
-   *(HChar**)&b2[0] = cc;
-}
-static __inline__
-HChar* get_cc ( Block* b )
-{
-   UByte* b2 = (UByte*)b;
-   vg_assert( VG_(clo_profile_heap) );
-   return *(HChar**)&b2[0];
 }
 
 //---------------------------------------------------------------------------
@@ -405,7 +354,7 @@ static __inline__
 void set_rz_lo_byte ( Arena* a, Block* b, UInt rz_byteno, UByte v )
 {
    UByte* b2 = (UByte*)b;
-   b2[hp_overhead_szB() + sizeof(SizeT) + rz_byteno] = v;
+   b2[sizeof(SizeT) + rz_byteno] = v;
 }
 static __inline__
 void set_rz_hi_byte ( Arena* a, Block* b, UInt rz_byteno, UByte v )
@@ -417,7 +366,7 @@ static __inline__
 UByte get_rz_lo_byte ( Arena* a, Block* b, UInt rz_byteno )
 {
    UByte* b2 = (UByte*)b;
-   return b2[hp_overhead_szB() + sizeof(SizeT) + rz_byteno];
+   return b2[sizeof(SizeT) + rz_byteno];
 }
 static __inline__
 UByte get_rz_hi_byte ( Arena* a, Block* b, UInt rz_byteno )
@@ -467,9 +416,7 @@ void arena_init ( ArenaId aid, Char* name, SizeT rz_szB, SizeT min_sblock_szB )
    // redzone size if necessary to achieve this.
    a->rz_szB = rz_szB;
    while (0 != overhead_szB_lo(a) % VG_MIN_MALLOC_SZB) a->rz_szB++;
-   //   vg_assert(overhead_szB_lo(a) == overhead_szB_hi(a));
-   vg_assert(0 == overhead_szB_lo(a) % VG_MIN_MALLOC_SZB);
-   vg_assert(0 == overhead_szB_hi(a) % VG_MIN_MALLOC_SZB);
+   vg_assert(overhead_szB_lo(a) == overhead_szB_hi(a));
 
    a->min_sblock_szB = min_sblock_szB;
    for (i = 0; i < N_MALLOC_LISTS; i++) a->freelist[i] = NULL;
@@ -480,7 +427,6 @@ void arena_init ( ArenaId aid, Char* name, SizeT rz_szB, SizeT min_sblock_szB )
    a->bytes_on_loan     = 0;
    a->bytes_mmaped      = 0;
    a->bytes_on_loan_max = 0;
-   a->next_profile_at   = 25 * 1000 * 1000;
    vg_assert(sizeof(a->sblocks_initial) 
              == SBLOCKS_SIZE_INITIAL * sizeof(Superblock*));
 }
@@ -492,21 +438,11 @@ void VG_(print_all_arena_stats) ( void )
    for (i = 0; i < VG_N_ARENAS; i++) {
       Arena* a = arenaId_to_ArenaP(i);
       VG_(message)(Vg_DebugMsg,
-         "%8s: %8ld mmap'd, %8ld/%8ld max/curr",
+         "%8s: %8d mmap'd, %8d/%8d max/curr",
          a->name, a->bytes_mmaped, a->bytes_on_loan_max, a->bytes_on_loan 
       );
    }
 }
-
-void VG_(print_arena_cc_analysis) ( void )
-{
-   UInt i;
-   vg_assert( VG_(clo_profile_heap) );
-   for (i = 0; i < VG_N_ARENAS; i++) {
-      cc_analyse_alloc_arena(i);
-   }
-}
-
 
 /* This library is self-initialising, as it makes this more self-contained,
    less coupled with the outside world.  Hence VG_(arena_malloc)() and
@@ -582,7 +518,7 @@ void ensure_mm_init ( ArenaId aid )
       // Initialise the non-client arenas
       arena_init ( VG_AR_CORE,      "core",     4,             1048576 );
       arena_init ( VG_AR_TOOL,      "tool",     4,             4194304 );
-      arena_init ( VG_AR_DINFO,     "dinfo",    4,             1048576 );
+      arena_init ( VG_AR_SYMTAB,    "symtab",   4,             1048576 );
       arena_init ( VG_AR_DEMANGLE,  "demangle", 4,               65536 );
       arena_init ( VG_AR_EXECTXT,   "exectxt",  4,             1048576 );
       arena_init ( VG_AR_ERRORS,    "errors",   4,               65536 );
@@ -660,7 +596,7 @@ Superblock* newSuperblock ( Arena* a, SizeT cszB )
    cszB += sizeof(Superblock);
 
    if (cszB < a->min_sblock_szB) cszB = a->min_sblock_szB;
-   cszB = VG_PGROUNDUP(cszB);
+   while ((cszB % VKI_PAGE_SIZE) > 0) cszB++;
 
    if (a->clientmem) {
       // client allocation -- return 0 to client if it fails
@@ -864,7 +800,7 @@ void swizzle ( Arena* a, UInt lno )
    }
    if (p_best < a->freelist[lno]) {
 #     ifdef VERBOSE_MALLOC
-      VG_(printf)("retreat by %ld\n", (Word)(a->freelist[lno] - p_best));
+      VG_(printf)("retreat by %d\n", a->freelist[lno] - p_best);
 #     endif
       a->freelist[lno] = p_best;
    }
@@ -990,8 +926,8 @@ static void sanity_check_malloc_arena ( ArenaId aid )
 
    if (arena_bytes_on_loan != a->bytes_on_loan) {
 #     ifdef VERBOSE_MALLOC
-      VG_(printf)( "sanity_check_malloc_arena: a->bytes_on_loan %ld, "
-                   "arena_bytes_on_loan %ld: "
+      VG_(printf)( "sanity_check_malloc_arena: a->bytes_on_loan %d, "
+                   "arena_bytes_on_loan %d: "
                    "MISMATCH\n", a->bytes_on_loan, arena_bytes_on_loan);
 #     endif
       ppSuperblocks(a);
@@ -1042,116 +978,12 @@ static void sanity_check_malloc_arena ( ArenaId aid )
    if (VG_(clo_verbosity) > 2) 
       VG_(message)(Vg_DebugMsg,
                    "%8s: %2d sbs, %5d bs, %2d/%-2d free bs, "
-                   "%7ld mmap, %7ld loan",
+                   "%7d mmap, %7d loan", 
                    a->name,
                    superblockctr,
                    blockctr_sb, blockctr_sb_free, blockctr_li, 
                    a->bytes_mmaped, a->bytes_on_loan);   
 #  undef BOMB
-}
-
-
-#define N_AN_CCS 1000
-
-typedef struct { ULong nBytes; ULong nBlocks; HChar* cc; } AnCC;
-
-static AnCC anCCs[N_AN_CCS];
-
-static Int cmp_AnCC_by_vol ( void* v1, void* v2 ) {
-   AnCC* ancc1 = (AnCC*)v1;
-   AnCC* ancc2 = (AnCC*)v2;
-   if (ancc1->nBytes < ancc2->nBytes) return -1;
-   if (ancc1->nBytes > ancc2->nBytes) return 1;
-   return 0;
-}
-
-static void cc_analyse_alloc_arena ( ArenaId aid )
-{
-   Word i, j, k;
-   Arena*      a;
-   Block*      b;
-   Bool        thisFree, lastWasFree;
-   SizeT       b_bszB;
-
-   HChar* cc;
-   UInt n_ccs = 0;
-   //return;
-   a = arenaId_to_ArenaP(aid);
-   if (a->name == NULL) {
-      /* arena is not in use, is not initialised and will fail the
-         sanity check that follows. */
-      return;
-   }
-
-   sanity_check_malloc_arena(aid);
-
-   VG_(printf)(
-      "-------- Arena \"%s\": %ld mmap'd, %ld/%ld max/curr --------\n",
-      a->name, a->bytes_mmaped, a->bytes_on_loan_max, a->bytes_on_loan 
-   );
-
-   for (j = 0; j < a->sblocks_used; ++j) {
-      Superblock * sb = a->sblocks[j];
-      lastWasFree = False;
-      for (i = 0; i < sb->n_payload_bytes; i += mk_plain_bszB(b_bszB)) {
-         b     = (Block*)&sb->payload_bytes[i];
-         b_bszB = get_bszB_as_is(b);
-         if (!blockSane(a, b)) {
-            VG_(printf)("sanity_check_malloc_arena: sb %p, block %ld "
-                        "(bszB %lu):  BAD\n", sb, i, b_bszB );
-            tl_assert(0);
-         }
-         thisFree = !is_inuse_block(b);
-         if (thisFree && lastWasFree) {
-            VG_(printf)("sanity_check_malloc_arena: sb %p, block %ld "
-                        "(bszB %lu): UNMERGED FREES\n", sb, i, b_bszB );
-            tl_assert(0);
-         }
-         lastWasFree = thisFree;
-
-         if (thisFree) continue;
-
-         if (0)
-         VG_(printf)("block: inUse=%d pszB=%d cc=%s\n", 
-                     (Int)(!thisFree), 
-                     (Int)bszB_to_pszB(a, b_bszB),
-                     get_cc(b));
-         cc = get_cc(b);
-         tl_assert(cc);
-         for (k = 0; k < n_ccs; k++) {
-           tl_assert(anCCs[k].cc);
-            if (0 == VG_(strcmp)(cc, anCCs[k].cc))
-               break;
-         }
-         tl_assert(k >= 0 && k <= n_ccs);
-
-         if (k == n_ccs) {
-            tl_assert(n_ccs < N_AN_CCS-1);
-            n_ccs++;
-            anCCs[k].nBytes  = 0;
-            anCCs[k].nBlocks = 0;
-            anCCs[k].cc      = cc;
-         }
-
-         tl_assert(k >= 0 && k < n_ccs && k < N_AN_CCS);
-         anCCs[k].nBytes += (ULong)bszB_to_pszB(a, b_bszB);
-         anCCs[k].nBlocks++;
-      }
-      if (i > sb->n_payload_bytes) {
-         VG_(printf)( "sanity_check_malloc_arena: sb %p: last block "
-                      "overshoots end\n", sb);
-         tl_assert(0);
-      }
-   }
-
-   VG_(ssort)( &anCCs[0], n_ccs, sizeof(anCCs[0]), cmp_AnCC_by_vol );
-
-   for (k = 0; k < n_ccs; k++) {
-      VG_(printf)("%'13llu in %'9llu: %s\n",
-                  anCCs[k].nBytes, anCCs[k].nBlocks, anCCs[k].cc );
-   }
-
-   VG_(printf)("\n");
 }
 
 
@@ -1256,7 +1088,7 @@ SizeT align_req_pszB ( SizeT req_pszB )
    return ((req_pszB + n) & (~n));
 }
 
-void* VG_(arena_malloc) ( ArenaId aid, HChar* cc, SizeT req_pszB )
+void* VG_(arena_malloc) ( ArenaId aid, SizeT req_pszB )
 {
    SizeT       req_bszB, frag_bszB, b_bszB;
    UInt        lno, i;
@@ -1271,10 +1103,6 @@ void* VG_(arena_malloc) ( ArenaId aid, HChar* cc, SizeT req_pszB )
    vg_assert(req_pszB < MAX_PSZB);
    req_pszB = align_req_pszB(req_pszB);
    req_bszB = pszB_to_bszB(a, req_pszB);
-
-   // You must provide a cost-center name against which to charge
-   // this allocation; it isn't optional.
-   vg_assert(cc);
 
    // Scan through all the big-enough freelists for a block.
    //
@@ -1353,8 +1181,6 @@ void* VG_(arena_malloc) ( ArenaId aid, HChar* cc, SizeT req_pszB )
    b = (Block*)&new_sb->payload_bytes[0];
    lno = pszB_to_listNo(bszB_to_pszB(a, new_sb->n_payload_bytes));
    mkFreeBlock ( a, b, new_sb->n_payload_bytes, lno);
-   if (VG_(clo_profile_heap))
-      set_cc(b, "admin.free-new-sb-1");
    // fall through
 
   obtained_block:
@@ -1375,34 +1201,19 @@ void* VG_(arena_malloc) ( ArenaId aid, HChar* cc, SizeT req_pszB )
       // printf( "split %dB into %dB and %dB\n", b_bszB, req_bszB, frag_bszB );
       unlinkBlock(a, b, lno);
       mkInuseBlock(a, b, req_bszB);
-      if (VG_(clo_profile_heap))
-         set_cc(b, cc);
       mkFreeBlock(a, &b[req_bszB], frag_bszB, 
                      pszB_to_listNo(bszB_to_pszB(a, frag_bszB)));
-      if (VG_(clo_profile_heap))
-         set_cc(&b[req_bszB], "admin.fragmentation-1");
       b_bszB = get_bszB(b);
    } else {
       // No, mark as in use and use as-is.
       unlinkBlock(a, b, lno);
       mkInuseBlock(a, b, b_bszB);
-      if (VG_(clo_profile_heap))
-         set_cc(b, cc);
    }
 
    // Update stats
    a->bytes_on_loan += bszB_to_pszB(a, b_bszB);
-   if (a->bytes_on_loan > a->bytes_on_loan_max) {
+   if (a->bytes_on_loan > a->bytes_on_loan_max)
       a->bytes_on_loan_max = a->bytes_on_loan;
-      if (a->bytes_on_loan_max >= a->next_profile_at) {
-         /* next profile after 10% more growth */
-         a->next_profile_at 
-            = (SizeT)( 
-                 (((ULong)a->bytes_on_loan_max) * 110ULL) / 100ULL );
-         if (VG_(clo_profile_heap))
-            cc_analyse_alloc_arena(aid);
-      }
-   }
 
 #  ifdef DEBUG_MALLOC
    sanity_check_malloc_arena(aid);
@@ -1471,8 +1282,6 @@ void VG_(arena_free) ( ArenaId aid, void* ptr )
    // Put this chunk back on a list somewhere.
    b_listno = pszB_to_listNo(b_pszB);
    mkFreeBlock( a, b, b_bszB, b_listno );
-   if (VG_(clo_profile_heap))
-      set_cc(b, "admin.free-1");
 
    // See if this block can be merged with its successor.
    // First test if we're far enough before the superblock's end to possibly
@@ -1491,8 +1300,6 @@ void VG_(arena_free) ( ArenaId aid, void* ptr )
          b_bszB += other_bszB;
          b_listno = pszB_to_listNo(bszB_to_pszB(a, b_bszB));
          mkFreeBlock( a, b, b_bszB, b_listno );
-         if (VG_(clo_profile_heap))
-            set_cc(b, "admin.free-2");
       }
    } else {
       // Not enough space for successor: check that b is the last block
@@ -1515,8 +1322,6 @@ void VG_(arena_free) ( ArenaId aid, void* ptr )
          b_bszB += other_bszB;
          b_listno = pszB_to_listNo(bszB_to_pszB(a, b_bszB));
          mkFreeBlock( a, b, b_bszB, b_listno );
-         if (VG_(clo_profile_heap))
-            set_cc(b, "admin.free-3");
       }
    } else {
       // Not enough space for predecessor: check that b is the first block,
@@ -1564,8 +1369,7 @@ void VG_(arena_free) ( ArenaId aid, void* ptr )
    .    .               .   .   .               .   .
 
 */
-void* VG_(arena_memalign) ( ArenaId aid, HChar* cc, 
-                            SizeT req_alignB, SizeT req_pszB )
+void* VG_(arena_memalign) ( ArenaId aid, SizeT req_alignB, SizeT req_pszB )
 {
    SizeT  base_pszB_req, base_pszB_act, frag_bszB;
    Block  *base_b, *align_b;
@@ -1577,10 +1381,6 @@ void* VG_(arena_memalign) ( ArenaId aid, HChar* cc,
    a = arenaId_to_ArenaP(aid);
 
    vg_assert(req_pszB < MAX_PSZB);
-
-   // You must provide a cost-center name against which to charge
-   // this allocation; it isn't optional.
-   vg_assert(cc);
 
    // Check that the requested alignment seems reasonable; that is, is
    // a power of 2.
@@ -1604,7 +1404,7 @@ void* VG_(arena_memalign) ( ArenaId aid, HChar* cc,
    /* Payload ptr for the block we are going to split.  Note this
       changes a->bytes_on_loan; we save and restore it ourselves. */
    saved_bytes_on_loan = a->bytes_on_loan;
-   base_p = VG_(arena_malloc) ( aid, cc, base_pszB_req );
+   base_p = VG_(arena_malloc) ( aid, base_pszB_req );
    a->bytes_on_loan = saved_bytes_on_loan;
 
    /* Give up if we couldn't allocate enough space */
@@ -1633,15 +1433,11 @@ void* VG_(arena_memalign) ( ArenaId aid, HChar* cc,
    /* Create the fragment block, and put it back on the relevant free list. */
    mkFreeBlock ( a, base_b, frag_bszB,
                  pszB_to_listNo(bszB_to_pszB(a, frag_bszB)) );
-   if (VG_(clo_profile_heap))
-      set_cc(base_b, "admin.frag-memalign-1");
 
    /* Create the aligned block. */
    mkInuseBlock ( a, align_b,
                   base_p + base_pszB_act 
                          + overhead_szB_hi(a) - (UByte*)align_b );
-   if (VG_(clo_profile_heap))
-      set_cc(align_b, cc);
 
    /* Final sanity checks. */
    vg_assert( is_inuse_block(get_payload_block(a, align_p)) );
@@ -1672,65 +1468,13 @@ SizeT VG_(arena_payload_szB) ( ThreadId tid, ArenaId aid, void* ptr )
    return get_pszB(a, b);
 }
 
-
-// Implementation of mallinfo(). There is no recent standard that defines
-// the behavior of mallinfo(). The meaning of the fields in struct mallinfo
-// is as follows:
-//
-//     struct mallinfo  {
-//                int arena;     /* total space in arena            */
-//                int ordblks;   /* number of ordinary blocks       */
-//                int smblks;    /* number of small blocks          */
-//                int hblks;     /* number of holding blocks        */
-//                int hblkhd;    /* space in holding block headers  */
-//                int usmblks;   /* space in small blocks in use    */
-//                int fsmblks;   /* space in free small blocks      */
-//                int uordblks;  /* space in ordinary blocks in use */
-//                int fordblks;  /* space in free ordinary blocks   */
-//                int keepcost;  /* space penalty if keep option    */
-//                               /* is used                         */
-//        };
-//
-// The glibc documentation about mallinfo (which is somewhat outdated) can
-// be found here:
-// http://www.gnu.org/software/libtool/manual/libc/Statistics-of-Malloc.html
-//
-// See also http://bugs.kde.org/show_bug.cgi?id=160956.
-//
-// Regarding the implementation of VG_(mallinfo)(): we cannot return the
-// whole struct as the library function does, because this is called by a
-// client request.  So instead we use a pointer to do call by reference.
+// We cannot return the whole struct as the library function does,
+// because this is called by a client request.  So instead we use
+// a pointer to do call by reference.
 void VG_(mallinfo) ( ThreadId tid, struct vg_mallinfo* mi )
 {
-   UWord  i, free_blocks, free_blocks_size;
-   Arena* a = arenaId_to_ArenaP(VG_AR_CLIENT);
-
-   // Traverse free list and calculate free blocks statistics.
-   // This may seem slow but glibc works the same way.
-   free_blocks_size = free_blocks = 0;
-   for (i = 0; i < N_MALLOC_LISTS; i++) {
-      Block* b = a->freelist[i];
-      if (b == NULL) continue;
-      for (;;) {
-         free_blocks++;
-         free_blocks_size += (UWord)get_pszB(a, b);
-         b = get_next_b(b);
-         if (b == a->freelist[i]) break;
-      }
-   }
-
-   // We don't have fastbins so smblks & fsmblks are always 0. Also we don't
-   // have a separate mmap allocator so set hblks & hblkhd to 0.
-   mi->arena    = a->bytes_mmaped;
-   mi->ordblks  = free_blocks + VG_(free_queue_length);
-   mi->smblks   = 0;
-   mi->hblks    = 0;
-   mi->hblkhd   = 0;
-   mi->usmblks  = 0;
-   mi->fsmblks  = 0;
-   mi->uordblks = a->bytes_on_loan - VG_(free_queue_volume);
-   mi->fordblks = free_blocks_size + VG_(free_queue_volume);
-   mi->keepcost = 0; // may want some value in here
+   // Should do better than this...
+   VG_(memset)(mi, 0x0, sizeof(struct vg_mallinfo));
 }
 
 
@@ -1738,8 +1482,7 @@ void VG_(mallinfo) ( ThreadId tid, struct vg_mallinfo* mi )
 /*--- Services layered on top of malloc/free.              ---*/
 /*------------------------------------------------------------*/
 
-void* VG_(arena_calloc) ( ArenaId aid, HChar* cc,
-                          SizeT nmemb, SizeT bytes_per_memb )
+void* VG_(arena_calloc) ( ArenaId aid, SizeT nmemb, SizeT bytes_per_memb )
 {
    SizeT  size;
    UChar* p;
@@ -1747,7 +1490,7 @@ void* VG_(arena_calloc) ( ArenaId aid, HChar* cc,
    size = nmemb * bytes_per_memb;
    vg_assert(size >= nmemb && size >= bytes_per_memb);// check against overflow
 
-   p = VG_(arena_malloc) ( aid, cc, size );
+   p = VG_(arena_malloc) ( aid, size );
 
    VG_(memset)(p, 0, size);
 
@@ -1757,8 +1500,7 @@ void* VG_(arena_calloc) ( ArenaId aid, HChar* cc,
 }
 
 
-void* VG_(arena_realloc) ( ArenaId aid, HChar* cc, 
-                           void* ptr, SizeT req_pszB )
+void* VG_(arena_realloc) ( ArenaId aid, void* ptr, SizeT req_pszB )
 {
    Arena* a;
    SizeT  old_pszB;
@@ -1780,7 +1522,7 @@ void* VG_(arena_realloc) ( ArenaId aid, HChar* cc,
       return ptr;
    }
 
-   p_new = VG_(arena_malloc) ( aid, cc, req_pszB );
+   p_new = VG_(arena_malloc) ( aid, req_pszB );
       
    VG_(memcpy)(p_new, ptr, old_pszB);
 
@@ -1791,8 +1533,7 @@ void* VG_(arena_realloc) ( ArenaId aid, HChar* cc,
 
 
 /* Inline just for the wrapper VG_(strdup) below */
-__inline__ Char* VG_(arena_strdup) ( ArenaId aid, HChar* cc, 
-                                     const Char* s )
+__inline__ Char* VG_(arena_strdup) ( ArenaId aid, const Char* s )
 {
    Int   i;
    Int   len;
@@ -1802,7 +1543,7 @@ __inline__ Char* VG_(arena_strdup) ( ArenaId aid, HChar* cc,
       return NULL;
 
    len = VG_(strlen)(s) + 1;
-   res = VG_(arena_malloc) (aid, cc, len);
+   res = VG_(arena_malloc) (aid, len);
 
    for (i = 0; i < len; i++)
       res[i] = s[i];
@@ -1816,9 +1557,9 @@ __inline__ Char* VG_(arena_strdup) ( ArenaId aid, HChar* cc,
 
 // All just wrappers to avoid exposing arenas to tools.
 
-void* VG_(malloc) ( HChar* cc, SizeT nbytes )
+void* VG_(malloc) ( SizeT nbytes )
 {
-   return VG_(arena_malloc) ( VG_AR_TOOL, cc, nbytes );
+   return VG_(arena_malloc) ( VG_AR_TOOL, nbytes );
 }
 
 void  VG_(free) ( void* ptr )
@@ -1826,19 +1567,19 @@ void  VG_(free) ( void* ptr )
    VG_(arena_free) ( VG_AR_TOOL, ptr );
 }
 
-void* VG_(calloc) ( HChar* cc, SizeT nmemb, SizeT bytes_per_memb )
+void* VG_(calloc) ( SizeT nmemb, SizeT bytes_per_memb )
 {
-   return VG_(arena_calloc) ( VG_AR_TOOL, cc, nmemb, bytes_per_memb );
+   return VG_(arena_calloc) ( VG_AR_TOOL, nmemb, bytes_per_memb );
 }
 
-void* VG_(realloc) ( HChar* cc, void* ptr, SizeT size )
+void* VG_(realloc) ( void* ptr, SizeT size )
 {
-   return VG_(arena_realloc) ( VG_AR_TOOL, cc, ptr, size );
+   return VG_(arena_realloc) ( VG_AR_TOOL, ptr, size );
 }
 
-Char* VG_(strdup) ( HChar* cc, const Char* s )
+Char* VG_(strdup) ( const Char* s )
 {
-   return VG_(arena_strdup) ( VG_AR_TOOL, cc, s ); 
+   return VG_(arena_strdup) ( VG_AR_TOOL, s ); 
 }
 
 // Useful for querying user blocks.           

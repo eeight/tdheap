@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2007 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -570,8 +570,8 @@ PPCAMode* genGuestArrayOffset ( ISelEnv* env, IRRegArray* descr,
 
    if (bias < -100 || bias > 100) /* somewhat arbitrarily */
       vpanic("genGuestArrayOffset(ppc host)(3)");
-   if (descr->base < 0 || descr->base > 4000) /* somewhat arbitrarily */
-      vpanic("genGuestArrayOffset(ppc host)(4)");
+   if (descr->base < 0 || descr->base > 2000) /* somewhat arbitrarily */
+     vpanic("genGuestArrayOffset(ppc host)(4)");
 
    /* Compute off into a reg, %off.  Then return:
 
@@ -1367,18 +1367,6 @@ static HReg iselWordExpr_R_wrk ( ISelEnv* env, IRExpr* e )
          return dst;
       }
 
-      if (e->Iex.Binop.op == Iop_Max32U) {
-         HReg        r1   = iselWordExpr_R(env, e->Iex.Binop.arg1);
-         HReg        r2   = iselWordExpr_R(env, e->Iex.Binop.arg2);
-         HReg        rdst = newVRegI(env);
-         PPCCondCode cc   = mk_PPCCondCode( Pct_TRUE, Pcf_7LT );
-         addInstr(env, mk_iMOVds_RR(rdst, r1));
-         addInstr(env, PPCInstr_Cmp(False/*unsigned*/, True/*32bit cmp*/,
-                                    7/*cr*/, rdst, PPCRH_Reg(r2)));
-         addInstr(env, PPCInstr_CMov(cc, rdst, PPCRI_Reg(r2)));
-         return rdst;
-      }
-
       if (e->Iex.Binop.op == Iop_32HLto64) {
          HReg   r_Hi  = iselWordExpr_R(env, e->Iex.Binop.arg1);
          HReg   r_Lo  = iselWordExpr_R(env, e->Iex.Binop.arg2);
@@ -1831,29 +1819,6 @@ static HReg iselWordExpr_R_wrk ( ISelEnv* env, IRExpr* e )
          }
          break;
 
-      /* ReinterpF32asI32(e) */
-      /* Given an IEEE754 float, produce an I32 with the same bit
-         pattern. */
-      case Iop_ReinterpF32asI32: {
-         /* I believe this generates correct code for both 32- and
-            64-bit hosts. */
-         PPCAMode *am_addr;
-         HReg fr_src = iselFltExpr(env, e->Iex.Unop.arg);
-         HReg r_dst  = newVRegI(env);
-
-         sub_from_sp( env, 16 );     // Move SP down 16 bytes
-         am_addr = PPCAMode_IR( 0, StackFramePtr(mode64) );
-
-         // store as F32
-         addInstr(env, PPCInstr_FpLdSt( False/*store*/, 4,
-                                        fr_src, am_addr ));
-         // load as Ity_I32
-         addInstr(env, PPCInstr_Load( 4, r_dst, am_addr, mode64 ));
-
-         add_to_sp( env, 16 );       // Reset SP
-         return r_dst;
-      }
-
       default: 
          break;
       }
@@ -1943,7 +1908,7 @@ static HReg iselWordExpr_R_wrk ( ISelEnv* env, IRExpr* e )
          addInstr(env, mk_iMOVds_RR(r_dst,rX));
          addInstr(env, PPCInstr_Alu(Palu_AND, r_tmp,
                                     r_cond, PPCRH_Imm(False,0xFF)));
-         addInstr(env, PPCInstr_Cmp(False/*unsigned*/, True/*32bit cmp*/,
+         addInstr(env, PPCInstr_Cmp(False/*unsined*/, True/*32bit cmp*/,
                                     7/*cr*/, r_tmp, PPCRH_Imm(False,0)));
          addInstr(env, PPCInstr_CMov(cc,r_dst,r0));
          return r_dst;
@@ -2707,7 +2672,7 @@ static void iselInt64Expr_wrk ( HReg* rHi, HReg* rLo,
             return;
          }
 
-         /* Add64 */
+         /* Add64/Sub64 */
          case Iop_Add64: {
             HReg xLo, xHi, yLo, yHi;
             HReg tLo = newVRegI(env);
@@ -3242,10 +3207,6 @@ static HReg iselDblExpr_wrk ( ISelEnv* env, IRExpr* e )
          case Iop_NegF64:     fpop = Pfp_NEG; break;
          case Iop_AbsF64:     fpop = Pfp_ABS; break;
          case Iop_Est5FRSqrt: fpop = Pfp_RSQRTE; break;
-         case Iop_RoundF64toF64_NegINF:  fpop = Pfp_FRIM; break;
-         case Iop_RoundF64toF64_PosINF:  fpop = Pfp_FRIP; break;
-         case Iop_RoundF64toF64_NEAREST: fpop = Pfp_FRIN; break;
-         case Iop_RoundF64toF64_ZERO:    fpop = Pfp_FRIZ; break;
          default: break;
       }
       if (fpop != Pfp_INVALID) {
@@ -3974,8 +3935,6 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
             return;
          case Imbe_BusLock:
          case Imbe_BusUnlock:
-         case Imbe_SnoopedStoreBegin:
-         case Imbe_SnoopedStoreEnd:
             return;
          default:
             break;

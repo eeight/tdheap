@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2007 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -126,17 +126,17 @@ extern Bool  VG_(clo_debug_dump_frames);
 extern Bool  VG_(clo_trace_redir);
 /* DEBUG: print thread scheduling events?  default: NO */
 extern Bool  VG_(clo_trace_sched);
-/* DEBUG: do heap profiling?  default: NO */
-extern Bool  VG_(clo_profile_heap);
-/* DEBUG: display gory details for the k'th most popular error.
-   default: Infinity. */
+/* DEBUG: print pthreads calls?  default: NO */
+extern Bool  VG_(clo_trace_pthreads);
+/* Display gory details for the k'th most popular error.  default:
+   Infinity. */
 extern Int   VG_(clo_dump_error);
+/* Number of parents of a backtrace.  Default: 8.  */
+extern Int   VG_(clo_backtrace_size);
 /* Engage miscellaneous weird hacks needed for some progs. */
 extern Char* VG_(clo_sim_hints);
 /* Show symbols in the form 'name+offset' ?  Default: NO */
 extern Bool VG_(clo_sym_offsets);
-/* Read DWARF3 variable info even if tool doesn't ask for it? */
-extern Bool VG_(clo_read_var_info);
 
 /* Track open file descriptors? */
 extern Bool  VG_(clo_track_fds);
@@ -157,9 +157,6 @@ extern Bool VG_(clo_show_emwarns);
    consider a stack switch to have happened?  Default: 2000000 bytes
    NB: must be host-word-sized to be correct (hence Word). */
 extern Word VG_(clo_max_stackframe);
-/* How large should Valgrind allow the primary thread's guest stack to
-   be? */
-extern Word VG_(clo_main_stacksize);
 
 /* Delay startup to allow GDB to be attached?  Default: NO */
 extern Bool VG_(clo_wait_for_gdb);

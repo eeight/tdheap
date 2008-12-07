@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2008, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2007, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -46,8 +46,7 @@ void CLG_(init_jcc_hash)(jcc_hash* jccs)
 
    jccs->size    = N_JCC_INITIAL_ENTRIES;
    jccs->entries = 0;
-   jccs->table = (jCC**) CLG_MALLOC("cl.jumps.ijh.1",
-                                    jccs->size * sizeof(jCC*));
+   jccs->table = (jCC**) CLG_MALLOC(jccs->size * sizeof(jCC*));
    jccs->spontaneous = 0;
 
    for (i = 0; i < jccs->size; i++)
@@ -90,8 +89,7 @@ static void resize_jcc_table(void)
     jCC *curr_jcc, *next_jcc;
 
     new_size  = 2* current_jccs.size +3;
-    new_table = (jCC**) CLG_MALLOC("cl.jumps.rjt.1",
-                                   new_size * sizeof(jCC*));
+    new_table = (jCC**) CLG_MALLOC(new_size * sizeof(jCC*));
  
     if (!new_table) return;
  
@@ -147,7 +145,7 @@ static jCC* new_jcc(BBCC* from, UInt jmp, BBCC* to)
    if (10 * current_jccs.entries / current_jccs.size > 8)
        resize_jcc_table();
 
-   new = (jCC*) CLG_MALLOC("cl.jumps.nj.1", sizeof(jCC));
+   new = (jCC*) CLG_MALLOC(sizeof(jCC));
 
    new->from      = from;
    new->jmp       = jmp;

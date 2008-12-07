@@ -8,13 +8,13 @@
   This file is part of Omega, a Valgrind tool for detecting memory
   leaks as they occur.
 
-  Copyright (C) 2006-2008 Bryan "Brain Murders" Meredith 
+  Copyright (C) 2006-2007 Bryan "Brain Murders" Meredith 
   (A note of personal thanks to my employers at Apertio (www.apertio.com)
   for allowing the use of their time, equipment for 64bit testing and
   providing moral support.)
 
   Partly based upon other Valgrind tools
-  Copyright (C) 2000-2008 Julian Seward, Nicholas Nethercote et al.
+  Copyright (C) 2000-2007 Julian Seward, Nicholas Nethercote et al.
   jseward@acm.org
   njn@valgrind.org
 
@@ -399,7 +399,7 @@ static PBitNode *o_getPBitNode(Addr address, Bool create)
       /*
       ** We don't have a node for this address. Create one now.
       */
-      o_lastPBitNode = VG_(malloc)( "om.ogPBN.1", sizeof(PBitNode) );
+      o_lastPBitNode = VG_(malloc)( sizeof(PBitNode) );
       tl_assert(o_lastPBitNode);
       VG_(memset)(o_lastPBitNode, 0, sizeof(PBitNode));
       o_lastPBitNode->hdr.key = key;
@@ -903,7 +903,7 @@ static Bool o_addLeakedBlock(ExeContext *allocated,
     /*
     ** Create a new block and add it to the leaked list.
     */
-    item = VG_(malloc)("om.oaLB.1", sizeof(BlockRecord));
+    item = VG_(malloc)(sizeof(BlockRecord));
     tl_assert(item);
     
     item->count = 1;
@@ -1125,13 +1125,13 @@ static void o_cleanupTrackedPointers( MemBlock * mb )
 	** Maybe decode registers to names later?
 	*/
 	O_DEBUG("Removing hanging pointer in a register to block %p",
-		(void*)(p->block));
+		p->block);
       }
       else
       {
 	O_DEBUG("Removing hanging pointer at %p to block %p",
-		(void*)(FROM_TRACKED_KEY(p->hdr.key)),
-		(void*)(p->block));
+		FROM_TRACKED_KEY(p->hdr.key),
+		p->block);
       }
     }
     VG_(free)(p);
@@ -1175,8 +1175,8 @@ static void o_cleanupMemBlock( MemBlock **mbpp )
   if(mb->shadowing)
   {
     O_DEBUG("Trying to cleanup a shadow block at %p tracking %p",
-            (void*)(mb->hdr.key),
-            (void*)(mb->shadowing->hdr.key));
+	    mb->hdr.key,
+	    mb->shadowing->hdr.key);
     return;
   }
 
@@ -1261,7 +1261,7 @@ static void o_addMemBlockReference( MemBlock *mb, TrackedPointer *tp )
     if(o_addSuppressionBlock(mb->where, mb->leaked) && !o_showSummaryOnly)
     {
       O_DEBUG("Welcome back to the supposedly leaked block at %p. Illegal read?",
-	      (void*)(mb->hdr.key));
+	      mb->hdr.key);
 
       VG_(get_and_pp_StackTrace)(VG_(get_running_tid)(), VG_(clo_backtrace_size));
       O_DEBUG("");
@@ -1288,7 +1288,7 @@ static void o_addMemBlockReference( MemBlock *mb, TrackedPointer *tp )
   if(!smb->pointers)
   {
     smb->pointers =
-      VG_(malloc)("om.oAMBR.1", (smb->refNum + 8) * sizeof(TrackedPointer *));
+      VG_(malloc)((smb->refNum + 8) * sizeof(TrackedPointer *));
     tl_assert(smb->pointers);
   }
   else if(!((smb->refNum + 1) & 7))
@@ -1298,8 +1298,7 @@ static void o_addMemBlockReference( MemBlock *mb, TrackedPointer *tp )
     ** Note that this will also shrink us if needed.
     */
     smb->pointers =
-      VG_(realloc)("om.oAMBR.2",
-                   smb->pointers, ((smb->refNum + 8) * sizeof(Addr)));
+      VG_(realloc)(smb->pointers, ((smb->refNum + 8) * sizeof(Addr)));
     tl_assert(smb->pointers);
   }
 
@@ -1614,7 +1613,7 @@ static void o_doLeakReport(MemBlock *mb)
       if(o_showIndirect)
       {
 	VG_(message)(Vg_UserMsg,
-		     "Probably indirectly (level %d) leaking block of %ld(0x%lx) bytes",
+		     "Probably indirectly (level %d) leaking block of %d(%p) bytes",
 		     mb->depth,
 		     mb->length,
 		     mb->length);
@@ -1623,7 +1622,7 @@ static void o_doLeakReport(MemBlock *mb)
     else
     {
       VG_(message)(Vg_UserMsg,
-		   "Probably leaking block of %ld(0x%lx) bytes",
+		   "Probably leaking block of %d(%p) bytes",
 		   mb->length,
 		   mb->length);
     }
@@ -1633,7 +1632,7 @@ static void o_doLeakReport(MemBlock *mb)
       VG_(pp_ExeContext)(mb->leaked);
       
       VG_(message)(Vg_UserMsg,
-		   " Block at %#lx allocated", mb->hdr.key);
+		   " Block at %p allocated", mb->hdr.key);
       VG_(pp_ExeContext)(mb->where);
       VG_(message)(Vg_UserMsg,"");
     }
@@ -1729,7 +1728,7 @@ static Bool o_setupShadow(TrackedPointer *tp, Addr address)
       /*
       ** Create a new shadow for the block.
       */
-      smb = VG_(malloc)( "om.osuS.1", sizeof(MemBlock) );
+      smb = VG_(malloc)( sizeof(MemBlock) );
       tl_assert(smb);
 
       o_stats.shadowMemoryBlocksAllocated++;
@@ -1893,7 +1892,7 @@ static void o_duplicateTrackedPointers(Addr dst, Addr src, SizeT length)
   PBitContext pb;
   Addr address;
 
-  O_MDEBUG("o_duplicateTrackedPointers(%p, %p %d(0x%lx))",
+  O_MDEBUG("o_duplicateTrackedPointers(%p, %p %d(%p))",
 	   dst, src, length, length);
 
   address = o_firstPBit(&pb, src, length);
@@ -1906,7 +1905,7 @@ static void o_duplicateTrackedPointers(Addr dst, Addr src, SizeT length)
     */
     TrackedPointer *tp = VG_(HT_lookup)(o_TrackedPointers, TRACKED_KEY(address));
     Int diff           = dst - src;
-    TrackedPointer *ntp = VG_(malloc)("om.odTP.1", (sizeof(TrackedPointer)));
+    TrackedPointer *ntp = VG_(malloc)((sizeof(TrackedPointer)));
     MemBlock       *mb = NULL;
     
     tl_assert(tp);
@@ -1922,7 +1921,7 @@ static void o_duplicateTrackedPointers(Addr dst, Addr src, SizeT length)
     if(!mb)
     {
       O_DEBUG("Oops! Copying pointer at %p to block that leaked(%p)",
-	      (void*)address, (void*)(tp->block));
+	      address, tp->block);
       VG_(get_and_pp_StackTrace)(VG_(get_running_tid)(), VG_(clo_backtrace_size));
       O_DEBUG("");
       
@@ -1947,7 +1946,7 @@ static void o_duplicateTrackedPointers(Addr dst, Addr src, SizeT length)
 
 static void o_createMemBlock(ThreadId tid, Addr start, SizeT size)
 {
-  MemBlock *mb = VG_(malloc)("om.ocMB.1", sizeof(MemBlock));
+  MemBlock *mb = VG_(malloc)(sizeof(MemBlock));
   tl_assert(mb);
   
   o_stats.memoryBlocksAllocated++;
@@ -1987,7 +1986,7 @@ static void o_destroyMemBlock(ThreadId tid, Addr start)
   */
   if(!mb)
   {
-    O_DEBUG("Double/Invalid call to free(%p)", (void*)start);
+    O_DEBUG("Double/Invalid call to free(%p)", start);
     VG_(get_and_pp_StackTrace)(VG_(get_running_tid)(), VG_(clo_backtrace_size));
     O_DEBUG("");
   }
@@ -2003,7 +2002,7 @@ static void o_destroyMemBlock(ThreadId tid, Addr start)
       if(o_addSuppressionBlock(mb->where, mb->leaked) && !o_showSummaryOnly)
       {
 	O_DEBUG("Welcome back (and goodbye) to the supposedly leaked block at %p",
-		(void*)start);
+		start);
       }
       o_stats.memoryBlocksLeaked--;
       o_stats.memoryBlocksLostAndFound++;
@@ -2325,7 +2324,7 @@ void o_omegaDetector( Addr address, Addr value)
       /*
       ** No tracked pointer - create one now.
       */
-      tp = VG_(malloc)("om.oD.1", sizeof(TrackedPointer));
+      tp = VG_(malloc)(sizeof(TrackedPointer));
       tl_assert(tp);
       o_stats.trackedPointersAllocated++;
       o_stats.liveTrackedPointers++;
@@ -3161,7 +3160,7 @@ static UInt o_buildMemblockTree(void)
       /*
       ** Create and populate the new node
       */
-      tn = VG_(malloc)("om.obMbT.1", sizeof(TreeNode));
+      tn = VG_(malloc)(sizeof(TreeNode));
       VG_(memset)(tn, 0, sizeof(TreeNode));
       
       tn->start = mb->hdr.key;
@@ -3300,7 +3299,7 @@ static int o_reportCircularBlocks(void)
 	/*
 	** Create a new block and add it to the circular records list.
 	*/
-	BlockRecord *item = VG_(malloc)("om.orCB.1", sizeof(BlockRecord));
+	BlockRecord *item = VG_(malloc)(sizeof(BlockRecord));
 	tl_assert(item);
 	
 	item->count = 1;
@@ -3327,7 +3326,7 @@ static int o_reportCircularBlocks(void)
     count++;
 
     VG_(message)(Vg_UserMsg, " Circular loss record %d", count);
-    VG_(message)(Vg_UserMsg, "   Leaked %d (0x%x) bytes in %ld block%sallocated",
+    VG_(message)(Vg_UserMsg, "   Leaked %d (%p) bytes in %d block%sallocated",
 		 block->bytes,
 		 block->bytes,
 		 block->count,
@@ -3378,7 +3377,7 @@ static void o_fini(Int exitcode)
   while(record)
   {
     VG_(message)(Vg_UserMsg,
-		 "Loss Record %d: Leaked %d (0x%x) bytes in %ld block%s",
+		 "Loss Record %d: Leaked %d (%p) bytes in %d block%s",
 		 count, record->bytes, record->bytes, record->count,
 		 (record->count > 1) ? "s" : "");
     VG_(pp_ExeContext)(record->leaked);
@@ -3542,7 +3541,7 @@ static void o_pre_clo_init(void)
   VG_(details_name)            ("exp-omega");
   VG_(details_version)         ("RC1");
   VG_(details_description)     ("an instant memory leak detector");
-  VG_(details_copyright_author)("Copyright (C) 2006-2008, and GNU GPL'd, "
+  VG_(details_copyright_author)("Copyright (C) 2006-2007, and GNU GPL'd, "
                                 "by Bryan Meredith.");
   VG_(details_bug_reports_to)  ("richard.coe@med.ge.com");
   

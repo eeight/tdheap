@@ -136,16 +136,11 @@ noinst_HEADERS = \
 	pub_core_ume.h		\
 	pub_core_vki.h		\
 	pub_core_vkiscnums.h	\
-	pub_core_wordfm.h	\
 	pub_core_xarray.h	\
 	m_coredump/priv_elf.h	\
-	m_debuginfo/priv_misc.h	\
 	m_debuginfo/priv_storage.h	\
-	m_debuginfo/priv_tytypes.h      \
 	m_debuginfo/priv_readstabs.h	\
-	m_debuginfo/priv_d3basics.h	\
 	m_debuginfo/priv_readdwarf.h	\
-	m_debuginfo/priv_readdwarf3.h	\
 	m_debuginfo/priv_readelf.h	\
 	m_debuginfo/priv_readxcoff.h	\
 	m_demangle/ansidecl.h	\
@@ -200,14 +195,10 @@ COREGRIND_SOURCES_COMMON = \
 	m_ume.c \
 	m_vki.c \
 	m_vkiscnums.c \
-	m_wordfm.c \
 	m_xarray.c \
 	m_aspacemgr/aspacemgr-common.c \
-	m_debuginfo/misc.c \
-	m_debuginfo/d3basics.c \
 	m_debuginfo/storage.c \
 	m_debuginfo/debuginfo.c \
-	m_debuginfo/tytypes.c \
 	m_demangle/cp-demangle.c \
 	m_demangle/cplus-dem.c \
 	m_demangle/demangle.c \
@@ -226,7 +217,6 @@ COREGRIND_LINUX_SOURCE = \
 	m_initimg/initimg-linux.c \
 	m_debuginfo/readelf.c \
 	m_debuginfo/readdwarf.c \
-	m_debuginfo/readdwarf3.c \
 	m_debuginfo/readstabs.c \
 	m_syswrap/syswrap-generic.c
 

@@ -19,8 +19,7 @@ endif
 DIST_SUBDIRS = ${VG_ARCH_ALL} .
 
 noinst_SCRIPTS = filter_allocs filter_leak_check_size \
-		 filter_stderr filter_stderr_backtrace filter_xml \
-		 filter_varinfo3
+		 filter_stderr filter_stderr_backtrace filter_xml
 
 EXTRA_DIST = $(noinst_SCRIPTS) \
 	addressable.stderr.exp addressable.stdout.exp addressable.vgtest \
@@ -49,7 +48,6 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	exitprog.stderr.exp exitprog.vgtest \
 	execve.stderr.exp execve.stderr.exp2 execve.vgtest \
 	execve2.stderr.exp execve2.stderr.exp2 execve2.vgtest \
-	file_locking.stderr.exp file_locking.vgtest \
 	fprw.stderr.exp fprw.vgtest \
 	fwrite.stderr.exp fwrite.stderr.exp2 fwrite.vgtest \
 	inits.stderr.exp inits.vgtest \
@@ -66,17 +64,11 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	leak-tree.stderr.exp2 leak-tree.stderr.exp64 \
 	leak-regroot.vgtest leak-regroot.stderr.exp \
 	leakotron.vgtest leakotron.stdout.exp leakotron.stderr.exp \
-	linux-capget linux-capget.stderr.exp \
-	linux-syslog-syscall linux-syslog-syscall.stderr.exp \
-	linux-syscalls-2007 linux-syscalls-2007.stderr.exp \
-	linux-timerfd-syscall linux-timerfd-syscall.stderr.exp \
 	long_namespace_xml.vgtest long_namespace_xml.stdout.exp \
 	long_namespace_xml.stderr.exp \
-	lsframe1.vgtest lsframe1.stdout.exp lsframe1.stderr.exp \
-	lsframe2.vgtest lsframe2.stdout.exp lsframe2.stderr.exp \
-	mallinfo.stderr.exp mallinfo.vgtest \
 	malloc_free_fill.vgtest malloc_free_fill.stdout.exp \
-	malloc_free_fill.stderr.exp \
+	malloc_free_fill.stderr.exp-glibc25-amd64 \
+	malloc_free_fill.stderr.exp-glibc25-x86 \
 	malloc_usable.stderr.exp malloc_usable.vgtest \
 	malloc1.stderr.exp malloc1.vgtest \
 	malloc2.stderr.exp malloc2.vgtest \
@@ -99,24 +91,8 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	new_override.stderr.exp new_override.stdout.exp new_override.vgtest \
 	noisy_child.vgtest noisy_child.stderr.exp noisy_child.stdout.exp \
 	null_socket.stderr.exp null_socket.vgtest \
-	origin1-yes.vgtest origin1-yes.stdout.exp \
-	origin1-yes.stderr.exp \
-	origin2-not-quite.vgtest origin2-not-quite.stdout.exp \
-	origin2-not-quite.stderr.exp \
-	origin3-no.vgtest origin3-no.stdout.exp \
-	origin3-no.stderr.exp \
-	origin4-many.vgtest origin4-many.stdout.exp \
-	origin4-many.stderr.exp-glibc25-x86 \
-	origin4-many.stderr.exp-glibc25-amd64 \
-	origin5-bz2.vgtest origin5-bz2.stdout.exp \
-	origin5-bz2.stderr.exp-glibc25-x86 \
-	origin5-bz2.stderr.exp-glibc25-amd64 \
-	origin5-bz2.stderr.exp-glibc27-ppc64 \
-	origin6-fp.vgtest origin6-fp.stdout.exp \
-	origin6-fp.stderr.exp-glibc25-amd64 \
-	origin6-fp.stderr.exp-glibc27-ppc64 \
-	oset_test.stderr.exp oset_test.stdout.exp oset_test.vgtest \
 	overlap.stderr.exp overlap.stdout.exp overlap.vgtest \
+	oset_test.stderr.exp oset_test.stdout.exp oset_test.vgtest \
 	partiallydefinedeq.vgtest partiallydefinedeq.stderr.exp \
 	partiallydefinedeq.stderr.exp2 \
 	partiallydefinedeq.stdout.exp \
@@ -151,13 +127,6 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	toobig-allocs.stderr.exp toobig-allocs.vgtest \
 	trivialleak.stderr.exp trivialleak.vgtest \
 	metadata.stderr.exp metadata.stdout.exp metadata.vgtest \
-	varinfo1.vgtest varinfo1.stdout.exp varinfo1.stderr.exp \
-	varinfo2.vgtest varinfo2.stdout.exp varinfo2.stderr.exp \
-	varinfo3.vgtest varinfo3.stdout.exp varinfo3.stderr.exp \
-	varinfo4.vgtest varinfo4.stdout.exp varinfo4.stderr.exp \
-	varinfo5.vgtest varinfo5.stdout.exp varinfo5.stderr.exp \
-	varinfo6.vgtest varinfo6.stdout.exp \
-	varinfo6.stderr.exp-glibc25-amd64 varinfo6.stderr.exp-glibc25-x86 \
 	vcpu_bz2.stdout.exp vcpu_bz2.stderr.exp vcpu_bz2.vgtest \
 	vcpu_fbench.stdout.exp vcpu_fbench.stderr.exp vcpu_fbench.vgtest \
 	vcpu_fnfns.stdout.exp vcpu_fnfns.stderr.exp vcpu_fnfns.vgtest \
@@ -188,26 +157,16 @@ check_PROGRAMS = \
 	deep_templates \
 	describe-block \
 	doublefree error_counts errs1 exitprog execve execve2 erringfds \
-	file_locking \
 	fprw fwrite hello inits inline \
 	leak-0 leak-cycle leak-pool leak-tree leak-regroot leakotron \
-	linux-capget \
-	linux-syslog-syscall \
-	linux-syscalls-2007 \
-	linux-timerfd-syscall \
 	long_namespace_xml \
-	lsframe1 lsframe2 \
-	mallinfo \
 	malloc_free_fill \
 	malloc_usable malloc1 malloc2 malloc3 manuel1 manuel2 manuel3 \
 	match-overrun \
 	memalign_test memalign2 memcmptest mempool mmaptest \
 	nanoleak nanoleak2 new_nothrow \
 	noisy_child \
-	null_socket oset_test \
-	origin1-yes origin2-not-quite origin3-no \
-	origin4-many origin5-bz2 origin6-fp \
-	overlap \
+	null_socket oset_test overlap \
 	partiallydefinedeq \
 	partial_load pdb-realloc pdb-realloc2 \
 	pipe pointer-trace \
@@ -219,8 +178,6 @@ check_PROGRAMS = \
 	supp_unknown supp1 supp2 suppfree \
 	trivialleak \
 	mismatches new_override metadata \
-	varinfo1 varinfo2 varinfo3 varinfo4 \
-	varinfo5 varinfo5so.so varinfo6 \
 	vcpu_bz2 vcpu_fbench vcpu_fnfns \
 	xml1 \
 	wrap1 wrap2 wrap3 wrap4 wrap5 wrap6 wrap7 wrap7so.so wrap8 \
@@ -236,9 +193,8 @@ AM_CXXFLAGS = $(AM_CFLAGS)
 # Extra stuff for C tests
 memcmptest_CFLAGS	= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -fno-builtin-memcmp
 oset_test_CFLAGS	= $(AM_FLAG_M3264_PRI) \
-				-DVGA_$(VG_ARCH_PRI)=1 -DVGO_$(VG_OS)=1 \
-				-DVGP_$(VG_ARCH_PRI)_$(VG_OS)=1
-linux_timerfd_syscall_LDADD = -lrt
+				-DVGA_$(VG_ARCH)=1 -DVGO_$(VG_OS)=1 \
+				-DVGP_$(VG_ARCH)_$(VG_OS)=1
 vcpu_bz2_CFLAGS		= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -O2 -g
 vcpu_fbench_CFLAGS	= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -O2 -g
 vcpu_fnfns_CFLAGS	= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -O2 -g
@@ -252,19 +208,6 @@ str_tester_CFLAGS	= $(AM_CFLAGS) -Wno-shadow
 supp_unknown_SOURCES	= badjump.c
 supp1_SOURCES		= supp.c
 supp2_SOURCES		= supp.c
-# To make it a bit more realistic, have some optimisation enabled
-# for the varinfo tests.  We still expect sane results.
-varinfo1_CFLAGS		= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -O -g
-varinfo2_CFLAGS		= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -O -g -Wno-shadow
-varinfo3_CFLAGS		= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -O -g
-varinfo4_CFLAGS		= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -O -g
-varinfo5_CFLAGS		= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -O -g
-varinfo6_CFLAGS		= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -O -g
-# This requires optimisation in order to get just one resulting error
-origin4_many_CFLAGS	= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -O -g
-# Apply -O so as to run in reasonable time
-origin5_bz2_CFLAGS	= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -O -g
-origin6_fp_CFLAGS	= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -O -g
 
 # C++ tests
 mismatches_SOURCES	= mismatches.cpp
@@ -324,45 +267,12 @@ else
 endif
 endif
 
-# Build shared object for varinfo5
-varinfo5_SOURCES        = varinfo5.c
-varinfo5_DEPENDENCIES   = varinfo5so.so
-if VGP_PPC64_AIX5 
- varinfo5_LDADD         = `pwd`/varinfo5so.so
- varinfo5_LDFLAGS       = $(AM_FLAG_M3264_PRI)
-else
-if VGP_PPC32_AIX5
- varinfo5_LDADD         = `pwd`/varinfo5so.so
- varinfo5_LDFLAGS       = $(AM_FLAG_M3264_PRI) -Wl,-G -Wl,-bnogc
-else
- varinfo5_LDADD         = varinfo5so.so
- varinfo5_LDFLAGS       = $(AM_FLAG_M3264_PRI) \
-				-Wl,-rpath,$(top_builddir)/memcheck/tests
-endif
-endif
-
-varinfo5so_so_SOURCES   = varinfo5so.c
-varinfo5so_so_LDADD     = 
-varinfo5so_so_DEPENDENCIES = 
-varinfo5so_so_CFLAGS    = -fpic $(AM_FLAG_M3264_PRI) -g -O
-if VGP_PPC64_AIX5
- varinfo5so_so_LDFLAGS  = -fpic $(AM_FLAG_M3264_PRI) -shared
-else
-if VGP_PPC32_AIX5
- varinfo5so_so_LDFLAGS  = -fpic $(AM_FLAG_M3264_PRI) -shared \
-				-Wl,-G -Wl,-bnogc
-else
- varinfo5so_so_LDFLAGS  = -fpic $(AM_FLAG_M3264_PRI) -shared \
-				-Wl,-soname -Wl,varinfo5so.so
-endif
-endif
-
 # Valgrind unit self-tests
 #hello_LDFLAGS		= -Wl,-defsym,valt_load_address=0x50000000 \
 #			  -Wl,-T,$(top_builddir)/valt_load_address.lds
 #hello_DEPENDENCIES 	= $(top_builddir)/valt_load_address.lds
 
 # vgtest_ume is not working
-#vgtest_ume_CFLAGS	= -DVGA_$(VG_ARCH_PRI) -DVGO_$(VG_OS)
+#vgtest_ume_CFLAGS	= -DVGA_$(VG_ARCH) -DVGO_$(VG_OS)
 #vgtest_ume_LDADD	= ../../coregrind/m_ume.o
 

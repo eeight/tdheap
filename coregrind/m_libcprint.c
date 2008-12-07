@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2007 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -76,14 +76,10 @@ static void send_bytes_to_logging_sink ( Char* msg, Int nbytes )
 
 typedef 
    struct {
-      HChar buf[128];
+      HChar buf[100];
       Int   n;
    } 
    printf_buf;
-
-static UInt vprintf_to_buf ( printf_buf *prbuf,
-                             const HChar *format, va_list vargs );
-static UInt printf_to_buf ( printf_buf* prbuf, const HChar *format, ... );
 
 // Adds a single char to the buffer.  When the buffer gets sufficiently
 // full, we write its contents to the logging sink.
@@ -91,13 +87,12 @@ static void add_to_myprintf_buf ( HChar c, void *p )
 {
    printf_buf *myprintf_buf = (printf_buf *)p;
    
-   if (myprintf_buf->n > sizeof(myprintf_buf->buf) - 2 ) {
+   if (myprintf_buf->n >= 100-10 /*paranoia*/ ) {
       send_bytes_to_logging_sink( myprintf_buf->buf, myprintf_buf->n );
       myprintf_buf->n = 0;
    }
    myprintf_buf->buf[myprintf_buf->n++] = c;
    myprintf_buf->buf[myprintf_buf->n]   = 0;
-   tl_assert(myprintf_buf->n < sizeof(myprintf_buf->buf));
 }
 
 UInt VG_(vprintf) ( const HChar *format, va_list vargs )
@@ -105,22 +100,14 @@ UInt VG_(vprintf) ( const HChar *format, va_list vargs )
    UInt ret = 0;
    printf_buf myprintf_buf = {"",0};
 
-   ret = vprintf_to_buf(&myprintf_buf, format, vargs);
-   // Write out any chars left in the buffer.
-   if (myprintf_buf.n > 0) {
-      send_bytes_to_logging_sink( myprintf_buf.buf, myprintf_buf.n );
-   }
-   return ret;
-}
-
-static UInt vprintf_to_buf ( printf_buf *prbuf,
-                             const HChar *format, va_list vargs )
-{
-   UInt ret = 0;
-
    if (VG_(clo_log_fd) >= 0) {
       ret = VG_(debugLog_vprintf) 
-               ( add_to_myprintf_buf, prbuf, format, vargs );
+               ( add_to_myprintf_buf, &myprintf_buf, format, vargs );
+
+      // Write out any chars left in the buffer.
+      if (myprintf_buf.n > 0) {
+         send_bytes_to_logging_sink( myprintf_buf.buf, myprintf_buf.n );
+      }
    }
    return ret;
 }
@@ -132,18 +119,6 @@ UInt VG_(printf) ( const HChar *format, ... )
 
    va_start(vargs, format);
    ret = VG_(vprintf)(format, vargs);
-   va_end(vargs);
-
-   return ret;
-}
-
-static UInt printf_to_buf ( printf_buf* prbuf, const HChar *format, ... )
-{
-   UInt ret;
-   va_list vargs;
-
-   va_start(vargs, format);
-   ret = vprintf_to_buf(prbuf, format, vargs);
    va_end(vargs);
 
    return ret;
@@ -326,7 +301,6 @@ UInt VG_(vmessage) ( VgMsgKind kind, const HChar* format, va_list vargs )
    UInt count = 0;
    Char c;
    Int  i, depth;
-   printf_buf myprintf_buf = {"",0};
 
    switch (kind) {
       case Vg_UserMsg:       c = '='; break;
@@ -340,39 +314,23 @@ UInt VG_(vmessage) ( VgMsgKind kind, const HChar* format, va_list vargs )
    // being performed.
    depth = RUNNING_ON_VALGRIND;
    for (i = 0; i < depth; i++) {
-      count += printf_to_buf (&myprintf_buf, ">");
+      count += VG_(printf) (">");
    }
    
    if (!VG_(clo_xml))
-      count += printf_to_buf (&myprintf_buf, "%c%c", c,c);
+      count += VG_(printf) ("%c%c", c,c);
 
    if (VG_(clo_time_stamp)) {
       HChar buf[50];
       VG_(elapsed_wallclock_time)(buf);
-      count += printf_to_buf(&myprintf_buf,  "%s ", buf);
+      count += VG_(printf)( "%s ", buf);
    }
 
    if (!VG_(clo_xml))
-      count += printf_to_buf (&myprintf_buf, "%d%c%c ", VG_(getpid)(), c,c);
+      count += VG_(printf) ("%d%c%c ", VG_(getpid)(), c,c);
 
-   count += vprintf_to_buf (&myprintf_buf, format, vargs);
-   count += printf_to_buf (&myprintf_buf, "\n");
-
-   if (myprintf_buf.n > 0) {
-      send_bytes_to_logging_sink( myprintf_buf.buf, myprintf_buf.n );
-   }
-
-   return count;
-}
-
-/* Send a simple single-part XML message. */
-UInt VG_(message_no_f_c) ( VgMsgKind kind, const HChar* format, ... )
-{
-   UInt count;
-   va_list vargs;
-   va_start(vargs,format);
-   count = VG_(vmessage) ( kind, format, vargs );
-   va_end(vargs);
+   count += VG_(vprintf)(format, vargs);
+   count += VG_(printf) ("\n");
    return count;
 }
 

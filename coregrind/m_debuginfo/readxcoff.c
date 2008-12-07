@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2008 OpenWorks LLP
+   Copyright (C) 2006-2007 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -49,16 +49,15 @@
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"          /* struct vki_stat et al */
+#include "pub_core_debuginfo.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcprint.h"
+#include "pub_core_mallocfree.h"
 #include "pub_core_libcfile.h"     /* stat, open, close */
 #include "pub_core_aspacemgr.h"    /* for mmaping debuginfo files */
 #include "pub_core_options.h"      /* VG_(clo_trace_symtab) */
 #include "pub_core_xarray.h"
-#include "priv_misc.h"
-#include "priv_tytypes.h"
-#include "priv_d3basics.h"
 #include "priv_storage.h"
 #include "priv_readxcoff.h"        /* self */
 
@@ -93,7 +92,7 @@
 
 #define SHOW_AR_DETAILS 0  /* show details of .a file internals */
 
-#define SHOW  di->trace_symtab
+#define SHOW  VG_(clo_trace_symtab)
 
 /* A small stack of filenames is maintained for dealing
    with BINCL/EINCL symbol table entries. */
@@ -480,7 +479,7 @@ Bool get_csect_bounds ( UChar* start, UWord n_entries,
    if (cssym->n_sclass == C_EXT || cssym->n_sclass == C_HIDEXT) {
       if (cssym->n_numaux == 1) {
          if (CSECT_SMTYP(csaux) == XTY_SD) {
-            if (0) VG_(printf)("GCB: SD: len is %lld\n", (Long)CSECT_LEN(csaux));
+            if (0) VG_(printf)("GCB: SD: len is %ld\n", CSECT_LEN(csaux));
             *first = (UChar*)(cssym->n_value);
             *last = *first + CSECT_LEN(csaux)-1;
            return True;
@@ -494,12 +493,19 @@ Bool get_csect_bounds ( UChar* start, UWord n_entries,
    return False;
 }
 
+static void* malloc_AR_SYMTAB ( SizeT nbytes ) {
+   return VG_(arena_malloc)(VG_AR_SYMTAB, nbytes);
+}
+static void free_AR_SYMTAB ( void* ptr ) {
+   return VG_(arena_free)(VG_AR_SYMTAB, ptr);
+}
+
 /* Read symbol and line number info for the given text section.  (This
    is the central routine for XCOFF reading.)  Returns NULL on
    success, or the text of an error message otherwise. */
 static 
 HChar* read_symbol_table ( 
-          /*MOD*/struct _DebugInfo* di,
+          /*MOD*/SegInfo* si,
 
           /* location of symbol table */
           UChar* oi_symtab, UWord oi_nent_symtab,
@@ -518,8 +524,8 @@ HChar* read_symbol_table (
           Int sndata_1based_if_known,
 
           /* where the mapped data section is */
-          /* Now in di->data_avma:   Addr data_avma, */
-          /* Now in di->data_size:   UWord data_alen, */
+          Addr data_avma, 
+          UWord data_alen,
           UWord data_alen_from_auxhdr,
 
 	  /* where the mapped toc is (in the data section,
@@ -540,7 +546,7 @@ HChar* read_symbol_table (
 
    /* If the TOC avma is obviously bogus, get rid of it */
    { 
-     UWord data_maxlen = di->data_size;
+     UWord data_maxlen = data_alen;
      if (data_maxlen < data_alen_from_auxhdr)
         data_maxlen = data_alen_from_auxhdr;
 
@@ -549,8 +555,7 @@ HChar* read_symbol_table (
      //VG_(printf)("dxxx_avma %p\n", data_avma + data_maxlen);
 
      if (toc_avma != 0
-         && (toc_avma < di->data_avma 
-             || toc_avma >= di->data_avma + data_maxlen))
+         && (toc_avma < data_avma || toc_avma >= data_avma + data_maxlen))
         toc_avma = 0;
      //VG_(printf)("2toc_avma %p\n", toc_avma);
    }
@@ -569,8 +574,7 @@ HChar* read_symbol_table (
       add the rest to 'syms'.
       ---------------------------------------------------------- */
 
-   syms = VG_(newXA)( ML_(dinfo_zalloc), "di.readxcoff.rst.1", 
-                      ML_(dinfo_free), sizeof(XCoffSym) );
+   syms = VG_(newXA)( malloc_AR_SYMTAB, free_AR_SYMTAB, sizeof(XCoffSym) );
 
    if (SHOW && SHOW_SYMS_P1) {
       VG_(printf)("--- BEGIN Phase1 (find text symbol starts) ---\n");
@@ -635,7 +639,7 @@ HChar* read_symbol_table (
                pot for phase 2. */
             XCoffSym cand;
             if (0) VG_(printf)("SD: len is %d\n", (Int)CSECT_LEN(aux));
-            if (0) VG_(printf)("SD: proposed %#llx\n", (ULong)sym->n_value);
+            if (0) VG_(printf)("SD: proposed %p\n", sym->n_value);
             init_XCoffSym(&cand);
             cand.first = sym->n_value;
             cand.last = cand.first + (UWord)CSECT_LEN(aux) - 1;
@@ -644,8 +648,8 @@ HChar* read_symbol_table (
             cand.last += text_bias;
             cand.name = name;
 
-            if (cand.last < di->text_avma 
-                || cand.first >= di->text_avma + di->text_size)
+            if (cand.last < si->text_start_avma 
+                || cand.first >= si->text_start_avma+si->text_size)
                continue;
             if (cand.last < cand.first)
                continue;
@@ -677,8 +681,7 @@ HChar* read_symbol_table (
                   VG_(printf)("LD: in a csect %p %p\n", 
                               csect_first, csect_last);
                   VG_(printf)("CAND: %p .. %p  %s\n", 
-                              (void*)sym->n_value, (void*)csect_last, 
-                              "fixme-Name-printing(1)" /*name*/);
+                              (void*)sym->n_value, (void*)csect_last, name);
                }
                cand.first = sym->n_value;
                cand.last = (Addr)csect_last;
@@ -687,8 +690,7 @@ HChar* read_symbol_table (
                   VG_(printf)("LD: can't compute csect bounds?!\n");
                   VG_(printf)("CAND: %p .. %p  %s\n", 
                               (HChar*)sym->n_value,
-                              (HChar*)sym->n_value+1,
-                               "fixme-Name-printing(2)" /*name*/);
+                              (HChar*)sym->n_value+1, name);
                }
                cand.first = sym->n_value;
                cand.last = cand.first + 1;
@@ -701,8 +703,8 @@ HChar* read_symbol_table (
             cand.last += text_bias;
             cand.name = name;
 
-            if (cand.last < di->text_avma 
-                || cand.first >= di->text_avma + di->text_size)
+            if (cand.last < si->text_start_avma 
+                || cand.first >= si->text_start_avma+si->text_size)
                continue;
             if (cand.last < cand.first)
                continue;
@@ -967,7 +969,7 @@ HChar* read_symbol_table (
          if (SHOW && SHOW_SYMS_P3)
             VG_(printf)("Phase3: %5d+%d  BINCL     %s\n",
                          i-1-sym->n_numaux, (Int)sym->n_numaux, 
-                         "fixme-Name-printing(3)" /*name*/ );
+                         name );
          continue;
       }
       /* --- END C_BINCL [beginning of include] --- */
@@ -978,7 +980,7 @@ HChar* read_symbol_table (
          if (SHOW && SHOW_SYMS_P3)
             VG_(printf)("Phase3: %5d+%d  EINCL     %s\n",
                          i-1-sym->n_numaux, (Int)sym->n_numaux, 
-                         "fixme-Name-printing(4)" /*name*/ );
+                         name );
          continue;
       }
       /* --- END C_EINCL [end of include] --- */
@@ -1075,7 +1077,7 @@ HChar* read_symbol_table (
                /* also take the opportunity to trim the symbol's
                   length to something less than established by the
                   initial estimation done by Phases 1 and 2. */
-               if (0) VG_(printf)("trim end from %#lx to %#lx\n", 
+               if (0) VG_(printf)("trim end from %p to %p\n", 
                                   p3currsym->last, fn_end_avma);
                p3currsym->last = fn_end_avma;
             }
@@ -1210,7 +1212,7 @@ HChar* read_symbol_table (
                harmless enough. */
             if ((!si_fname_str) && !is_empty_Name(p4currsym->fname)) {
                si_dname_str = NULL;
-               si_fname_str = ML_(addStr)(di, p4currsym->fname.vec,
+               si_fname_str = ML_(addStr)(si, p4currsym->fname.vec,
                                               p4currsym->fname.len);
                UChar* lastslash = VG_(strrchr)(si_fname_str, '/');
                if (lastslash)
@@ -1226,7 +1228,7 @@ HChar* read_symbol_table (
             }
             /* finally .. */
 	    if (line_no >= 0)
-               ML_(addLineInfo)(di, si_fname_str, si_dname_str,
+               ML_(addLineInfo)(si, si_fname_str, si_dname_str,
                                 line_first_avma, line_last_avma+1,
                                 line_no, i/*debugging only*/);
          }
@@ -1310,8 +1312,8 @@ HChar* read_symbol_table (
          the actual text segment.  Discard any that don't. */
 
       Addr fndescr_0 = (Addr)fndescr[0];
-      if (fndescr_0 < si->text_avma 
-          || fndescr_0 >= si->text_avma+si->text_size)
+      if (fndescr_0 < si->text_start_avma 
+          || fndescr_0 >= si->text_start_avma+si->text_size)
          continue;
 
       /* Let's suppose that fndescr is the descriptor for a
@@ -1373,21 +1375,21 @@ HChar* read_symbol_table (
       VG_(printf)("--- BEGIN kludged Phase5 (find TOC pointers) ---\n");
 
    if (SHOW)
-      VG_(printf)("Phase5: actual data segment: %#lx %#lx\n",
-                  di->data_avma, di->data_avma + di->data_size);
+      VG_(printf)("Phase5: actual data segment: %p %p\n",
+                  data_avma, data_avma + data_alen);
 
    /* Skip obviously-missing data sections. */
-   if (di->data_avma != 0 && di->data_size >= sizeof(UWord)) {
+   if (data_avma != 0 && data_alen >= sizeof(UWord)) {
 
       /* set up for inspecting all the aligned words in the actual
          data section. */
 
-      Addr tmp = di->data_avma;
+      Addr tmp = (Addr)data_avma;
       while (tmp & (sizeof(UWord)-1))
          tmp++;
 
       UWord* first_data_word = (UWord*)tmp;
-      tmp = di->data_avma + di->data_size - sizeof(UWord);
+      tmp = data_avma + data_alen - sizeof(UWord);
       while (tmp & (sizeof(UWord)-1))
          tmp--;
       UWord* last_data_word = (UWord*)tmp;
@@ -1409,14 +1411,14 @@ HChar* read_symbol_table (
             break; /* no space left for a 3-word descriptor */
 
          w = wP[0];
-         if (!(w >= di->text_avma 
-               && w < di->text_avma + di->text_size)) {
+         if (!(w >= si->text_start_avma 
+               && w < si->text_start_avma+si->text_size)) {
             wP++;
             continue; /* entry pointer is not to text segment */
          }
 
          w = wP[1];
-         if (!(w >= di->data_avma && w < di->data_avma + di->data_size)) {
+         if (!(w >= data_avma && w < data_avma + data_alen)) {
             wP++;
             if (SHOW && SHOW_SYMS_P5) {
                VG_(memset)(&key, 0, sizeof(key));
@@ -1477,7 +1479,7 @@ HChar* read_symbol_table (
    }
 
    for (i = 0; i < nsyms; i++) {
-      DiSym     dis;
+      DiSym     di;
       XCoffSym* s = (XCoffSym*)VG_(indexXA)(syms, i);
       Addr  addr = s->first;
       UWord size = s->last + 1 - s->first;
@@ -1485,8 +1487,8 @@ HChar* read_symbol_table (
 
       /* If everything worked right, the symbol should fall within the
          mapped text segment.  Hence .. */
-      Bool sane = addr >= di->text_avma 
-                  && addr+size <= di->text_avma + di->text_size;
+      Bool  sane = addr >= si->text_start_avma 
+                   && addr+size <= si->text_start_avma + si->text_size;
 
       if (SHOW && SHOW_SYMS_P6) {
          VG_(printf)("Phase6: %s %3d  0x%08lx-0x%08lx  0x%08lx  ", 
@@ -1518,25 +1520,23 @@ HChar* read_symbol_table (
       /* Actually add the symbol (finallyatlast) */
       if (sane) {
          UInt nlen;
-         dis.addr   = addr;
-         dis.size   = size;
-         dis.tocptr = s->r2known ? s->r2value : 0;
-         dis.isText = True;
+         di.addr   = addr;
+         di.size   = size;
+         di.tocptr = s->r2known ? s->r2value : 0;
          vg_assert(!is_empty_Name(s->name));
          nlen = s->name.len;
          vg_assert(nlen > 0);
          if (s->name.vec[0] == '.')
-            dis.name = ML_(addStr)(di, &s->name.vec[1], nlen-1 );
+            di.name = ML_(addStr)(si, &s->name.vec[1], nlen-1 );
          else
-            dis.name = ML_(addStr)(di, &s->name.vec[0], nlen-0 );
-         ML_(addSym)( di, &dis );
+            di.name = ML_(addStr)(si, &s->name.vec[0], nlen-0 );
+         ML_(addSym)( si, &di );
          if (0 && s->r2known)
-            VG_(printf)("r2 known for %s\n",
-                        "fixme-Name-printing(5)" /*s->name*/ );
+            VG_(printf)("r2 known for %s\n", s->name);
 
 	 if (guessed_toc)
             VG_(message)(Vg_DebugMsg, "WARNING: assuming toc 0x%lx for %s", 
-                                      s->r2value, dis.name);
+                                      s->r2value, s->name);
       }
    }
 
@@ -1549,22 +1549,21 @@ HChar* read_symbol_table (
 }
 
 
-static void show_loader_section ( struct _DebugInfo* di,
-                                  UChar* oi_start, UWord size )
+static void show_loader_section ( UChar* oi_start, UWord size )
 {
    Int i, j;
    LDHDR* hdr = (LDHDR*)oi_start;
    UChar* strtab_import = NULL;
    UChar* strtab_other  = NULL;
    if (SHOW) {
-      VG_(printf)("   l_version           %llu\n", (ULong)hdr->l_version);
-      VG_(printf)("   l_nsyms             %lld\n", (Long)hdr->l_nsyms);
-      VG_(printf)("   l_nreloc            %lld\n", (Long)hdr->l_nreloc);
-      VG_(printf)("   l_istlen (i st len) %lld\n", (Long)hdr->l_istlen);
-      VG_(printf)("   l_impoff (i st off) %llu\n", (ULong)hdr->l_impoff);
-      VG_(printf)("   l_nimpid (# imps)   %llu\n", (ULong)hdr->l_nimpid);
-      VG_(printf)("   l_stlen  (st len)   %llu\n", (ULong)hdr->l_stlen);
-      VG_(printf)("   l_stoff  (st off)   %llu\n", (ULong)hdr->l_stoff);
+      VG_(printf)("   l_version           %lu\n", hdr->l_version);
+      VG_(printf)("   l_nsyms             %ld\n", hdr->l_nsyms);
+      VG_(printf)("   l_nreloc            %ld\n", hdr->l_nreloc);
+      VG_(printf)("   l_istlen (i st len) %ld\n", hdr->l_istlen);
+      VG_(printf)("   l_impoff (i st off) %lu\n", hdr->l_impoff);
+      VG_(printf)("   l_nimpid (# imps)   %ld\n", hdr->l_nimpid);
+      VG_(printf)("   l_stlen  (st len)   %lu\n", hdr->l_stlen);
+      VG_(printf)("   l_stoff  (st off)   %lu\n", hdr->l_stoff);
    }
 
    if (hdr->l_istlen > 0)
@@ -1574,8 +1573,8 @@ static void show_loader_section ( struct _DebugInfo* di,
 
    if (strtab_import) {
       if (SHOW)
-         VG_(printf)("   Loader Import String Table: %llu bytes\n", 
-                     (ULong)hdr->l_istlen);
+         VG_(printf)("   Loader Import String Table: %lu bytes\n", 
+                     hdr->l_istlen);
       i = 0;
       j = 0;
       while (1) {
@@ -1597,8 +1596,8 @@ static void show_loader_section ( struct _DebugInfo* di,
 
    if (strtab_other) {
       if (SHOW)
-         VG_(printf)("   Loader Other String Table: %llu bytes\n", 
-                     (ULong)hdr->l_stlen);
+         VG_(printf)("   Loader Other String Table: %lu bytes\n", 
+                     hdr->l_stlen);
       i = 0;
       while (1) {
          int len = 0;
@@ -1625,7 +1624,7 @@ static void show_loader_section ( struct _DebugInfo* di,
    }
 
    if (SHOW)
-      VG_(printf)("   Loader Symbol Table: %lld entries\n", (Long)hdr->l_nsyms);
+      VG_(printf)("   Loader Symbol Table: %ld entries\n", hdr->l_nsyms);
    LDSYM* sym = (LDSYM*)(oi_start + sizeof(LDHDR));
    for (i = 0; i < hdr->l_nsyms; i++) {
       Name name = maybeDerefStrTab( (SYMENT*)&sym[i],
@@ -1651,12 +1650,12 @@ static void show_loader_section ( struct _DebugInfo* di,
 
    LDREL* rel = (LDREL*)(&sym[hdr->l_nsyms]);
    if (SHOW)
-      VG_(printf)("   Loader Relocation Table: %lld entries\n", 
-                  (Long)hdr->l_nreloc);
+      VG_(printf)("   Loader Relocation Table: %ld entries\n", 
+                  hdr->l_nreloc);
    for (i = 0; i < hdr->l_nreloc; i++) {
       if (SHOW && SHOW_LD_RELTAB)
-         VG_(printf)("      %3d:  va %016llx  sym %2lld  rty 0x%4x  sec %2d\n",
-                     i, (ULong)rel[i].l_vaddr, (Long)rel[i].l_symndx, 
+         VG_(printf)("      %3d:  va %016llx  sym %2ld  rty 0x%4x  sec %2d\n",
+                     i, (ULong)rel[i].l_vaddr, rel[i].l_symndx, 
                         (Int)rel[i].l_rtype, (Int)rel[i].l_rsecnm);
    }
 
@@ -1671,7 +1670,7 @@ static void show_loader_section ( struct _DebugInfo* di,
    [oimage .. oimage + n_oimage).
 
    The VMA of where the relevant text section really got loaded (the
-   "actual VMA", _avma) is [si->text_avma .. si->text_avma
+   "actual VMA", _avma) is [si->text_start_avma .. si->text_start_avma
    + si->text_size).
 
    The VMA of the associated data section really got loaded
@@ -1684,11 +1683,11 @@ static void show_loader_section ( struct _DebugInfo* di,
    we get here.
 */
 static 
-Bool read_xcoff_mapped_object ( struct _DebugInfo* di,
-                                UChar* oimage, UWord n_oimage )
+Bool read_xcoff_mapped_object ( SegInfo* si,
+                                UChar* oimage, UWord n_oimage,
+                                Addr data_avma, UWord data_alen )
 {
-#define BAD(_msg)  do { ML_(symerr)(di, True/*serious*/,_msg); \
-                        return False; } while (0)
+#define BAD(_msg)  do { ML_(symerr)(_msg); return False; } while (0)
 
    Int i, j;
 
@@ -1732,12 +1731,12 @@ Bool read_xcoff_mapped_object ( struct _DebugInfo* di,
 #  endif
 
    if (SHOW) {
-      VG_(printf)("   # of sections     %u\n",       (UInt)t_filehdr->f_nscns);
-      VG_(printf)("   time/date         0x%08llx\n", (ULong)t_filehdr->f_timdat);
-      VG_(printf)("   symtab foffset    %llu\n",     (ULong)t_filehdr->f_symptr);
-      VG_(printf)("   # symtab entries  %llu\n",     (ULong)t_filehdr->f_nsyms);
-      VG_(printf)("   size of aux hdr   %llu\n",     (ULong)t_filehdr->f_opthdr);
-      VG_(printf)("   flags             0x%04x\n",   (UInt)t_filehdr->f_flags);
+      VG_(printf)("   # of sections     %u\n",     (UInt)t_filehdr->f_nscns);
+      VG_(printf)("   time/date         0x%08lx\n", t_filehdr->f_timdat);
+      VG_(printf)("   symtab foffset    %lu\n", t_filehdr->f_symptr);
+      VG_(printf)("   # symtab entries  %lu\n", t_filehdr->f_nsyms);
+      VG_(printf)("   size of aux hdr   %u\n", (UInt)t_filehdr->f_opthdr);
+      VG_(printf)("   flags             0x%04x\n", (UInt)t_filehdr->f_flags);
       if (t_filehdr->f_flags) {
          VG_(printf)("                     ");
          if (t_filehdr->f_flags & F_RELFLG)    VG_(printf)("NoRelocInfo ");
@@ -1804,15 +1803,13 @@ Bool read_xcoff_mapped_object ( struct _DebugInfo* di,
          VG_(printf)("   magic        0x%04x (should be 0x010b)\n", 
                      (UInt)t_auxhdr->magic);
          VG_(printf)("   vstamp       0x%04x\n", (UInt)t_auxhdr->vstamp);
-         VG_(printf)("   tsize        %lld\n", (Long)t_auxhdr->tsize);
-         VG_(printf)("   dsize        %lld\n", (Long)t_auxhdr->dsize);
-         VG_(printf)("   bsize        %lld\n", (Long)t_auxhdr->bsize);
-         VG_(printf)("   entry        0x%llx\n", (ULong)t_auxhdr->entry);
-         VG_(printf)("   text_start   0x%llx (stated)\n",
-                     (ULong)t_auxhdr->text_start);
-         VG_(printf)("   data_start   0x%llx (stated)\n",
-                     (ULong)t_auxhdr->data_start);
-         VG_(printf)("   o_toc        0x%llx\n", (ULong)t_auxhdr->o_toc);
+         VG_(printf)("   tsize        %ld\n", t_auxhdr->tsize);
+         VG_(printf)("   dsize        %ld\n", t_auxhdr->dsize);
+         VG_(printf)("   bsize        %ld\n", t_auxhdr->bsize);
+         VG_(printf)("   entry        0x%lx\n", t_auxhdr->entry);
+         VG_(printf)("   text_start   0x%lx (stated)\n", t_auxhdr->text_start);
+         VG_(printf)("   data_start   0x%lx (stated)\n", t_auxhdr->data_start);
+         VG_(printf)("   o_toc        0x%lx\n", t_auxhdr->o_toc);
          VG_(printf)("   o_snentry    %d\n", (Int)t_auxhdr->o_snentry);
          VG_(printf)("   o_sntext     %d\n", (Int)t_auxhdr->o_sntext);
          VG_(printf)("   o_sndata     %d\n", (Int)t_auxhdr->o_sndata);
@@ -1826,8 +1823,8 @@ Bool read_xcoff_mapped_object ( struct _DebugInfo* di,
                      (UChar)t_auxhdr->o_modtype[1] );
          VG_(printf)("   o_cpuflag    0x%02x\n", (UInt)t_auxhdr->o_cpuflag);
          VG_(printf)("   o_cputype    0x%02x\n", (UInt)t_auxhdr->o_cputype);
-         VG_(printf)("   o_maxstack   %llu\n", (ULong)t_auxhdr->o_maxstack);
-         VG_(printf)("   o_maxdata    %llu\n", (ULong)t_auxhdr->o_maxdata);
+         VG_(printf)("   o_maxstack   %lu\n", t_auxhdr->o_maxstack);
+         VG_(printf)("   o_maxdata    %lu\n", t_auxhdr->o_maxdata);
          VG_(printf)("   o_debugger   %u\n", t_auxhdr->o_debugger);
          /* printf("   o_textpsize  %u\n", (UInt)t_auxhdr->o_textpsize); */
          /* printf("   o_stackpsize %u\n", (UInt)t_auxhdr->o_stackpsize); */
@@ -1882,16 +1879,16 @@ Bool read_xcoff_mapped_object ( struct _DebugInfo* di,
       if (SHOW) {
          VG_(printf)("   --- #%d ---\n", i);
          VG_(printf)("   s_name    %s\n", sname_safe);
-         VG_(printf)("   s_paddr   0x%llx\n", (ULong)t_scnhdr[i].s_paddr);
-         VG_(printf)("   s_vaddr   0x%llx\n", (ULong)t_scnhdr[i].s_vaddr);
-         VG_(printf)("   s_size    %lld\n",   (Long)t_scnhdr[i].s_size);
-         VG_(printf)("   s_scnptr  %lld\n",   (Long)t_scnhdr[i].s_scnptr);
-         VG_(printf)("   s_relptr  %lld\n",   (Long)t_scnhdr[i].s_relptr);
-         VG_(printf)("   s_lnnoptr %lld\n",   (Long)t_scnhdr[i].s_lnnoptr);
-         VG_(printf)("   s_nreloc  %llu\n",   (ULong)t_scnhdr[i].s_nreloc);
-         VG_(printf)("   s_nlnno   %llu\n",   (ULong)t_scnhdr[i].s_nlnno);
-         VG_(printf)("   s_flags   0x%llx (%s)\n", 
-                     (ULong)t_scnhdr[i].s_flags,
+         VG_(printf)("   s_paddr   0x%lx\n", t_scnhdr[i].s_paddr);
+         VG_(printf)("   s_vaddr   0x%lx\n", t_scnhdr[i].s_vaddr);
+         VG_(printf)("   s_size    %ld\n", t_scnhdr[i].s_size);
+         VG_(printf)("   s_scnptr  %ld\n", t_scnhdr[i].s_scnptr);
+         VG_(printf)("   s_relptr  %ld\n", t_scnhdr[i].s_relptr);
+         VG_(printf)("   s_lnnoptr %ld\n", t_scnhdr[i].s_lnnoptr);
+         VG_(printf)("   s_nreloc  %u\n", (UInt)t_scnhdr[i].s_nreloc);
+         VG_(printf)("   s_nlnno   %u\n", (UInt)t_scnhdr[i].s_nlnno);
+         VG_(printf)("   s_flags   0x%lx (%s)\n", 
+                     t_scnhdr[i].s_flags,
                      name_of_scnhdr_s_flags(t_scnhdr[i].s_flags));
       }
       /* find the stabs strings */
@@ -1952,7 +1949,7 @@ Bool read_xcoff_mapped_object ( struct _DebugInfo* di,
       .o files.  These have a stated text VMA of zero, and so their
          symbols start from zero and work upwards.  In that case the
          bias is precisely the offset where the text section is 
-         loaded (si->text_avma), that is, the actual text VMA.
+         loaded (si->text_start_avma), that is, the actual text VMA.
 
          Except -- cryptically -- /usr/include/sys/ldr.h says that the
          ld_info.ldinfo_textorg field is "start of loaded program
@@ -1976,15 +1973,15 @@ Bool read_xcoff_mapped_object ( struct _DebugInfo* di,
    if (text_svma_known) {
 #if 0
       if (text_svma == 0) {
-         text_bias = di->text_avma;
+         text_bias = si->text_start_avma;
          if (sntext_1based_if_known >= 1 
              && sntext_1based_if_known <= t_filehdr->f_nscns)
             text_bias += t_scnhdr[sntext_1based_if_known - 1].s_scnptr;
       } else {
-         text_bias = di->text_avma - VG_PGROUNDDN(text_svma);
+         text_bias = si->text_start_avma - VG_PGROUNDDN(text_svma);
       }
 #else
-      text_bias = di->text_avma - text_svma;
+      text_bias = si->text_start_avma - text_svma;
       if (sntext_1based_if_known >= 1 
           && sntext_1based_if_known <= t_filehdr->f_nscns)
          text_bias += t_scnhdr[sntext_1based_if_known - 1].s_scnptr;
@@ -1993,7 +1990,7 @@ Bool read_xcoff_mapped_object ( struct _DebugInfo* di,
       if (SHOW)
          VG_(printf)("   text section: stated vma 0x%lx, "
                      "actual vma 0x%lx, bias 0x%lx\n", 
-                     text_svma, di->text_avma, text_bias);
+                     text_svma, si->text_start_avma, text_bias);
    } else {
       text_bias = 0;
       if (SHOW)
@@ -2001,11 +1998,11 @@ Bool read_xcoff_mapped_object ( struct _DebugInfo* di,
    }
 
    if (data_svma_known) {
-      data_bias = di->data_avma - data_svma;
+      data_bias = data_avma - data_svma;
       if (SHOW)
          VG_(printf)("   data section: stated vma 0x%lx, "
                      "actual vma 0x%lx, bias 0x%lx\n", 
-                     data_svma, di->data_avma, data_bias);
+                     data_svma, data_avma, data_bias);
    } else {
       data_bias = 0;
       if (SHOW)
@@ -2030,7 +2027,7 @@ Bool read_xcoff_mapped_object ( struct _DebugInfo* di,
                      i, name_of_scnhdr_s_flags(t_scnhdr[i].s_flags) );
       switch (t_scnhdr[i].s_flags & 0xFFFF) {
          case STYP_LOADER:
-            show_loader_section( di, oimage + t_scnhdr[i].s_scnptr, 
+            show_loader_section( oimage + t_scnhdr[i].s_scnptr, 
                                  t_scnhdr[i].s_size );
             break;
          default:
@@ -2076,17 +2073,17 @@ Bool read_xcoff_mapped_object ( struct _DebugInfo* di,
 
    /* ------------ Symbol Table ------------ */
    if (SHOW)
-      VG_(printf)("\nSymbol Table: %llu entries\n", (ULong)t_filehdr->f_nsyms);
+      VG_(printf)("\nSymbol Table: %ld entries\n", t_filehdr->f_nsyms);
    cursor = oimage;
    cursor += t_filehdr->f_symptr;
    HChar* badness = read_symbol_table( 
-                       di,
+                       si,
                        cursor, t_filehdr->f_nsyms, 
                        oi_strtab, oi_n_strtab,
                        oi_debug, oi_n_debug,
                        oi_lnos,  oi_nent_lnos,
                        sntext_1based_if_known, sndata_1based_if_known,
-                       data_alen_from_auxhdr,
+                       data_avma, data_alen, data_alen_from_auxhdr,
                        toc_avma,
                        text_bias, data_bias 
                     );
@@ -2097,7 +2094,7 @@ Bool read_xcoff_mapped_object ( struct _DebugInfo* di,
    /* ------------ String Table ------------ */
    if (oi_strtab) {
       if (SHOW)
-         VG_(printf)("\nString Table: %lu bytes\n", oi_n_strtab);
+         VG_(printf)("\nString Table: %u bytes\n", oi_n_strtab);
       i = 4;
       while (1) {
          if (i >= oi_n_strtab)
@@ -2140,8 +2137,9 @@ static ULong ascii_to_ULong ( void* vbuf, Int nbuf )
 
 /* Returns True on success, False if any kind of problem. */
 static
-Bool read_xcoff_o_or_a ( /*MOD*/struct _DebugInfo* di,
-                         HChar* a_name, HChar* o_name )
+Bool read_xcoff_o_or_a ( /*MOD*/SegInfo* si,
+                         HChar* a_name, HChar* o_name,
+                         Addr data_avma, UWord data_alen )
 {
    UChar* image   = NULL;
    Word   n_image = 0;
@@ -2149,7 +2147,7 @@ Bool read_xcoff_o_or_a ( /*MOD*/struct _DebugInfo* di,
    Int    i;
    SysRes sr, fd;
 
-   struct vg_stat stat_buf;
+   struct vki_stat stat_buf;
 
    vg_assert(o_name);
 
@@ -2158,7 +2156,7 @@ Bool read_xcoff_o_or_a ( /*MOD*/struct _DebugInfo* di,
 
       sr = VG_(stat)( o_name, &stat_buf );
       if (sr.isError) {
-         ML_(symerr)(di, True, "can't stat XCOFF object file");
+         ML_(symerr)("can't stat XCOFF object file");
          return False;
       }
 
@@ -2166,13 +2164,13 @@ Bool read_xcoff_o_or_a ( /*MOD*/struct _DebugInfo* di,
       if (SHOW && SHOW_AR_DETAILS)
          VG_(printf)("XCOFF object file size %ld\n", n_image);
       if (n_image <= 0) {
-         ML_(symerr)(di, True, "implausible XCOFF object file size");
+         ML_(symerr)("implausible XCOFF object file size");
          return False;
       }
 
       fd = VG_(open)( o_name, VKI_O_RDONLY, 0 );
       if (fd.isError) {
-         ML_(symerr)(di, True, "can't open XCOFF object file");
+         ML_(symerr)("can't open XCOFF object file");
          return False;
       }
 
@@ -2181,12 +2179,13 @@ Bool read_xcoff_o_or_a ( /*MOD*/struct _DebugInfo* di,
       VG_(close)(fd.res);
 
       if (sr.isError) {
-         ML_(symerr)(di, True, "can't mmap XCOFF object file");
+         ML_(symerr)("can't mmap XCOFF object file");
          return False;
       }
 
       image = (UChar*)sr.res;
-      ok = read_xcoff_mapped_object( di, image, n_image );
+      ok = read_xcoff_mapped_object( si, image, n_image, 
+                                         data_avma, data_alen );
       VG_(am_munmap_valgrind)( (Addr)image, n_image);
 
       /* assert OK */
@@ -2200,7 +2199,7 @@ Bool read_xcoff_o_or_a ( /*MOD*/struct _DebugInfo* di,
 
       sr = VG_(stat)( a_name, &stat_buf );
       if (sr.isError) {
-         ML_(symerr)(di, True, "can't stat XCOFF archive file");
+         ML_(symerr)("can't stat XCOFF archive file");
          return False;
       }
 
@@ -2208,13 +2207,13 @@ Bool read_xcoff_o_or_a ( /*MOD*/struct _DebugInfo* di,
       if (SHOW && SHOW_AR_DETAILS)
          VG_(printf)("XCOFF archive file size %ld\n", n_image);
       if (n_image <= 0) {
-         ML_(symerr)(di, True, "implausible XCOFF archive file size");
+         ML_(symerr)("implausible XCOFF archive file size");
          return False;
       }
 
       fd = VG_(open)( a_name, VKI_O_RDONLY, 0 );
       if (fd.isError) {
-         ML_(symerr)(di, True, "can't open XCOFF archive file");
+         ML_(symerr)("can't open XCOFF archive file");
          return False;
       }
 
@@ -2223,7 +2222,7 @@ Bool read_xcoff_o_or_a ( /*MOD*/struct _DebugInfo* di,
       VG_(close)(fd.res);
 
       if (sr.isError) {
-         ML_(symerr)(di, True, "can't mmap XCOFF archive file");
+         ML_(symerr)("can't mmap XCOFF archive file");
          return False;
       }
 
@@ -2234,7 +2233,7 @@ Bool read_xcoff_o_or_a ( /*MOD*/struct _DebugInfo* di,
          peer at the archive's fixed header. */
 
       if (n_image < sizeof(FL_HDR)) {
-         ML_(symerr)(di, True, "XCOFF archive too small for fixed header");
+         ML_(symerr)("XCOFF archive too small for fixed header");
          goto done;
       }
 
@@ -2252,8 +2251,7 @@ Bool read_xcoff_o_or_a ( /*MOD*/struct _DebugInfo* di,
             && s[6] == '>' && s[7] == '\n') {
            /* ok */
         } else {
-           ML_(symerr)(di, True, 
-                       "Is not XCOFF 'big'-variant .a format archive");
+           ML_(symerr)("Is not XCOFF 'big'-variant .a format archive");
            goto done;
         }
       }
@@ -2264,16 +2262,14 @@ Bool read_xcoff_o_or_a ( /*MOD*/struct _DebugInfo* di,
       AR_HDR* mt_hdr = (AR_HDR*)mtabC;
 
       if (mtabC < image || mtabC + sizeof(AR_HDR) > image + n_image) {
-         ML_(symerr)(di, True, 
-                     "XCOFF archive member table header exceeds image");
+         ML_(symerr)("XCOFF archive member table header exceeds image");
          goto done;
       }
 
       /* should be: backquote newline */
       if (mt_hdr->_ar_name.ar_name[0] != 0x60 /* backquote */
           || mt_hdr->_ar_name.ar_name[1] != 0x0A /* \n */) {
-         ML_(symerr)(di, True, 
-                     "XCOFF archive member table header is invalid");
+         ML_(symerr)("XCOFF archive member table header is invalid");
          goto done;
       }
 
@@ -2288,7 +2284,7 @@ Bool read_xcoff_o_or_a ( /*MOD*/struct _DebugInfo* di,
           || mtabC + sizeof(AR_HDR) 
                    + ascii_to_ULong(&mt_hdr->ar_size, 20) 
              > image + n_image) {
-         ML_(symerr)(di, True, "XCOFF archive member table exceeds image");
+         ML_(symerr)("XCOFF archive member table exceeds image");
          goto done;
       }
 
@@ -2325,8 +2321,7 @@ Bool read_xcoff_o_or_a ( /*MOD*/struct _DebugInfo* di,
          /* Sanity check the selected member */
          UChar* o_hdrC = image + objoff;
          if (o_hdrC + sizeof(AR_HDR) >= image + n_image) {
-            ML_(symerr)(di, True, 
-                        "XCOFF archive member header exceeds image");
+            ML_(symerr)("XCOFF archive member header exceeds image");
             goto done;
          }
          AR_HDR* o_hdr  = (AR_HDR*)o_hdrC;
@@ -2341,14 +2336,12 @@ Bool read_xcoff_o_or_a ( /*MOD*/struct _DebugInfo* di,
             VG_(printf)("member data = %p, size = %ld\n", o_data, o_size);
 
          if (!(o_data >= image && o_data + o_size <= image + n_image)) {
-            ML_(symerr)(di, True, 
-                        "XCOFF archive member exceeds image");
+            ML_(symerr)("XCOFF archive member exceeds image");
             goto done;
          }
 
          if (o_size < sizeof(FILHDR)) {
-            ML_(symerr)(di, True, 
-                        "XCOFF object file header is implausibly small (1)");
+            ML_(symerr)("XCOFF object file header is implausibly small (1)");
 	    goto done;
 	 }
 
@@ -2373,7 +2366,8 @@ Bool read_xcoff_o_or_a ( /*MOD*/struct _DebugInfo* di,
          if (SHOW && SHOW_AR_DETAILS)
             VG_(printf)("\nimage: %p-%p   object: %p-%p\n\n", 
                         image, image+n_image-1, o_data, o_data+o_size-1);
-         ok = read_xcoff_mapped_object( di, o_data, o_size );
+         ok = read_xcoff_mapped_object( si, o_data, o_size,
+                                        data_avma, data_alen );
          goto done;
 
          vg_assert(0);
@@ -2391,7 +2385,7 @@ Bool read_xcoff_o_or_a ( /*MOD*/struct _DebugInfo* di,
       }
 
       vg_assert(i == nmembers);
-      ML_(symerr)(di, True, "can't find object in XCOFF archive file");
+      ML_(symerr)("can't find object in XCOFF archive file");
 
      done:
       if (image) {
@@ -2404,74 +2398,68 @@ Bool read_xcoff_o_or_a ( /*MOD*/struct _DebugInfo* di,
 }
 
 
-/* Main entry point for XCOFF reading.  The following di fields must
-   be filled in by the caller:
-
-     filename
-     memname (optional)
-     text_avma, text_size
-     data_avma, data_size
-
-   and all other fields should be zeroed.
-*/
-Bool ML_(read_xcoff_debug_info) ( struct _DebugInfo* di,
-                                  Bool is_mainexe )
+Bool ML_(read_xcoff_debug_info) ( struct _SegInfo* si,
+                                  Addr   data_avma,
+                                  SSizeT data_alen,
+                                  Bool   is_mainexe )
 {
    Bool ok;
 
    if (VG_(clo_verbosity) > 1 || VG_(clo_trace_redir)) {
-      if (di->memname) {
-         VG_(message)(Vg_DebugMsg, "Reading syms from %s(%s) (%#lx)",
-                      di->filename, di->memname, di->text_avma);
+      if (si->memname) {
+         VG_(message)(Vg_DebugMsg, "Reading syms from %s(%s) (%p)",
+                      si->filename, si->memname, si->text_start_avma);
       } else {
-         VG_(message)(Vg_DebugMsg, "Reading syms from %s (%#lx)",
-                      di->filename, di->text_avma);
+         VG_(message)(Vg_DebugMsg, "Reading syms from %s (%p)",
+                      si->filename, si->text_start_avma);
       }
    }
 
    if (SHOW) {
       VG_(printf)("------------------- BEGIN read xcoff ------------------\n");
-      VG_(printf)("---         file: %s\n",  di->filename);
-      VG_(printf)("---          mem: %s\n",  di->memname ? di->memname  
+      VG_(printf)("---         file: %s\n",  si->filename);
+      VG_(printf)("---          mem: %s\n",  si->memname ? si->memname  
                                                          : (UChar*)"(none)" );
-      VG_(printf)("--- t actual vma: %#lx\n", di->text_avma);
-      VG_(printf)("--- t actual len: %ld\n",  di->text_size);
-      VG_(printf)("--- d actual vma: %#lx\n", di->data_avma);
-      VG_(printf)("--- d actual len: %ld\n",  di->data_size);
+      VG_(printf)("--- t actual vma: %p\n",  si->text_start_avma);
+      VG_(printf)("--- t actual len: %ld\n", si->text_size);
+      VG_(printf)("--- d actual vma: %p\n",  data_avma);
+      VG_(printf)("--- d actual len: %ld\n", data_alen);
    }
 
-   if (di->memname) {
-      /* XCOFF .a file.  di->filename is its name, di->memname is the
+   if (si->memname) {
+      /* XCOFF .a file.  si->filename is its name, si->memname is the
          name of the required .o within it. */
-      ok = read_xcoff_o_or_a( di, di->filename, di->memname );
+      ok = read_xcoff_o_or_a( si, si->filename, si->memname,
+                                  data_avma, (UWord)data_alen );
    } else {
-      /* no archive member name, so di->filename is an XCOFF object */
-      ok = read_xcoff_o_or_a( di, NULL, di->filename );
+      /* no archive member name, so si->filename is an XCOFF object */
+      ok = read_xcoff_o_or_a( si, NULL, si->filename,
+                                  data_avma, (UWord)data_alen );
    }
 
-   di->soname = NULL;
+   si->soname = NULL;
    if (ok) {
       if (is_mainexe) {
-         di->soname = "NONE";
+         si->soname = "NONE";
       } else {
-         UChar* p = VG_(strrchr)(di->filename, '/');
-         p = p  ? p+1  : di->filename;
+         UChar* p = VG_(strrchr)(si->filename, '/');
+         p = p  ? p+1  : si->filename;
          /* p points at the main filename */
-         if (di->memname) {
+         if (si->memname) {
             /* set the soname to "archive.a(member.o)" */
-            Int nbytes = VG_(strlen)(p) + 1 + VG_(strlen)(di->memname) + 1 + 1;
-            UChar* so = ML_(dinfo_zalloc)("di.readxcoff.rxdi.1", nbytes);
+            Int nbytes = VG_(strlen)(p) + 1 + VG_(strlen)(si->memname) + 1 + 1;
+            UChar* so = malloc_AR_SYMTAB(nbytes);
             vg_assert(so);
-            VG_(sprintf)(so, "%s(%s)", p, di->memname);
+            VG_(sprintf)(so, "%s(%s)", p, si->memname);
             vg_assert(VG_(strlen)(so) == nbytes-1);
-            di->soname = so;
+            si->soname = so;
          } else {
             /* no member name, hence soname = "archive.a" */
-            di->soname = ML_(dinfo_strdup)("di.readxcoff.rxdi.2", p);
+            si->soname = VG_(arena_strdup)(VG_AR_SYMTAB, p);
          }
       }
       if (SHOW)
-         VG_(printf)("Setting soname to %s\n", di->soname);
+         VG_(printf)("Setting soname to %s\n", si->soname);
    }
 
    if (SHOW)

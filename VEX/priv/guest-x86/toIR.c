@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2007 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -958,7 +958,7 @@ static void setFlags_INC_DEC ( Bool inc, IRTemp res, IRType ty )
       may require reading all four thunk fields. */
    stmt( IRStmt_Put( OFFB_CC_NDEP, mk_x86g_calculate_eflags_c()) );
    stmt( IRStmt_Put( OFFB_CC_OP,   mkU32(ccOp)) );
-   stmt( IRStmt_Put( OFFB_CC_DEP1, widenUto32(mkexpr(res))) );
+   stmt( IRStmt_Put( OFFB_CC_DEP1, mkexpr(res)) );
    stmt( IRStmt_Put( OFFB_CC_DEP2, mkU32(0)) );
 }
 
@@ -5027,25 +5027,7 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
             case 0xE0: /* FNSTSW %ax */
                DIP("fnstsw %%ax\n");
                /* Get the FPU status word value and dump it in %AX. */
-               if (0) {
-                  /* The obvious thing to do is simply dump the 16-bit
-                     status word value in %AX.  However, due to a
-                     limitation in Memcheck's origin tracking
-                     machinery, this causes Memcheck not to track the
-                     origin of any undefinedness into %AH (only into
-                     %AL/%AX/%EAX), which means origins are lost in
-                     the sequence "fnstsw %ax; test $M,%ah; jcond .." */
-                  putIReg(2, R_EAX, get_FPU_sw());
-               } else {
-                  /* So a somewhat lame kludge is to make it very
-                     clear to Memcheck that the value is written to
-                     both %AH and %AL.  This generates marginally
-                     worse code, but I don't think it matters much. */
-                  IRTemp t16 = newTemp(Ity_I16);
-                  assign(t16, get_FPU_sw());
-                  putIReg( 1, R_AL, unop(Iop_16to8, mkexpr(t16)) );
-                  putIReg( 1, R_AH, unop(Iop_16HIto8, mkexpr(t16)) );
-               }
+               putIReg(2, R_EAX, get_FPU_sw());
                break;
 
             case 0xE8 ... 0xEF: /* FUCOMIP %st(0),%st(?) */

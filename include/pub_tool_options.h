@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2007 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -115,9 +115,6 @@ extern HChar* VG_(clo_xml_user_comment);
 /* Vex iropt control.  Tool-visible so tools can make Vex optimise
    less aggressively if that is needed (callgrind needs this). */
 extern VexControl VG_(clo_vex_control);
-
-/* Number of parents of a backtrace.  Default: 8.  */
-extern Int   VG_(clo_backtrace_size);
 
 /* Call this if a recognised option was bad for some reason.  Note:
    don't use it just because an option was unrecognised -- return

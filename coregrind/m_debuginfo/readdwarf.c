@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2007 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -37,11 +37,9 @@
 #include "pub_core_libcbase.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcprint.h"
+#include "pub_core_mallocfree.h"
 #include "pub_core_options.h"
 #include "pub_core_xarray.h"
-#include "priv_misc.h"             /* dinfo_zalloc/free/strdup */
-#include "priv_d3basics.h"
-#include "priv_tytypes.h"
 #include "priv_storage.h"
 #include "priv_readdwarf.h"        /* self */
 
@@ -77,7 +75,7 @@ static void free_WordArray ( WordArray* wa )
 {
    if (wa->tab) {
       vg_assert(wa->tab_size > 0);
-      ML_(dinfo_free)(wa->tab);
+      VG_(arena_free)(VG_AR_SYMTAB, wa->tab);
    }
    init_WordArray(wa);
 }
@@ -99,13 +97,14 @@ static void addto_WordArray ( WordArray* wa, Word w )
       vg_assert( (wa->tab_size == 0 && wa->tab == NULL)
                  || (wa->tab_size != 0 && wa->tab != NULL) );
       new_size = wa->tab_size == 0 ? 8 : 2 * wa->tab_size;
-      new_tab  = ML_(dinfo_zalloc)("di.aWA.1", new_size * sizeof(Word));
+      new_tab  = VG_(arena_malloc)(VG_AR_SYMTAB, 
+                                   new_size * sizeof(Word));
       vg_assert(new_tab != NULL);
       for (i = 0; i < wa->tab_used; i++)
          new_tab[i] = wa->tab[i];
       wa->tab_size = new_size;
       if (wa->tab)
-         ML_(dinfo_free)(wa->tab);
+         VG_(arena_free)(VG_AR_SYMTAB, wa->tab);
       wa->tab = new_tab;
    }
 
@@ -204,7 +203,6 @@ typedef struct
 } LineSMR;
 
 
-/* FIXME: duplicated in readdwarf3.c */
 static 
 ULong read_leb128 ( UChar* data, Int* length_return, Int sign )
 {
@@ -231,7 +229,7 @@ ULong read_leb128 ( UChar* data, Int* length_return, Int sign )
     * length_return = num_read;
 
   if (sign && (shift < 64) && (byte & 0x40))
-    result |= -(1ULL << shift);
+    result |= (-1ULL) << shift;
 
   return result;
 }
@@ -239,7 +237,6 @@ ULong read_leb128 ( UChar* data, Int* length_return, Int sign )
 /* Small helper functions easier to use
  * value is returned and the given pointer is
  * moved past end of leb128 data */
-/* FIXME: duplicated in readdwarf3.c */
 static ULong read_leb128U( UChar **data )
 {
   Int len;
@@ -249,7 +246,6 @@ static ULong read_leb128U( UChar **data )
 }
 
 /* Same for signed data */
-/* FIXME: duplicated in readdwarf3.c */
 static Long read_leb128S( UChar **data )
 {
    Int len;
@@ -292,7 +288,7 @@ static LineSMR state_machine_regs;
 static 
 void reset_state_machine ( Int is_stmt )
 {
-   if (0) VG_(printf)("smr.a := %p (reset)\n", NULL );
+   if (0) VG_(printf)("smr.a := %p (reset)\n", 0 );
    state_machine_regs.last_address = 0;
    state_machine_regs.last_file = 1;
    state_machine_regs.last_line = 1;
@@ -331,7 +327,7 @@ Char* lookupDir ( Int filename_index,
 /* Handled an extended line op starting at 'data'.  Returns the number
    of bytes that 'data' should be advanced by. */
 static 
-Word process_extended_line_op( struct _DebugInfo* di,
+Word process_extended_line_op( struct _SegInfo* si, OffT debug_offset,
                                WordArray* filenames, 
                                WordArray* dirnames, 
                                WordArray* fnidx2dir, 
@@ -360,8 +356,8 @@ Word process_extended_line_op( struct _DebugInfo* di,
 
    switch (op_code) {
       case DW_LNE_end_sequence:
-         if (0) VG_(printf)("1001: si->o %#lx, smr.a %#lx\n",
-                            di->text_bias, state_machine_regs.address );
+         if (0) VG_(printf)("1001: si->o %p, smr.a %p\n", 
+                            debug_offset, state_machine_regs.address );
          /* JRS: added for compliance with spec; is pointless due to
             reset_state_machine below */
          state_machine_regs.end_sequence = 1; 
@@ -375,18 +371,18 @@ Word process_extended_line_op( struct _DebugInfo* di,
                if (!inRange || !filename)
                   filename = "???";
                ML_(addLineInfo) (
-                  di, 
+                  si, 
                   filename, 
                   lookupDir( state_machine_regs.last_file,
                              fnidx2dir, dirnames ),
-                  di->text_bias + state_machine_regs.last_address, 
-                  di->text_bias + state_machine_regs.address, 
+                  debug_offset + state_machine_regs.last_address, 
+                  debug_offset + state_machine_regs.address, 
                   state_machine_regs.last_line, 0
                );
             }
          }
          reset_state_machine (is_stmt);
-         if (di->ddump_line)
+         if (si->ddump_line)
             VG_(printf)("  Extended opcode %d: End of Sequence\n\n", 
                         (Int)op_code);
          break;
@@ -394,26 +390,26 @@ Word process_extended_line_op( struct _DebugInfo* di,
       case DW_LNE_set_address:
          adr = *((Addr *)data);
          state_machine_regs.address = adr;
-         if (di->ddump_line)
+         if (si->ddump_line)
             VG_(printf)("  Extended opcode %d: set Address to 0x%lx\n",
                         (Int)op_code, (Addr)adr);
          break;
 
       case DW_LNE_define_file:
          name = data;
-         addto_WordArray( filenames, (Word)ML_(addStr)(di,name,-1) );
+         addto_WordArray( filenames, (Word)ML_(addStr)(si,name,-1) );
          data += VG_(strlen) ((char *) data) + 1;
          read_leb128 (data, & bytes_read, 0);
          data += bytes_read;
          read_leb128 (data, & bytes_read, 0);
          data += bytes_read;
          read_leb128 (data, & bytes_read, 0);
-         if (di->ddump_line)
+         if (si->ddump_line)
             VG_(printf)("  DWARF2-line: set_address\n");
          break;
 
       default:
-         if (di->ddump_line)
+         if (si->ddump_line)
             VG_(printf)("process_extended_line_op:default\n");
          break;
    }
@@ -434,7 +430,7 @@ Word process_extended_line_op( struct _DebugInfo* di,
  * Output: - si debug info structures get updated
  */
 static 
-void read_dwarf2_lineblock ( struct _DebugInfo* di,
+void read_dwarf2_lineblock ( struct _SegInfo*  si, OffT debug_offset,
                              UnitInfo* ui, 
                              UChar*    theBlock, /* IMAGE */
                              Int       noLargerThan )
@@ -487,22 +483,21 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
    addto_WordArray( &filenames, (Word)NULL );
 
    if (ui->compdir)
-      addto_WordArray( &dirnames, (Word)ML_(addStr)(di, ui->compdir, -1) );
+      addto_WordArray( &dirnames, (Word)ML_(addStr)(si, ui->compdir, -1) );
    else
-      addto_WordArray( &dirnames, (Word)ML_(addStr)(di, ".", -1) );
+      addto_WordArray( &dirnames, (Word)ML_(addStr)(si, ".", -1) );
 
    addto_WordArray( &fnidx2dir, (Word)0 );  /* compilation dir */
 
    info.li_length = read_initial_length_field( external, &is64 );
    external += is64 ? 12 : 4;
-   if (di->ddump_line)
+   if (si->ddump_line)
       VG_(printf)("  Length:                      %llu\n", 
                   info.li_length);
 
    /* Check the length of the block.  */
    if (info.li_length > noLargerThan) {
-      ML_(symerr)(di, True,
-                  "DWARF line info appears to be corrupt "
+      ML_(symerr)("DWARF line info appears to be corrupt "
                   "- the section is too small");
       goto out;
    }
@@ -510,13 +505,12 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
    /* Check its version number.  */
    info.li_version = * ((UShort *)external);
    external += 2;
-   if (di->ddump_line)
+   if (si->ddump_line)
       VG_(printf)("  DWARF Version:               %d\n", 
                   (Int)info.li_version);
 
    if (info.li_version != 2) {
-      ML_(symerr)(di, True,
-                  "Only DWARF version 2 line info "
+      ML_(symerr)("Only DWARF version 2 line info "
                   "is currently supported.");
       goto out;
    }
@@ -524,19 +518,19 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
    info.li_header_length = ui->dw64 ? *((ULong*)external) 
                                     : (ULong)(*((UInt*)external));
    external += ui->dw64 ? 8 : 4;
-   if (di->ddump_line)
+   if (si->ddump_line)
       VG_(printf)("  Prologue Length:             %llu\n", 
                   info.li_header_length);
 
    info.li_min_insn_length = * ((UChar *)external);
    external += 1;
-   if (di->ddump_line)
+   if (si->ddump_line)
       VG_(printf)("  Minimum Instruction Length:  %d\n", 
                   (Int)info.li_min_insn_length);
 
    info.li_default_is_stmt = * ((UChar *)external);
    external += 1;
-   if (di->ddump_line)
+   if (si->ddump_line)
       VG_(printf)("  Initial value of 'is_stmt':  %d\n", 
                   (Int)info.li_default_is_stmt);
 
@@ -563,19 +557,19 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
    info.li_line_base = * ((UChar *)external);
    info.li_line_base = (Int)(signed char)info.li_line_base;
    external += 1;
-   if (di->ddump_line)
+   if (si->ddump_line)
       VG_(printf)("  Line Base:                   %d\n", 
                   info.li_line_base);
 
    info.li_line_range = * ((UChar *)external);
    external += 1;
-   if (di->ddump_line)
+   if (si->ddump_line)
       VG_(printf)("  Line Range:                  %d\n", 
                   (Int)info.li_line_range);
 
    info.li_opcode_base = * ((UChar *)external);
    external += 1;
-   if (di->ddump_line)
+   if (si->ddump_line)
       VG_(printf)("  Opcode Base:                 %d\n\n", 
                   info.li_opcode_base);
 
@@ -591,7 +585,7 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
 
    /* Read the contents of the Opcodes table.  */
    standard_opcodes = external;
-   if (di->ddump_line) {
+   if (si->ddump_line) {
       VG_(printf)(" Opcodes:\n");
       for (i = 1; i < (Int)info.li_opcode_base; i++) {
          VG_(printf)("  Opcode %d has %d args\n", 
@@ -603,7 +597,7 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
    /* Read the contents of the Directory table.  */
    data = standard_opcodes + info.li_opcode_base - 1;
 
-   if (di->ddump_line)
+   if (si->ddump_line)
       VG_(printf)(" The Directory Table%s\n", 
                   *data == 0 ? " is empty." : ":" );
 
@@ -612,7 +606,7 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
 #     define NBUF 4096
       static Char buf[NBUF];
 
-      if (di->ddump_line)
+      if (si->ddump_line)
          VG_(printf)("  %s\n", data);
 
       /* If data[0] is '/', then 'data' is an absolute path and we
@@ -631,11 +625,11 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
          VG_(strcat)(buf, "/");
          VG_(strcat)(buf, data);
          vg_assert(VG_(strlen)(buf) < NBUF);
-         addto_WordArray( &dirnames, (Word)ML_(addStr)(di,buf,-1) );
+         addto_WordArray( &dirnames, (Word)ML_(addStr)(si,buf,-1) );
          if (0) VG_(printf)("rel path  %s\n", buf);
       } else {
          /* just use 'data'. */
-         addto_WordArray( &dirnames, (Word)ML_(addStr)(di,data,-1) );
+         addto_WordArray( &dirnames, (Word)ML_(addStr)(si,data,-1) );
          if (0) VG_(printf)("abs path  %s\n", data);
       }
 
@@ -644,12 +638,11 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
 #     undef NBUF
    }
 
-   if (di->ddump_line)
+   if (si->ddump_line)
       VG_(printf)("\n");
 
    if (*data != 0) {
-      ML_(symerr)(di, True,
-                  "can't find NUL at end of DWARF2 directory table");
+      ML_(symerr)("can't find NUL at end of DWARF2 directory table");
       goto out;
    }
    data ++;
@@ -657,7 +650,7 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
    /* Read the contents of the File Name table.  This produces a bunch
       of file names, and for each, an index to the corresponding
       directory name entry. */
-   if (di->ddump_line) {
+   if (si->ddump_line) {
       VG_(printf)(" The File Name Table:\n");
       VG_(printf)("  Entry	Dir	Time	Size	Name\n");
    }
@@ -677,26 +670,25 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
       uu_size = read_leb128 (data, & bytes_read, 0);
       data += bytes_read;
 
-      addto_WordArray( &filenames, (Word)ML_(addStr)(di,name,-1) );
+      addto_WordArray( &filenames, (Word)ML_(addStr)(si,name,-1) );
       addto_WordArray( &fnidx2dir, (Word)diridx );
       if (0) VG_(printf)("file %s diridx %d\n", name, diridx );
-      if (di->ddump_line)
+      if (si->ddump_line)
          VG_(printf)("  %d\t%d\t%d\t%d\t%s\n", 
                      i, diridx, uu_time, uu_size, name);
       i++;
    }
 
-   if (di->ddump_line)
+   if (si->ddump_line)
       VG_(printf)("\n");
 
    if (*data != 0) {
-      ML_(symerr)(di, True,
-                  "can't find NUL at end of DWARF2 file name table");
+      ML_(symerr)("can't find NUL at end of DWARF2 file name table");
       goto out;
    }
    data ++;
 
-   if (di->ddump_line)
+   if (si->ddump_line)
       VG_(printf)(" Line Number Statements:\n");
 
    /* Now display the statements.  */
@@ -720,13 +712,13 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
          advAddr = adv;
          state_machine_regs.address += adv;
 
-         if (0) VG_(printf)("smr.a += %#x\n", adv );
+         if (0) VG_(printf)("smr.a += %p\n", adv );
          adv = (op_code % info.li_line_range) + info.li_line_base;
-         if (0) VG_(printf)("1002: di->o %#lx, smr.a %#lx\n",
-                            di->text_bias, state_machine_regs.address );
+         if (0) VG_(printf)("1002: si->o %p, smr.a %p\n", 
+                            debug_offset, state_machine_regs.address );
          state_machine_regs.line += adv;
 
-         if (di->ddump_line)
+         if (si->ddump_line)
             VG_(printf)("  Special opcode %d: advance Address by %d "
                         "to 0x%lx and Line by %d to %d\n", 
                         (Int)op_code, advAddr, state_machine_regs.address,
@@ -742,12 +734,12 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
                if (!inRange || !filename)
                   filename = "???";
                ML_(addLineInfo)(
-                  di, 
+                  si, 
                   filename,
                   lookupDir( state_machine_regs.last_file,
                              &fnidx2dir, &dirnames ),
-                  di->text_bias + state_machine_regs.last_address, 
-                  di->text_bias + state_machine_regs.address, 
+                  debug_offset + state_machine_regs.last_address, 
+                  debug_offset + state_machine_regs.address, 
                   state_machine_regs.last_line, 
                   0
                );
@@ -764,13 +756,13 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
       switch (op_code) {
          case DW_LNS_extended_op:
             data += process_extended_line_op (
-                       di, &filenames, &dirnames, &fnidx2dir,
+                       si, debug_offset, &filenames, &dirnames, &fnidx2dir,
                        data, info.li_default_is_stmt);
             break;
 
          case DW_LNS_copy:
-            if (0) VG_(printf)("1002: di->o %#lx, smr.a %#lx\n",
-                               di->text_bias, state_machine_regs.address );
+            if (0) VG_(printf)("1002: si->o %p, smr.a %p\n", 
+                               debug_offset, state_machine_regs.address );
             if (state_machine_regs.is_stmt) {
                /* only add a statement if there was a previous boundary */
                if (state_machine_regs.last_address) {
@@ -781,12 +773,12 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
                   if (!inRange || !filename)
                      filename = "???";
                   ML_(addLineInfo)(
-                     di, 
+                     si, 
                      filename,
                      lookupDir( state_machine_regs.last_file,
                                 &fnidx2dir, &dirnames ),
-                     di->text_bias + state_machine_regs.last_address, 
-                     di->text_bias + state_machine_regs.address,
+                     debug_offset + state_machine_regs.last_address, 
+                     debug_offset + state_machine_regs.address,
                      state_machine_regs.last_line, 
                      0
                   );
@@ -796,7 +788,7 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
                state_machine_regs.last_line = state_machine_regs.line;
             }
             state_machine_regs.basic_block = 0; /* JRS added */
-            if (di->ddump_line)
+            if (si->ddump_line)
                VG_(printf)("  Copy\n");
             break;
 
@@ -805,8 +797,8 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
                      * read_leb128 (data, & bytes_read, 0);
             data += bytes_read;
             state_machine_regs.address += adv;
-            if (0) VG_(printf)("smr.a += %#x\n", adv );
-            if (di->ddump_line)
+            if (0) VG_(printf)("smr.a += %p\n", adv );
+            if (si->ddump_line)
                VG_(printf)("  Advance PC by %d to 0x%lx\n", 
                            (Int)adv, state_machine_regs.address);
             break;
@@ -815,7 +807,7 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
             adv = read_leb128 (data, & bytes_read, 1);
             data += bytes_read;
             state_machine_regs.line += adv;
-            if (di->ddump_line)
+            if (si->ddump_line)
                VG_(printf)("  Advance Line by %d to %d\n", 
                            (Int)adv, (Int)state_machine_regs.line);
             break;
@@ -824,7 +816,7 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
             adv = read_leb128 (data, & bytes_read, 0);
             data += bytes_read;
             state_machine_regs.file = adv;
-            if (di->ddump_line)
+            if (si->ddump_line)
                VG_(printf)("  Set File Name to entry %d in the File Name Table\n",
                            (Int)adv);
             break;
@@ -833,7 +825,7 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
             adv = read_leb128 (data, & bytes_read, 0);
             data += bytes_read;
             state_machine_regs.column = adv;
-            if (di->ddump_line)
+            if (si->ddump_line)
                VG_(printf)("  DWARF2-line: set_column\n");
             break;
 
@@ -841,13 +833,13 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
             adv = state_machine_regs.is_stmt;
             adv = ! adv;
             state_machine_regs.is_stmt = adv;
-            if (di->ddump_line)
+            if (si->ddump_line)
                VG_(printf)("  DWARF2-line: negate_stmt\n");
             break;
 
          case DW_LNS_set_basic_block:
             state_machine_regs.basic_block = 1;
-            if (di->ddump_line)
+            if (si->ddump_line)
                VG_(printf)("  DWARF2-line: set_basic_block\n");
             break;
 
@@ -855,8 +847,8 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
             adv = (((255 - info.li_opcode_base) / info.li_line_range)
                    * info.li_min_insn_length);
             state_machine_regs.address += adv;
-            if (0) VG_(printf)("smr.a += %#x\n", adv );
-            if (di->ddump_line)
+            if (0) VG_(printf)("smr.a += %p\n", adv );
+            if (si->ddump_line)
                VG_(printf)("  Advance PC by constant %d to 0x%lx\n", 
                            (Int)adv, (Addr)state_machine_regs.address);
             break;
@@ -866,25 +858,25 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
             adv = *((UShort *)data);
             data += 2;
             state_machine_regs.address += adv;
-            if (0) VG_(printf)("smr.a += %#x\n", adv );
-            if (di->ddump_line)
+            if (0) VG_(printf)("smr.a += %p\n", adv );
+            if (si->ddump_line)
                VG_(printf)("  DWARF2-line: fixed_advance_pc\n");
             break;
 
          case DW_LNS_set_prologue_end:
-            if (di->ddump_line)
+            if (si->ddump_line)
                VG_(printf)("  DWARF2-line: set_prologue_end\n");
             break;
 
          case DW_LNS_set_epilogue_begin:
-            if (di->ddump_line)
+            if (si->ddump_line)
                VG_(printf)("  DWARF2-line: set_epilogue_begin\n");
             break;
 
          case DW_LNS_set_isa:
             adv = read_leb128 (data, & bytes_read, 0);
             data += bytes_read;
-            if (di->ddump_line)
+            if (si->ddump_line)
                VG_(printf)("  DWARF2-line: set_isa\n");
             break;
 
@@ -894,7 +886,7 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
                read_leb128 (data, &bytes_read, 0);
                data += bytes_read;
             }
-            if (di->ddump_line)
+            if (si->ddump_line)
                VG_(printf)("  Unknown opcode %d\n", (Int)op_code);
             break;
          }
@@ -904,7 +896,7 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
 
    } /* while (data < end_of_sequence) */
 
-   if (di->ddump_line)
+   if (si->ddump_line)
       VG_(printf)("\n");
 
   out:
@@ -960,7 +952,7 @@ void read_unitinfo_dwarf2( /*OUT*/UnitInfo* ui,
                                   UChar*    unitblock_img,
                                   UChar*    debugabbrev_img,
                                   UChar*    debugstr_img,
-                                  struct _DebugInfo* di )
+                                  struct _SegInfo* si )
 {
    UInt   acode, abcode;
    ULong  atoffs, blklen;
@@ -1116,67 +1108,60 @@ void read_unitinfo_dwarf2( /*OUT*/UnitInfo* ui,
 ////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////
 
-/* Collect the debug info from DWARF3 debugging sections
+
+/* Collect the debug info from dwarf2 debugging sections
  * of a given module.
  * 
  * Inputs: given .debug_xxx sections
- * Output: update di to contain all the DWARF3 debug infos
+ * Output: update si to contain all the dwarf2 debug infos
  */
-void ML_(read_debuginfo_dwarf3)
-        ( struct _DebugInfo* di,
-          UChar* debug_info_img, Word debug_info_sz, /* .debug_info */
-          UChar* debug_abbv_img, Word debug_abbv_sz, /* .debug_abbrev */
-          UChar* debug_line_img, Word debug_line_sz, /* .debug_line */
-          UChar* debug_str_img,  Word debug_str_sz ) /* .debug_str */
+void ML_(read_debuginfo_dwarf2) 
+        ( struct _SegInfo* si, OffT debug_offset,
+          UChar* debuginfo_img,   Int debug_info_sz, /* .debug_info */
+          UChar* debugabbrev_img,                    /* .debug_abbrev */
+          UChar* debugline_img,   Int debug_line_sz, /* .debug_line */
+          UChar* debugstr_img )                      /* .debug_str */
 {
    UnitInfo ui;
    UShort   ver;
    UChar*   block_img;
-   UChar*   end1_img;
+   UChar*   end_img = debuginfo_img + debug_info_sz;
    ULong    blklen;
    Bool     blklen_is_64;
-   Int      blklen_len;
-
-   end1_img  = debug_info_img + debug_info_sz;
-   blklen_len = 0;
+   Int      blklen_len = 0;
 
    /* Make sure we at least have a header for the first block */
    if (debug_info_sz < 4) {
-      ML_(symerr)( di, True, 
-                   "Last block truncated in .debug_info; ignoring" );
+     ML_(symerr)( "Last block truncated in .debug_info; ignoring" );
       return;
    }
 
    /* Iterate on all the blocks we find in .debug_info */
-   for ( block_img = debug_info_img; 
-         block_img < end1_img - 4; 
-         block_img += blklen + blklen_len ) {
+   for ( block_img = debuginfo_img; block_img < end_img - 4; 
+                                    block_img += blklen + blklen_len ) {
 
       /* Read the compilation unit header in .debug_info section - See
          p 70 */
       /* This block length */
       blklen     = read_initial_length_field( block_img, &blklen_is_64 );
       blklen_len = blklen_is_64 ? 12 : 4;
-      if ( block_img + blklen + blklen_len > end1_img ) {
-         ML_(symerr)( di, True,
-                      "Last block truncated in .debug_info; ignoring" );
+      if ( block_img + blklen + blklen_len > end_img ) {
+         ML_(symerr)( "Last block truncated in .debug_info; ignoring" );
          return;
       }
 
       /* version should be 2 */
       ver = *((UShort*)( block_img + blklen_len ));
       if ( ver != 2 ) {
-         ML_(symerr)( di, True,
-                      "Ignoring non-dwarf2 block in .debug_info" );
+         ML_(symerr)( "Ignoring non-dwarf2 block in .debug_info" );
          continue;
       }
       
       /* Fill ui with offset in .debug_line and compdir */
       if (0)
-         VG_(printf)( "Reading UnitInfo at 0x%lx.....\n",
-                      block_img - debug_info_img + 0UL );
-      read_unitinfo_dwarf2( &ui, block_img, 
-                                 debug_abbv_img, debug_str_img, di );
+         VG_(printf)( "Reading UnitInfo at 0x%x.....\n", 
+                      block_img - debuginfo_img );
+      read_unitinfo_dwarf2( &ui, block_img, debugabbrev_img, debugstr_img, si );
       if (0)
          VG_(printf)( "   => LINES=0x%llx    NAME=%s     DIR=%s\n", 
                       ui.stmt_list, ui.name, ui.compdir );
@@ -1186,12 +1171,12 @@ void ML_(read_debuginfo_dwarf3)
          continue;
       
       if (0) 
-         VG_(printf)("debug_line_sz %ld, ui.stmt_list %lld  %s\n",
+         VG_(printf)("debug_line_sz %d, ui.stmt_list %lld  %s\n", 
                      debug_line_sz, ui.stmt_list, ui.name );
       /* Read the .debug_line block for this compile unit */
       read_dwarf2_lineblock( 
-         di, &ui, debug_line_img + ui.stmt_list, 
-                  debug_line_sz  - ui.stmt_list );
+         si, debug_offset, &ui, debugline_img + ui.stmt_list, 
+                                debug_line_sz - ui.stmt_list );
    }
 }
 
@@ -1352,7 +1337,7 @@ enum dwarf_attribute {
 /* end of enums taken from gdb-6.0 sources */
 
 void ML_(read_debuginfo_dwarf1) ( 
-        struct _DebugInfo* di, 
+        struct _SegInfo* si, 
         UChar* dwarf1d, Int dwarf1d_sz, 
         UChar* dwarf1l, Int dwarf1l_sz )
 {
@@ -1457,7 +1442,7 @@ void ML_(read_debuginfo_dwarf1) (
          UChar* ptr;
          UInt   prev_line, prev_delta;
 
-         curr_filenm = ML_(addStr) ( di, src_filename, -1 );
+         curr_filenm = ML_(addStr) ( si, src_filename, -1 );
          prev_line = prev_delta = 0;
 
          ptr = dwarf1l + stmt_list;
@@ -1478,7 +1463,7 @@ void ML_(read_debuginfo_dwarf1) (
 	    if (delta > 0 && prev_line > 0) {
 	       if (0) VG_(printf) ("     %d  %d-%d\n",
                                    prev_line, prev_delta, delta-1);
-	       ML_(addLineInfo) ( di, curr_filenm, NULL,
+	       ML_(addLineInfo) ( si, curr_filenm, NULL,
 		 	          base + prev_delta, base + delta,
 			          prev_line, 0 );
 	    }
@@ -1530,7 +1515,7 @@ void ML_(read_debuginfo_dwarf1) (
    the CFA]. 
 
    JRS: on amd64, the dwarf register numbering is, as per
-   gdb-6.3/gdb/amd64-tdep.c and also amd64-abi-0.98.pdf:
+   gdb-6.3/gdb/tdep-amd64.c and also amd64-abi-0.98.pdf:
 
       0    1    2    3    4    5    6    7
       RAX  RDX  RCX  RBX  RSI  RDI  RBP  RSP
@@ -1786,7 +1771,7 @@ void ML_(read_debuginfo_dwarf1) (
 #  define SP_REG         1
 #  define RA_REG_DEFAULT 8     // CAB: What's a good default ?
 #else
-#  error "Unknown platform"
+#  error Unknown platform
 #endif
 
 /* the number of regs we are prepared to unwind */
@@ -1962,6 +1947,13 @@ static void ppUnwindContext ( UnwindContext* ctx )
    VG_(printf)("\n");
 }
 
+static void* symtab_alloc ( SizeT szB ) {
+   return VG_(arena_malloc)( VG_AR_SYMTAB, szB );
+}
+static void symtab_free ( void* v ) {
+   VG_(arena_free)( VG_AR_SYMTAB, v );
+}
+
 static void initUnwindContext ( /*OUT*/UnwindContext* ctx )
 {
    Int i;
@@ -2027,7 +2019,7 @@ Int copy_convert_CfiExpr_tree ( XArray*        dst,
 static Bool summarise_context( /*OUT*/DiCfSI* si,
                                Addr loc_start,
 	                       UnwindContext* ctx,
-                               struct _DebugInfo* debuginfo )
+                               struct _SegInfo* seginfo )
 {
    Int why = 0;
    initCfiSI(si);
@@ -2038,12 +2030,12 @@ static Bool summarise_context( /*OUT*/DiCfSI* si,
       XArray *src, *dst;
       Int    conv;
       src = ctx->exprs;
-      dst = debuginfo->cfsi_exprs;
+      dst = seginfo->cfsi_exprs;
       if (src && (VG_(sizeXA)(src) > 0) && (!dst)) {
-         dst = VG_(newXA)( ML_(dinfo_zalloc), "di.ccCt.1", ML_(dinfo_free),
+         dst = VG_(newXA)( symtab_alloc, symtab_free,
                            sizeof(CfiExpr) );
          vg_assert(dst);
-         debuginfo->cfsi_exprs = dst;
+         seginfo->cfsi_exprs = dst;
       }
       conv = copy_convert_CfiExpr_tree
                     ( dst, ctx, ctx->cfa_expr_ix );
@@ -2051,7 +2043,7 @@ static Bool summarise_context( /*OUT*/DiCfSI* si,
       if (conv == -1) { why = 6; goto failed; }
       si->cfa_how = CFIC_EXPR;
       si->cfa_off = conv;
-      if (0 && debuginfo->ddump_frames)
+      if (0 && seginfo->ddump_frames)
          ML_(ppCfiExpr)(dst, conv);
    } else
    if (ctx->cfa_is_regoff && ctx->cfa_reg == SP_REG) {
@@ -2080,14 +2072,12 @@ static Bool summarise_context( /*OUT*/DiCfSI* si,
          XArray *src, *dst;                                   \
          Int    conv;                                         \
          src = ctx->exprs;                                    \
-         dst = debuginfo->cfsi_exprs;                         \
+         dst = seginfo->cfsi_exprs;                           \
          if (src && (VG_(sizeXA)(src) > 0) && (!dst)) {       \
-            dst = VG_(newXA)( ML_(dinfo_zalloc),              \
-                              "di.ccCt.2",                    \
-                              ML_(dinfo_free),                \
+            dst = VG_(newXA)( symtab_alloc, symtab_free,      \
                               sizeof(CfiExpr) );              \
             vg_assert(dst);                                   \
-            debuginfo->cfsi_exprs = dst;                      \
+            seginfo->cfsi_exprs = dst;                        \
          }                                                    \
          conv = copy_convert_CfiExpr_tree                     \
                        ( dst, ctx, _ctxreg.arg );             \
@@ -2095,7 +2085,7 @@ static Bool summarise_context( /*OUT*/DiCfSI* si,
          if (conv == -1) { why = 7; goto failed; }            \
          _how = CFIR_EXPR;                                    \
          _off = conv;                                         \
-         if (0 && debuginfo->ddump_frames)                    \
+         if (0 && seginfo->ddump_frames)                      \
             ML_(ppCfiExpr)(dst, conv);                        \
          break;                                               \
       }                                                       \
@@ -2135,9 +2125,9 @@ static Bool summarise_context( /*OUT*/DiCfSI* si,
    return True;
 
   failed:
-   if (VG_(clo_verbosity) > 2 || debuginfo->trace_cfi) {
+   if (VG_(clo_verbosity) > 2 || seginfo->trace_cfi) {
       VG_(message)(Vg_DebugMsg,
-                  "summarise_context(loc_start = %#lx)"
+                  "summarise_context(loc_start = %p)"
                   ": cannot summarise(why=%d):   ", loc_start, why);
       ppUnwindContext(ctx);
    }
@@ -2210,7 +2200,7 @@ static void ppUnwindContext_summary ( UnwindContext* ctx )
    if (ctx->cfa_reg == FP_REG) {
       VG_(printf)("SP/CFA=%d+FP   ", ctx->cfa_off);
    } else {
-      VG_(printf)("SP/CFA=unknown  ");
+      VG_(printf)("SP/CFA=unknown  ", ctx->cfa_off);
    }
 
    VG_(printf)("RA=");
@@ -2446,6 +2436,175 @@ static Addr read_encoded_Addr ( /*OUT*/Int* nbytes,
 
 /* ------------ Run/show DWARF3 expressions ---------- */
 
+/* Taken from binutils-2.17/include/elf/dwarf2.h */
+enum dwarf_location_atom
+  {
+    DW_OP_addr = 0x03,
+    DW_OP_deref = 0x06,
+    DW_OP_const1u = 0x08,
+    DW_OP_const1s = 0x09,
+    DW_OP_const2u = 0x0a,
+    DW_OP_const2s = 0x0b,
+    DW_OP_const4u = 0x0c,
+    DW_OP_const4s = 0x0d,
+    DW_OP_const8u = 0x0e,
+    DW_OP_const8s = 0x0f,
+    DW_OP_constu = 0x10,
+    DW_OP_consts = 0x11,
+    DW_OP_dup = 0x12,
+    DW_OP_drop = 0x13,
+    DW_OP_over = 0x14,
+    DW_OP_pick = 0x15,
+    DW_OP_swap = 0x16,
+    DW_OP_rot = 0x17,
+    DW_OP_xderef = 0x18,
+    DW_OP_abs = 0x19,
+    DW_OP_and = 0x1a,
+    DW_OP_div = 0x1b,
+    DW_OP_minus = 0x1c,
+    DW_OP_mod = 0x1d,
+    DW_OP_mul = 0x1e,
+    DW_OP_neg = 0x1f,
+    DW_OP_not = 0x20,
+    DW_OP_or = 0x21,
+    DW_OP_plus = 0x22,
+    DW_OP_plus_uconst = 0x23,
+    DW_OP_shl = 0x24,
+    DW_OP_shr = 0x25,
+    DW_OP_shra = 0x26,
+    DW_OP_xor = 0x27,
+    DW_OP_bra = 0x28,
+    DW_OP_eq = 0x29,
+    DW_OP_ge = 0x2a,
+    DW_OP_gt = 0x2b,
+    DW_OP_le = 0x2c,
+    DW_OP_lt = 0x2d,
+    DW_OP_ne = 0x2e,
+    DW_OP_skip = 0x2f,
+    DW_OP_lit0 = 0x30,
+    DW_OP_lit1 = 0x31,
+    DW_OP_lit2 = 0x32,
+    DW_OP_lit3 = 0x33,
+    DW_OP_lit4 = 0x34,
+    DW_OP_lit5 = 0x35,
+    DW_OP_lit6 = 0x36,
+    DW_OP_lit7 = 0x37,
+    DW_OP_lit8 = 0x38,
+    DW_OP_lit9 = 0x39,
+    DW_OP_lit10 = 0x3a,
+    DW_OP_lit11 = 0x3b,
+    DW_OP_lit12 = 0x3c,
+    DW_OP_lit13 = 0x3d,
+    DW_OP_lit14 = 0x3e,
+    DW_OP_lit15 = 0x3f,
+    DW_OP_lit16 = 0x40,
+    DW_OP_lit17 = 0x41,
+    DW_OP_lit18 = 0x42,
+    DW_OP_lit19 = 0x43,
+    DW_OP_lit20 = 0x44,
+    DW_OP_lit21 = 0x45,
+    DW_OP_lit22 = 0x46,
+    DW_OP_lit23 = 0x47,
+    DW_OP_lit24 = 0x48,
+    DW_OP_lit25 = 0x49,
+    DW_OP_lit26 = 0x4a,
+    DW_OP_lit27 = 0x4b,
+    DW_OP_lit28 = 0x4c,
+    DW_OP_lit29 = 0x4d,
+    DW_OP_lit30 = 0x4e,
+    DW_OP_lit31 = 0x4f,
+    DW_OP_reg0 = 0x50,
+    DW_OP_reg1 = 0x51,
+    DW_OP_reg2 = 0x52,
+    DW_OP_reg3 = 0x53,
+    DW_OP_reg4 = 0x54,
+    DW_OP_reg5 = 0x55,
+    DW_OP_reg6 = 0x56,
+    DW_OP_reg7 = 0x57,
+    DW_OP_reg8 = 0x58,
+    DW_OP_reg9 = 0x59,
+    DW_OP_reg10 = 0x5a,
+    DW_OP_reg11 = 0x5b,
+    DW_OP_reg12 = 0x5c,
+    DW_OP_reg13 = 0x5d,
+    DW_OP_reg14 = 0x5e,
+    DW_OP_reg15 = 0x5f,
+    DW_OP_reg16 = 0x60,
+    DW_OP_reg17 = 0x61,
+    DW_OP_reg18 = 0x62,
+    DW_OP_reg19 = 0x63,
+    DW_OP_reg20 = 0x64,
+    DW_OP_reg21 = 0x65,
+    DW_OP_reg22 = 0x66,
+    DW_OP_reg23 = 0x67,
+    DW_OP_reg24 = 0x68,
+    DW_OP_reg25 = 0x69,
+    DW_OP_reg26 = 0x6a,
+    DW_OP_reg27 = 0x6b,
+    DW_OP_reg28 = 0x6c,
+    DW_OP_reg29 = 0x6d,
+    DW_OP_reg30 = 0x6e,
+    DW_OP_reg31 = 0x6f,
+    DW_OP_breg0 = 0x70,
+    DW_OP_breg1 = 0x71,
+    DW_OP_breg2 = 0x72,
+    DW_OP_breg3 = 0x73,
+    DW_OP_breg4 = 0x74,
+    DW_OP_breg5 = 0x75,
+    DW_OP_breg6 = 0x76,
+    DW_OP_breg7 = 0x77,
+    DW_OP_breg8 = 0x78,
+    DW_OP_breg9 = 0x79,
+    DW_OP_breg10 = 0x7a,
+    DW_OP_breg11 = 0x7b,
+    DW_OP_breg12 = 0x7c,
+    DW_OP_breg13 = 0x7d,
+    DW_OP_breg14 = 0x7e,
+    DW_OP_breg15 = 0x7f,
+    DW_OP_breg16 = 0x80,
+    DW_OP_breg17 = 0x81,
+    DW_OP_breg18 = 0x82,
+    DW_OP_breg19 = 0x83,
+    DW_OP_breg20 = 0x84,
+    DW_OP_breg21 = 0x85,
+    DW_OP_breg22 = 0x86,
+    DW_OP_breg23 = 0x87,
+    DW_OP_breg24 = 0x88,
+    DW_OP_breg25 = 0x89,
+    DW_OP_breg26 = 0x8a,
+    DW_OP_breg27 = 0x8b,
+    DW_OP_breg28 = 0x8c,
+    DW_OP_breg29 = 0x8d,
+    DW_OP_breg30 = 0x8e,
+    DW_OP_breg31 = 0x8f,
+    DW_OP_regx = 0x90,
+    DW_OP_fbreg = 0x91,
+    DW_OP_bregx = 0x92,
+    DW_OP_piece = 0x93,
+    DW_OP_deref_size = 0x94,
+    DW_OP_xderef_size = 0x95,
+    DW_OP_nop = 0x96,
+    /* DWARF 3 extensions.  */
+    DW_OP_push_object_address = 0x97,
+    DW_OP_call2 = 0x98,
+    DW_OP_call4 = 0x99,
+    DW_OP_call_ref = 0x9a,
+    DW_OP_form_tls_address = 0x9b,
+    DW_OP_call_frame_cfa = 0x9c,
+    DW_OP_bit_piece = 0x9d,
+    /* GNU extensions.  */
+    DW_OP_GNU_push_tls_address = 0xe0,
+    /* HP extensions.  */
+    DW_OP_HP_unknown     = 0xe0, /* Ouch, the same as GNU_push_tls_address.  */
+    DW_OP_HP_is_value    = 0xe1,
+    DW_OP_HP_fltconst4   = 0xe2,
+    DW_OP_HP_fltconst8   = 0xe3,
+    DW_OP_HP_mod_range   = 0xe4,
+    DW_OP_HP_unmod_range = 0xe5,
+    DW_OP_HP_tls         = 0xe6
+  };
+
+
 /* Convert the DWARF3 expression in expr[0 .. exprlen-1] into a dag
    (of CfiExprs) stored in ctx->exprs, and return the index in
    ctx->exprs of the root node.  Or fail in which case return -1. */
@@ -2632,7 +2791,7 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
                                 UChar* instr,
                                 UnwindContext* restore_ctx,
                                 AddressDecodingInfo* adi,
-                                struct _DebugInfo* di )
+                                struct _SegInfo* si )
 {
    Int    off, reg, reg2, nleb, len;
    UInt   delta;
@@ -2641,13 +2800,13 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
    Int    i   = 0;
    UChar  hi2 = (instr[i] >> 6) & 3;
    UChar  lo6 = instr[i] & 0x3F;
-   Addr   printing_bias = ((Addr)ctx->initloc) - ((Addr)di->text_bias);
+   Addr   printing_bias = ((Addr)ctx->initloc) - ((Addr)si->text_bias);
    i++;
 
    if (hi2 == DW_CFA_advance_loc) {
       delta = (UInt)lo6;
       ctx->loc += delta;
-      if (di->ddump_frames)
+      if (si->ddump_frames)
          VG_(printf)("  DW_CFA_advance_loc: %d to %08lx\n", 
                      (Int)delta, (Addr)ctx->loc + printing_bias);
       return i;
@@ -2662,7 +2821,7 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
          return 0; /* fail */
       ctx->reg[reg].tag = RR_CFAOff;
       ctx->reg[reg].arg = off * ctx->data_a_f;
-      if (di->ddump_frames)
+      if (si->ddump_frames)
          VG_(printf)("  DW_CFA_offset: r%d at cfa%s%d\n",
                      (Int)reg, ctx->reg[reg].arg < 0 ? "" : "+", 
                      (Int)ctx->reg[reg].arg );
@@ -2676,7 +2835,7 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
       if (restore_ctx == NULL)
          return 0; /* fail */
       ctx->reg[reg] = restore_ctx->reg[reg];
-      if (di->ddump_frames)
+      if (si->ddump_frames)
          VG_(printf)("  DW_CFA_restore: r%d\n", (Int)reg);
       return i;
    }
@@ -2685,7 +2844,7 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
 
    switch (lo6) {
       case DW_CFA_nop: 
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  DW_CFA_nop\n");
          break;
       case DW_CFA_set_loc:
@@ -2697,27 +2856,27 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
             DWARF3 spec. */
          ctx->loc = read_encoded_Addr(&len, adi, &instr[i]);
          i += len;
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  rci:DW_CFA_set_loc\n");
          break;
       case DW_CFA_advance_loc1:
          delta = (UInt)read_UChar(&instr[i]); i+= sizeof(UChar);
          ctx->loc += delta;
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  DW_CFA_advance_loc1: %d to %08lx\n", 
                         (Int)delta, (Addr)ctx->loc + printing_bias);
          break;
       case DW_CFA_advance_loc2:
          delta = (UInt)read_UShort(&instr[i]); i+= sizeof(UShort);
          ctx->loc += delta;
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  DW_CFA_advance_loc2: %d to %08lx\n", 
                         (Int)delta, (Addr)ctx->loc + printing_bias);
          break;
       case DW_CFA_advance_loc4:
          delta = (UInt)read_UInt(&instr[i]); i+= sizeof(UInt);
          ctx->loc += delta;
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  DW_CFA_advance_loc4: %d to %08lx\n", 
                         (Int)delta, (Addr)ctx->loc + printing_bias);
          break;
@@ -2733,7 +2892,7 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
          ctx->cfa_expr_ix   = 0;
          ctx->cfa_reg       = reg;
          ctx->cfa_off       = off;
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  DW_CFA_def_cfa: r%d ofs %d\n", (Int)reg, (Int)off);
          break;
 
@@ -2748,7 +2907,7 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
          ctx->cfa_expr_ix   = 0;
          ctx->cfa_reg       = reg;
          ctx->cfa_off       = off * ctx->data_a_f;
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  rci:DW_CFA_def_cfa_sf\n");
          break;
 
@@ -2763,7 +2922,7 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
             return 0; /* fail */
          ctx->reg[reg].tag = RR_Reg;
          ctx->reg[reg].arg = reg2;
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  DW_CFA_register: r%d in r%d\n", 
                         (Int)reg, (Int)reg2);
          break;
@@ -2777,7 +2936,7 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
             return 0; /* fail */
          ctx->reg[reg].tag = RR_CFAOff;
          ctx->reg[reg].arg = off * ctx->data_a_f;
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  rci:DW_CFA_offset_extended\n");
          break;
 
@@ -2790,7 +2949,7 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
             return 0; /* fail */
          ctx->reg[reg].tag = RR_CFAOff;
          ctx->reg[reg].arg = off * ctx->data_a_f;
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  DW_CFA_offset_extended_sf: r%d at cfa%s%d\n", 
                         reg, ctx->reg[reg].arg < 0 ? "" : "+", 
                         (Int)ctx->reg[reg].arg);
@@ -2805,7 +2964,7 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
             return 0; /* fail */
          ctx->reg[reg].tag = RR_CFAOff;
          ctx->reg[reg].arg = (-off) * ctx->data_a_f;
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  rci:DW_CFA_GNU_negative_offset_extended\n");
          break;
 
@@ -2817,7 +2976,7 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
 	 if (restore_ctx == NULL)
 	    return 0; /* fail */
 	 ctx->reg[reg] = restore_ctx->reg[reg];
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  rci:DW_CFA_restore_extended\n");
          break;
 
@@ -2830,7 +2989,7 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
             return 0; /* fail */
          ctx->reg[reg].tag = RR_CFAValOff;
          ctx->reg[reg].arg = off * ctx->data_a_f;
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  rci:DW_CFA_val_offset\n");
          break;
 
@@ -2843,7 +3002,7 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
             return 0; /* fail */
          ctx->reg[reg].tag = RR_CFAValOff;
          ctx->reg[reg].arg = off * ctx->data_a_f;
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  rci:DW_CFA_val_offset_sf\n");
          break;
 
@@ -2856,7 +3015,7 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
          ctx->cfa_expr_ix   = 0;
          ctx->cfa_reg       = reg;
          /* ->cfa_off unchanged */
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  DW_CFA_def_cfa_reg: r%d\n", (Int)reg );
          break;
 
@@ -2867,7 +3026,7 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
          ctx->cfa_expr_ix   = 0;
          /* ->reg is unchanged */
          ctx->cfa_off       = off;
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  DW_CFA_def_cfa_offset: %d\n", (Int)off);
          break;
 
@@ -2878,7 +3037,7 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
          ctx->cfa_expr_ix   = 0;
          /* ->reg is unchanged */
          ctx->cfa_off       = off * ctx->data_a_f;
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  DW_CFA_def_cfa_offset_sf: %d\n", ctx->cfa_off);
          break;
 
@@ -2889,7 +3048,7 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
             return 0; /* fail */
          ctx->reg[reg].tag = RR_Undef;
          ctx->reg[reg].arg = 0;
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  rci:DW_CFA_undefined\n");
          break;
 
@@ -2898,7 +3057,7 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
             ignores these. */
          off = read_leb128( &instr[i], &nleb, 0 );
          i += nleb;
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  rci:DW_CFA_GNU_args_size (ignored)\n");
          break;
 
@@ -2914,14 +3073,14 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
          i += len;
          if (reg < 0 || reg >= N_CFI_REGS)
             return 0; /* fail */
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  DW_CFA_expression: r%d (", 
                         (Int)reg);
          /* Convert the expression into a dag rooted at ctx->exprs index j,
             or fail. */
          j = dwarfexpr_to_dag ( ctx, expr, len, True/*push CFA at start*/, 
-                                di->ddump_frames);
-         if (di->ddump_frames)
+                                si->ddump_frames);
+         if (si->ddump_frames)
             VG_(printf)(")\n");
          vg_assert(j >= -1);
          if (j >= 0) {
@@ -2945,14 +3104,14 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
          i += len;
          if (reg < 0 || reg >= N_CFI_REGS)
             return 0; /* fail */
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  DW_CFA_val_expression: r%d (", 
                         (Int)reg);
          /* Convert the expression into a dag rooted at ctx->exprs index j,
             or fail. */
          j = dwarfexpr_to_dag ( ctx, expr, len, True/*push CFA at start*/, 
-                                di->ddump_frames);
-         if (di->ddump_frames)
+                                si->ddump_frames);
+         if (si->ddump_frames)
             VG_(printf)(")\n");
          vg_assert(j >= -1);
          if (j >= 0) {
@@ -2970,13 +3129,13 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
          i += nleb;
          expr = &instr[i];
          i += len;
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  DW_CFA_def_cfa_expression (");
          /* Convert the expression into a dag rooted at ctx->exprs index j,
             or fail. */
          j = dwarfexpr_to_dag ( ctx, expr, len, True/*push CFA at start*/, 
-                                di->ddump_frames);
-         if (di->ddump_frames)
+                                si->ddump_frames);
+         if (si->ddump_frames)
             VG_(printf)(")\n");
          ctx->cfa_is_regoff = False;
          ctx->cfa_reg       = 0;
@@ -2987,14 +3146,14 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
       case DW_CFA_GNU_window_save:
          /* Ignored.  This appears to be sparc-specific; quite why it
             turns up in SuSE-supplied x86 .so's beats me. */
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("DW_CFA_GNU_window_save\n");
          break;
 
       default: 
          VG_(message)(Vg_DebugMsg, "DWARF2 CFI reader: unhandled CFI "
                                    "instruction 0:%d", (Int)lo6); 
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  rci:run_CF_instruction:default\n");
          i = 0;
          break;
@@ -3057,7 +3216,7 @@ static Int show_CF_instruction ( UChar* instr,
             (now known to be incorrect -- the address is encoded) */
          loc = read_encoded_Addr(&len, adi, &instr[i]);
          i += len;
-         VG_(printf)("  sci:DW_CFA_set_loc(%#lx)\n", loc);
+         VG_(printf)("  sci:DW_CFA_set_loc(%p)\n", loc); 
          break;
 
       case DW_CFA_advance_loc1:
@@ -3251,7 +3410,7 @@ static void show_CF_instructions ( UChar* instrs, Int ilen,
    reached, or until there is a failure.  Return True iff success. 
 */
 static 
-Bool run_CF_instructions ( struct _DebugInfo* di,
+Bool run_CF_instructions ( struct _SegInfo* si,
                            Bool record,
                            UnwindContext* ctx, UChar* instrs, Int ilen,
                            UWord fde_arange,
@@ -3269,17 +3428,17 @@ Bool run_CF_instructions ( struct _DebugInfo* di,
       if (i >= ilen) break;
       if (0) (void)show_CF_instruction( &instrs[i], adi, 
                                         ctx->code_a_f, ctx->data_a_f );
-      j = run_CF_instruction( ctx, &instrs[i], restore_ctx, adi, di );
+      j = run_CF_instruction( ctx, &instrs[i], restore_ctx, adi, si );
       if (j == 0)
          return False; /* execution failed */
       i += j;
       if (0) ppUnwindContext(ctx);
       if (record && loc_prev != ctx->loc) {
-         summ_ok = summarise_context ( &cfsi, loc_prev, ctx, di );
+         summ_ok = summarise_context ( &cfsi, loc_prev, ctx, si );
          if (summ_ok) {
-            ML_(addDiCfSI)(di, &cfsi);
-            if (di->trace_cfi)
-               ML_(ppDiCfSI)(di->cfsi_exprs, &cfsi);
+            ML_(addDiCfSI)(si, &cfsi);
+            if (si->trace_cfi)
+               ML_(ppDiCfSI)(si->cfsi_exprs, &cfsi);
          }
       }
    }
@@ -3287,11 +3446,11 @@ Bool run_CF_instructions ( struct _DebugInfo* di,
       loc_prev = ctx->loc;
       ctx->loc = fde_arange;
       if (record) {
-         summ_ok = summarise_context ( &cfsi, loc_prev, ctx, di );
+         summ_ok = summarise_context ( &cfsi, loc_prev, ctx, si );
          if (summ_ok) {
-            ML_(addDiCfSI)(di, &cfsi);
-            if (di->trace_cfi)
-               ML_(ppDiCfSI)(di->cfsi_exprs, &cfsi);
+            ML_(addDiCfSI)(si, &cfsi);
+            if (si->trace_cfi)
+               ML_(ppDiCfSI)(si->cfsi_exprs, &cfsi);
          }
       }
    }
@@ -3337,7 +3496,8 @@ static CIE the_CIEs[N_CIEs];
 
 
 void ML_(read_callframe_info_dwarf3)
-        ( /*OUT*/struct _DebugInfo* di, UChar* ehframe_image )
+        ( /*OUT*/struct _SegInfo* si, 
+          UChar* ehframe_image, Int ehframe_sz, Addr ehframe_avma )
 {
    Int    nbytes;
    HChar* how = NULL;
@@ -3349,13 +3509,12 @@ void ML_(read_callframe_info_dwarf3)
    return;
 #  endif
 
-   if (di->trace_cfi) {
+   if (si->trace_cfi) {
       VG_(printf)("\n-----------------------------------------------\n");
-      VG_(printf)("CFI info: szB %ld, _avma %#lx, _image %p\n",
-                  di->ehframe_size, di->ehframe_avma,
-                  ehframe_image );
+      VG_(printf)("CFI info: szB %d, _avma %p, _image %p\n",
+	          ehframe_sz, (void*)ehframe_avma, (void*)ehframe_image );
       VG_(printf)("CFI info: name %s\n",
-                  di->filename );
+		  si->filename );
    }
 
    /* Loop over CIEs/FDEs */
@@ -3386,11 +3545,11 @@ void ML_(read_callframe_info_dwarf3)
       Bool   dw64;
 
       /* Are we done? */
-      if (data == ehframe_image + di->ehframe_size)
+      if (data == ehframe_image + ehframe_sz)
          return;
 
       /* Overshot the end?  Means something is wrong */
-      if (data > ehframe_image + di->ehframe_size) {
+      if (data > ehframe_image + ehframe_sz) {
          how = "overran the end of .eh_frame";
          goto bad;
       }
@@ -3399,13 +3558,12 @@ void ML_(read_callframe_info_dwarf3)
          Figure out which it is. */
 
       ciefde_start = data;
-      if (di->trace_cfi) 
+      if (si->trace_cfi) 
          VG_(printf)("\ncie/fde.start   = %p (ehframe_image + 0x%lx)\n", 
-                     ciefde_start,
-                     ciefde_start - ehframe_image + 0UL);
+                     ciefde_start, ciefde_start - ehframe_image);
 
       ciefde_len = (ULong) read_UInt(data); data += sizeof(UInt);
-      if (di->trace_cfi) 
+      if (si->trace_cfi) 
          VG_(printf)("cie/fde.length  = %lld\n", ciefde_len);
 
       /* Apparently, if the .length field is zero, we are at the end
@@ -3413,7 +3571,7 @@ void ML_(read_callframe_info_dwarf3)
          Specification (see comments far above here) and is one of the
          places where .eh_frame and .debug_frame data differ. */
       if (ciefde_len == 0) {
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("%08lx ZERO terminator\n\n",
                         ((Addr)ciefde_start) - ((Addr)ehframe_image));
          return;
@@ -3438,7 +3596,7 @@ void ML_(read_callframe_info_dwarf3)
          data += sizeof(UInt); /* XXX see XXX below */
       }
 
-      if (di->trace_cfi) 
+      if (si->trace_cfi) 
          VG_(printf)("cie.pointer     = %lld\n", cie_pointer);
 
       /* If cie_pointer is zero, we've got a CIE; else it's an FDE. */
@@ -3449,7 +3607,7 @@ void ML_(read_callframe_info_dwarf3)
          UChar* cie_augmentation;
 
          /* --------- CIE --------- */
-	 if (di->trace_cfi) 
+	 if (si->trace_cfi) 
             VG_(printf)("------ new CIE (#%d of 0 .. %d) ------\n", 
                         n_CIEs, N_CIEs - 1);
 
@@ -3468,16 +3626,16 @@ void ML_(read_callframe_info_dwarf3)
             later when looking at an FDE. */
          the_CIEs[this_CIE].offset = (ULong)(ciefde_start - ehframe_image);
 
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("%08lx %08lx %08lx CIE\n",
                         ((Addr)ciefde_start) - ((Addr)ehframe_image),
                         (Addr)ciefde_len,
                         (Addr)(UWord)cie_pointer );
 
          cie_version = read_UChar(data); data += sizeof(UChar);
-         if (di->trace_cfi)
+         if (si->trace_cfi)
             VG_(printf)("cie.version     = %d\n", (Int)cie_version);
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  Version:               %d\n", (Int)cie_version);
          if (cie_version != 1) {
             how = "unexpected CIE version (not 1)";
@@ -3486,9 +3644,9 @@ void ML_(read_callframe_info_dwarf3)
 
          cie_augmentation = data;
          data += 1 + VG_(strlen)(cie_augmentation);
-         if (di->trace_cfi) 
+         if (si->trace_cfi) 
             VG_(printf)("cie.augment     = \"%s\"\n", cie_augmentation);
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  Augmentation:          \"%s\"\n", cie_augmentation);
 
          if (cie_augmentation[0] == 'e' && cie_augmentation[1] == 'h') {
@@ -3498,28 +3656,28 @@ void ML_(read_callframe_info_dwarf3)
 
          the_CIEs[this_CIE].code_a_f = read_leb128( data, &nbytes, 0);
          data += nbytes;
-         if (di->trace_cfi) 
+         if (si->trace_cfi) 
             VG_(printf)("cie.code_af     = %d\n", 
                         the_CIEs[this_CIE].code_a_f);
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  Code alignment factor: %d\n",
                         (Int)the_CIEs[this_CIE].code_a_f);
 
          the_CIEs[this_CIE].data_a_f = read_leb128( data, &nbytes, 1);
          data += nbytes;
-         if (di->trace_cfi) 
+         if (si->trace_cfi) 
             VG_(printf)("cie.data_af     = %d\n",
                         the_CIEs[this_CIE].data_a_f);
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  Data alignment factor: %d\n",
                         (Int)the_CIEs[this_CIE].data_a_f);
 
          the_CIEs[this_CIE].ra_reg = (Int)read_UChar(data); 
          data += sizeof(UChar);
-         if (di->trace_cfi) 
+         if (si->trace_cfi) 
             VG_(printf)("cie.ra_reg      = %d\n", 
                         the_CIEs[this_CIE].ra_reg);
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("  Return address column: %d\n",
                         (Int)the_CIEs[this_CIE].ra_reg);
 
@@ -3536,7 +3694,7 @@ void ML_(read_callframe_info_dwarf3)
             data += nbytes;
             the_CIEs[this_CIE].instrs = data + length;
             cie_augmentation++;
-            if (di->ddump_frames) {
+            if (si->ddump_frames) {
                UInt i;
                VG_(printf)("  Augmentation data:    ");
                for (i = 0; i < length; i++)
@@ -3580,20 +3738,20 @@ void ML_(read_callframe_info_dwarf3)
 
         done_augmentation:
 
-         if (di->trace_cfi) 
+         if (si->trace_cfi) 
             VG_(printf)("cie.encoding    = 0x%x\n", 
                         the_CIEs[this_CIE].address_encoding);
 
          the_CIEs[this_CIE].instrs = data;
          the_CIEs[this_CIE].ilen
             = ciefde_start + ciefde_len + sizeof(UInt) - data;
-         if (di->trace_cfi) {
+         if (si->trace_cfi) {
             VG_(printf)("cie.instrs      = %p\n", the_CIEs[this_CIE].instrs);
             VG_(printf)("cie.ilen        = %d\n", the_CIEs[this_CIE].ilen);
 	 }
 
          if (the_CIEs[this_CIE].ilen < 0
-             || the_CIEs[this_CIE].ilen > di->ehframe_size) {
+             || the_CIEs[this_CIE].ilen > ehframe_sz) {
             how = "implausible # cie initial insns";
             goto bad;
          }
@@ -3602,22 +3760,22 @@ void ML_(read_callframe_info_dwarf3)
 
          /* Show the CIE's instructions (the preamble for each FDE
             that uses this CIE). */ 
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("\n");
 
-         if (di->trace_cfi || di->ddump_frames) {
+         if (si->trace_cfi || si->ddump_frames) {
             AddressDecodingInfo adi;
             adi.encoding      = the_CIEs[this_CIE].address_encoding;
             adi.ehframe_image = ehframe_image;
-            adi.ehframe_avma  = di->ehframe_avma;
-            adi.text_bias     = di->text_bias;
+            adi.ehframe_avma  = ehframe_avma;
+            adi.text_bias     = si->text_bias;
             show_CF_instructions( the_CIEs[this_CIE].instrs, 
                                   the_CIEs[this_CIE].ilen, &adi,
                                   the_CIEs[this_CIE].code_a_f,
                                   the_CIEs[this_CIE].data_a_f );
          }
 
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("\n");
 
       } else {
@@ -3656,17 +3814,17 @@ void ML_(read_callframe_info_dwarf3)
 
          adi.encoding      = the_CIEs[cie].address_encoding;
          adi.ehframe_image = ehframe_image;
-         adi.ehframe_avma  = di->ehframe_avma;
-         adi.text_bias     = di->text_bias;
+         adi.ehframe_avma  = ehframe_avma;
+         adi.text_bias     = si->text_bias;
          fde_initloc = read_encoded_Addr(&nbytes, &adi, data);
          data += nbytes;
-         if (di->trace_cfi) 
-            VG_(printf)("fde.initloc     = %#lx\n", fde_initloc);
+         if (si->trace_cfi) 
+            VG_(printf)("fde.initloc     = %p\n", (void*)fde_initloc);
 
          adi.encoding      = the_CIEs[cie].address_encoding & 0xf;
          adi.ehframe_image = ehframe_image;
-         adi.ehframe_avma  = di->ehframe_avma;
-         adi.text_bias     = di->text_bias;
+         adi.ehframe_avma  = ehframe_avma;
+         adi.text_bias     = si->text_bias;
 
          /* WAS (incorrectly):
             fde_arange = read_encoded_Addr(&nbytes, &adi, data);
@@ -3686,22 +3844,22 @@ void ML_(read_callframe_info_dwarf3)
            }
          }
 
-         if (di->trace_cfi) 
-            VG_(printf)("fde.arangec     = %#lx\n", fde_arange);
+         if (si->trace_cfi) 
+            VG_(printf)("fde.arangec     = %p\n", (void*)fde_arange);
 
-         if (di->ddump_frames)
+         if (si->ddump_frames)
             VG_(printf)("%08lx %08lx %08lx FDE cie=%08lx pc=%08lx..%08lx\n",
                         ((Addr)ciefde_start) - ((Addr)ehframe_image),
                         (Addr)ciefde_len,
                         (Addr)(UWord)cie_pointer,
                         (Addr)look_for, 
-                        ((Addr)fde_initloc) - di->text_bias, 
-                        ((Addr)fde_initloc) - di->text_bias + fde_arange);
+                        ((Addr)fde_initloc) - si->text_bias, 
+                        ((Addr)fde_initloc) - si->text_bias + fde_arange);
 
          if (the_CIEs[cie].saw_z_augmentation) {
             UInt length = read_leb128( data, &nbytes, 0);
             data += nbytes;
-            if (di->ddump_frames && (length > 0)) {
+            if (si->ddump_frames && (length > 0)) {
                UInt i;
                VG_(printf)("  Augmentation data:    ");
                for (i = 0; i < length; i++)
@@ -3713,12 +3871,12 @@ void ML_(read_callframe_info_dwarf3)
 
          fde_instrs = data;
          fde_ilen   = ciefde_start + ciefde_len + sizeof(UInt) - data;
-         if (di->trace_cfi) {
+         if (si->trace_cfi) {
             VG_(printf)("fde.instrs      = %p\n", fde_instrs);
             VG_(printf)("fde.ilen        = %d\n", (Int)fde_ilen);
 	 }
 
-         if (fde_ilen < 0 || fde_ilen > di->ehframe_size) {
+         if (fde_ilen < 0 || fde_ilen > ehframe_sz) {
             how = "implausible # fde insns";
             goto bad;
          }
@@ -3727,10 +3885,10 @@ void ML_(read_callframe_info_dwarf3)
 
          adi.encoding      = the_CIEs[cie].address_encoding;
          adi.ehframe_image = ehframe_image;
-         adi.ehframe_avma  = di->ehframe_avma;
-         adi.text_bias     = di->text_bias;
+         adi.ehframe_avma  = ehframe_avma;
+         adi.text_bias     = si->text_bias;
 
-         if (di->trace_cfi)
+         if (si->trace_cfi)
             show_CF_instructions( fde_instrs, fde_ilen, &adi,
                                   the_CIEs[cie].code_a_f,
                                   the_CIEs[cie].data_a_f );
@@ -3740,8 +3898,7 @@ void ML_(read_callframe_info_dwarf3)
          ctx.data_a_f = the_CIEs[cie].data_a_f;
          ctx.initloc  = fde_initloc;
          ctx.ra_reg   = the_CIEs[cie].ra_reg;
-         ctx.exprs    = VG_(newXA)( ML_(dinfo_zalloc), "di.rcid.1",
-                                    ML_(dinfo_free), 
+         ctx.exprs    = VG_(newXA)( symtab_alloc, symtab_free, 
                                     sizeof(CfiExpr) );
          vg_assert(ctx.exprs);
 
@@ -3751,14 +3908,14 @@ void ML_(read_callframe_info_dwarf3)
             at the time the CIE was first encountered.  Note, not
             thread safe - if this reader is ever made threaded, should
             fix properly. */
-	 { Bool hack = di->ddump_frames; 
-           di->ddump_frames = False;
+	 { Bool hack = si->ddump_frames; 
+           si->ddump_frames = False;
            initUnwindContext(&restore_ctx);
            ok = run_CF_instructions(
-                   di, False, &ctx, the_CIEs[cie].instrs, 
+                   si, False, &ctx, the_CIEs[cie].instrs, 
                    the_CIEs[cie].ilen, 0, NULL, &adi
                 );
-           di->ddump_frames = hack;
+           si->ddump_frames = hack;
          }
          /* And now run the instructions for the FDE, starting from
             the state created by running the CIE preamble
@@ -3766,10 +3923,10 @@ void ML_(read_callframe_info_dwarf3)
          if (ok) {
             restore_ctx = ctx;
 	    ok = run_CF_instructions(
-                    di, True, &ctx, fde_instrs, fde_ilen, fde_arange, 
+                    si, True, &ctx, fde_instrs, fde_ilen, fde_arange, 
                     &restore_ctx, &adi
                  );
-            if (di->ddump_frames)
+            if (si->ddump_frames)
                VG_(printf)("\n");
 	 }
 

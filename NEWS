@@ -1,11 +1,4 @@
 
-Release 3.4.0 (???)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Changes include:
-- SSE3 insns now supported.  Changed CPUID output to be Core-2, so now it
-  claims to be a Core 2 E6600.
-
-
 Release 3.3.1 (4 June 2008)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 3.3.1 fixes a bunch of bugs in 3.3.0, adds support for glibc-2.8 based
