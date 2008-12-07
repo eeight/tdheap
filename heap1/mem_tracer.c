@@ -17,7 +17,7 @@ XArray *blocks_clusters;
 static VgHashTable mem_table;
 
 MemBlock *NewMemBlock(Addr start_addr, SizeT size) {
-    MemBlock *block = VG_(malloc)("testplugin.newmemblock.1", sizeof(*block));
+    MemBlock *block = VG_(malloc)(sizeof(*block));
     
     block->start_addr = start_addr;
     block->size = size;
@@ -26,7 +26,6 @@ MemBlock *NewMemBlock(Addr start_addr, SizeT size) {
     block->writes_count = 0;
     block->links_to = VG_(OSetWord_Create)(
         &VG_(malloc),
-        "testplugin.newmemblock.2",
         &VG_(free));
 
     block->map = VG_(HT_construct)("testplugin.newmemblock.3");
@@ -37,13 +36,11 @@ MemBlock *NewMemBlock(Addr start_addr, SizeT size) {
 }
 
 MemNode *NewMemNode(ULong key, MemBlock *block) {
-    MemNode *node = VG_(malloc)("testplugin.newmemnode",
-                                sizeof(*node));
+    MemNode *node = VG_(malloc)(sizeof(*node));
 
     node->key = key;
     node->blocks = VG_(OSetWord_Create)(
             &VG_(malloc),
-            "testplugin.newmemnode",
             &VG_(free));
     VG_(OSetWord_Insert)(node->blocks, (UWord)block);
 
@@ -54,7 +51,6 @@ void InitMemTracer(void) {
     mem_table = VG_(HT_construct)("testplugin.initmemtracer.1");
     blocks_allocated = VG_(newXA)(
             &VG_(malloc),
-            "testplugin.initmemtracer.2",
             &VG_(free),
             sizeof(void *));
     blocks_clusters = NULL;
@@ -152,7 +148,6 @@ void VG_REGPARM(2) AddUsedFrom(MemBlock *block, Addr addr) {
     if (block->used_from == NULL) {
         block->used_from = VG_(OSetWord_Create)(
             &VG_(malloc),
-            "testplugin.addusedfrom",
             &VG_(free));
     }
 
@@ -168,8 +163,7 @@ void SanityFail(char *msg) {
 
 static
 MemBlockMapEntry *NewMemBlockMapEntry(UWord offset, UChar size) {
-  MemBlockMapEntry *entry = VG_(malloc)("testplugin.newmemblockmapentry",
-                                        sizeof(*entry));
+  MemBlockMapEntry *entry = VG_(malloc)(sizeof(*entry));
   entry->offset = offset;
   entry->size = size;
   entry->block = NULL;
@@ -283,24 +277,19 @@ void SetAdd(OSet *to, OSet *from) {
 
 static
 void CreateNewMemClusterWithOneElement(MemBlock *a) {
-    MemCluster *cluster = VG_(malloc)(
-            "testplugin.createnewmemclusterwithoneelement.1",
-            sizeof(*cluster));
+    MemCluster *cluster = VG_(malloc)(sizeof(*cluster));
     cluster->used_from = VG_(OSetWord_Create)(
             &VG_(malloc),
-            "testplugin.createnewmemclusterwithoneelement.2",
             &VG_(free));
     cluster->links_to = VG_(OSetWord_Create)(
             &VG_(malloc),
-            "testplugin.createnewmemclusterwithoneelement.3",
             &VG_(free));
     cluster->blocks = VG_(newXA)(
             &VG_(malloc),
-            "testplugin.createnewmemclusterwithoneelement.4",
             &VG_(free),
             sizeof(void *));
     cluster->map = VG_(HT_construct)(
-        "testplugin.createnewmemclusterwithoneelement.5");
+        "testplugin.createnewmemclusterwithoneelement");
 
     SetAdd(cluster->used_from, a->used_from);
 
@@ -354,7 +343,6 @@ void MergeClusters(void) {
     } while (merged);
     new_clusters = VG_(newXA)(
             &VG_(malloc),
-            "testplugin.mergeclusters",
             &VG_(free),
             sizeof(void *));
     clusters_count = VG_(sizeXA)(blocks_clusters);
@@ -388,8 +376,7 @@ UWord Gcd(UWord a, UWord b) {
 
 static
 MemClusterMapEntry *NewMemClusterMapEntry(MemBlockMapEntry *block_entry) {
-  MemClusterMapEntry *entry = VG_(malloc)("testplugin.memclustermapentry",
-                                          sizeof(*entry));
+  MemClusterMapEntry *entry = VG_(malloc)(sizeof(*entry));
 
   entry->offset = block_entry->offset;
   entry->size = block_entry->size;
@@ -478,7 +465,6 @@ void ClusterizeMemBlocks(void) {
 
         blocks_clusters = VG_(newXA)(
                 &VG_(malloc),
-                "testplugin.clusterizememblocks",
                 &VG_(free),
                 sizeof(void *));
         blocks_count = VG_(sizeXA)(blocks_allocated);

@@ -49,9 +49,9 @@ static void h1_post_clo_init(void)
 // TODO: Is more straightforward implementation possible?
 static
 inline Addr GetCurrentIp(void) {
-    Addr ip, sp, fp;
+    Addr ip;
     ThreadId tid = VG_(get_running_tid)();
-    UInt result = VG_(get_StackTrace)(tid, &ip, 1, &sp, &fp, 0);
+    UInt result = VG_(get_StackTrace)(tid, &ip, 1, 0);
 
     if (result < 1) {
         VG_(tool_panic)("Cannot get current ip");
