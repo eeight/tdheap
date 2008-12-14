@@ -39,8 +39,11 @@
 
 #include "mem_tracer.h"
 #include "malloc_replace.h"
+#include "cluster_output.h"
 
 static const UInt kClustersCount = 6;
+
+static const char *kClustersFilename = "clusters.txt";
 
 static void h1_post_clo_init(void)
 {
@@ -260,6 +263,9 @@ static void h1_fini(Int exitcode)
 
     VG_(printf)("Dot representation:\n\n");
     PrintClustersDotStructs();
+
+    VG_(printf)("Writing clusters definitons to %s\n", kClustersFilename);
+    WriteClusters(kClustersFilename);
 
     ShutdownMemTracer();
 }

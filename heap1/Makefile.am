@@ -68,7 +68,7 @@ vgpreload_heap1_ppc64_aix5_so_LDFLAGS      = \
 	$(PRELOAD_LDFLAGS_PPC64_AIX5) \
 	$(LIBREPLACEMALLOC_LDFLAGS_PPC64_AIX5)
 
-NONE_SOURCES_COMMON = h1_main.c malloc_replace.c mem_tracer.c
+NONE_SOURCES_COMMON = h1_main.c malloc_replace.c mem_tracer.c cluster_output.c
 
 heap1_x86_linux_SOURCES      = $(NONE_SOURCES_COMMON)
 heap1_x86_linux_CPPFLAGS     = $(AM_CPPFLAGS_X86_LINUX)
@@ -112,4 +112,4 @@ heap1_ppc64_aix5_DEPENDENCIES = $(COREGRIND_LIBS_PPC64_AIX5)
 heap1_ppc64_aix5_LDADD        = $(TOOL_LDADD_PPC64_AIX5)
 heap1_ppc64_aix5_LDFLAGS      = $(TOOL_LDFLAGS_PPC64_AIX5)
 
-noinst_headers = replace_malloc.h mem_tracer.h
+noinst_headers = replace_malloc.h mem_tracer.h cluster_output.h
