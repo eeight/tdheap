@@ -135,6 +135,24 @@ IRExpr *WidenToHostWord(IRSB *code_out, IRExpr *expr, IRTypeEnv *env, HWord size
             // Do nothing
             ty = ty;
         }
+    } else if (size == Ity_I64) {
+        switch (ty) {
+        case Ity_I64:
+            return expr;
+            break;
+        case Ity_I32:
+            return AssignNew(code_out, env, IRExpr_Unop(Iop_32Uto64, expr), size);
+            break;
+        case Ity_I16:
+            return AssignNew(code_out, env, IRExpr_Unop(Iop_16Uto64, expr), size);
+            break;
+        case Ity_I8:
+            return AssignNew(code_out, env, IRExpr_Unop(Iop_8Uto64, expr), size);
+            break;
+        default:
+            // Do nothing
+            ty = ty;
+        }
     }
 
     VG_(tool_panic)("WidenToHostWord");

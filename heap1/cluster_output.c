@@ -47,9 +47,9 @@ void WriteClusters(const char *filename) {
         } else {
           size = entry->size;
           if (entry->cluster != NULL) {
-            FPrintf(fd, "    {\"size: 4\", \"points_to\": \"x%x\"}", (UWord)entry->cluster);
+            FPrintf(fd, "    {\"size\": 4, \"points_to\": \"x%x\"}", (UWord)entry->cluster);
           } else {
-            FPrintf(fd, "    {\"size: %u\"}", entry->size);
+            FPrintf(fd, "    {\"size\": %u}", entry->size);
           }
         }
         if (ii + size < cluster->size) {
