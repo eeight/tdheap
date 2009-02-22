@@ -32,51 +32,44 @@ void WriteClusters(const char *filename) {
     Addr addr;
     fd = result.res;
     // Output cluster definitions.
-    FPrintf(fd, "{ \"clusters\" : [\n");
+    FPrintf(fd, "<clusters>\n");
     clusters_count = VG_(sizeXA)(blocks_clusters);
     for (i = 0; i != clusters_count; ++i) {
       UInt size;
       MemCluster *cluster = *(MemCluster **)VG_(indexXA)(blocks_clusters, i);
-      FPrintf(fd, "{\n  \"name\": \"x%x\",\n", (UWord)(cluster));
-      FPrintf(fd, "  \"fields\": [\n");
+      FPrintf(fd, "  <cluster name=\"x%x\">\n", (UWord)(cluster));
+      FPrintf(fd, "    <fields>\n");
       for (ii = 0; ii < cluster->size; ii += size) {
         MemClusterMapEntry *entry = VG_(HT_lookup)(cluster->map, ii);
         if (entry == NULL) {
-          FPrintf(fd, "    {\"size\": 1, \"unknown\": true }");
+          FPrintf(fd, "      <field size=\"1\" unknown=\"true\" />\n");
           size = 1;
         } else {
           size = entry->size;
           if (entry->cluster != NULL) {
-            FPrintf(fd, "    {\"size\": 4, \"points_to\": \"x%x\"}", (UWord)entry->cluster);
+            FPrintf(fd, "      <field size=\"%u\" points_to=\"x%x\" />\n", (UWord)entry->size, (UWord)entry->cluster);
           } else {
-            FPrintf(fd, "    {\"size\": %u}", entry->size);
+            FPrintf(fd, "      <field size=\"%u\" />\n", entry->size);
           }
         }
-        if (ii + size < cluster->size) {
-          FPrintf(fd, ",");
-        }
-        FPrintf(fd, "\n");
       }
-      FPrintf(fd, "  ],\n");
-      FPrintf(fd, "  \"usages\": [\n");
+      FPrintf(fd, "    </fields>\n");
+      FPrintf(fd, "    <usages>\n");
 
       // Output cluster fingerprint
       VG_(OSetWord_ResetIter)(cluster->used_from);
       // Handle the first address separately.
       if (VG_(OSetWord_Next)(cluster->used_from, &addr)) {
-        FPrintf(fd, "    0x%x", addr);
+        FPrintf(fd, "      <usage address=\"0x%x\" />\n", addr);
         while (VG_(OSetWord_Next)(cluster->used_from, &addr)) {
-          FPrintf(fd, ",\n    0x%x", addr);
+          FPrintf(fd, "      <usage address=\"0x%x\" />\n", addr);
         }
       }
-      FPrintf(fd, "\n  ]\n}");
-      if (i + 1 < clusters_count) {
-        FPrintf(fd, ",");
-      }
-      FPrintf(fd, "\n");
+      FPrintf(fd, "    </usages>\n");
+      FPrintf(fd, "  </cluster>\n");
     }
 
-    FPrintf(fd, "]\n}");
+    FPrintf(fd, "</clusters>\n");
 
     VG_(close)(fd);
   }
