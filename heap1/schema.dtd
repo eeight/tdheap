@@ -1,0 +1,15 @@
+<!ELEMENT clusters (cluster*)> 
+<!ELEMENT cluster (fields, usages)>
+<!ATTLIST cluster
+  name ID #REQUIRED
+>
+<!ELEMENT fields (field*)>
+<!ATTLIST field
+  size PCDATA #REQUIRED
+  unknown PCDATA #IMPLIED
+  points_to ID #IMPLIED
+>
+<!ELEMENT usages (usage*)>
+<!ATTLIST usage
+  address PCDATA #REQUIRED
+>

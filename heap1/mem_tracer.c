@@ -162,7 +162,7 @@ void VG_REGPARM(2) AddUsedFrom(MemBlock *block, Addr addr) {
 }
 
 static
-void SanityFail(char *msg) {
+void SanityFail(const char *msg) {
   VG_(printf)("Sanity check failed: %s\n", msg);
 }
 
@@ -181,9 +181,11 @@ static
 void VG_REGPARM(2) TraceMemWrite(Addr addr, UChar size) {
     MemBlock *dst = FindBlockByAddress(addr);
     if (dst != NULL) {
+      // Update this memory block usage info.
       Addr i, i_end;
 
       MemBlockMapEntry *entry = VG_(HT_lookup)(dst->map, addr - dst->start_addr);
+      // This field was already used.
       if (entry != NULL) {
         if (entry->size != size) {
           VG_(printf)("%d vs %d\n", entry->size, size);
@@ -191,21 +193,44 @@ void VG_REGPARM(2) TraceMemWrite(Addr addr, UChar size) {
           entry->size = size;
         }
       } else {
+        // Create new field.
         entry = NewMemBlockMapEntry(addr - dst->start_addr, size);
         VG_(HT_add_node)(dst->map, entry);
       }
 
-      // Sanity check
+      // Sanity checks:
+      // Check that written value doesn't overlap with any other.
       for (i = addr, i_end = addr + size; i != i_end; ++i) {
         if (VG_(HT_lookup)(dst->map, i) != NULL) {
           SanityFail("Inconsistent read/write");
         }
       }
 
+      // Check that written value doesn't touch memory after the memory block.
       if (addr - dst->start_addr + size > dst->size) {
         SanityFail("Write beyond end of memory block");
       }
     }
+}
+
+// Addr and ULong always have same size
+static
+void VG_REGPARM(2) TraceAddressWrite(Addr addr, Addr val) {
+  MemBlock *dst = FindBlockByAddress(addr);
+  if (dst != NULL) {
+    MemBlock *link = FindBlockByAddress(val);
+
+    if (link != NULL) {
+      MemBlockMapEntry *entry = VG_(HT_lookup)(dst->map, addr - dst->start_addr);
+      if (entry != NULL) {
+        entry->block = link;
+      }
+
+      if (!VG_(OSetWord_Contains)(dst->links_to, (UWord)link)) {
+          VG_(OSetWord_Insert)(dst->links_to, (UWord)link);
+      }
+    }
+  }
 }
 
 void VG_REGPARM(2) TraceMemWrite8(Addr addr, UWord val) {
@@ -217,27 +242,19 @@ void VG_REGPARM(2) TraceMemWrite16(Addr addr, UWord val) {
 }
 
 void VG_REGPARM(2) TraceMemWrite32(Addr addr, UWord val) {
-    MemBlock *dst = FindBlockByAddress(addr);
-    TraceMemWrite(addr, 4);
-
-    if (dst != NULL) {
-      MemBlock *link = FindBlockByAddress(val);
-
-      if (link != NULL) {
-        MemBlockMapEntry *entry = VG_(HT_lookup)(dst->map, addr - dst->start_addr);
-        if (entry != NULL) {
-          entry->block = link;
-        }
-
-        if (!VG_(OSetWord_Contains)(dst->links_to, (UWord)link)) {
-            VG_(OSetWord_Insert)(dst->links_to, (UWord)link);
-        }
-      }
-    }
+  TraceMemWrite(addr, 4);
+  // I wish I could write #if instead.
+  if (sizeof(void *) == 4) {
+    TraceAddressWrite(addr, val);
+  }
 }
 
 void VG_REGPARM(1) TraceMemWrite64(Addr addr, ULong val) {
-    TraceMemWrite(addr, 8);
+  TraceMemWrite(addr, 8);
+  // I wish I could write #if instead.
+  if (sizeof(void *) == 8) {
+    TraceAddressWrite(addr, val);
+  }
 }
 static
 UInt CommonItemsCount(OSet *a, OSet *b) {
@@ -574,7 +591,7 @@ void PrintClustersDot(void) {
 
         VG_(OSetWord_ResetIter)(cluster->links_to);
         while (VG_(OSetWord_Next)(cluster->links_to, (UWord *)&link_to)) {
-          VG_(printf)("x%x -> x%x;\n", (UInt)cluster, (UInt)link_to);
+          VG_(printf)("x%x -> x%x;\n", (UWord)cluster, (UWord)link_to);
         }
     }
 
@@ -613,7 +630,7 @@ void PrintClustersDotStructs(void) {
 
         VG_(OSetWord_ResetIter)(cluster->links_to);
         while (VG_(OSetWord_Next)(cluster->links_to, (UWord *)&link_to)) {
-          VG_(printf)("x%x -> x%x;\n", (UInt)cluster, (UInt)link_to);
+          VG_(printf)("x%x -> x%x;\n", (UWord)cluster, (UWord)link_to);
         }
     }
 
