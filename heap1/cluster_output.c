@@ -37,7 +37,8 @@ void WriteClusters(const char *filename) {
     for (i = 0; i != clusters_count; ++i) {
       UInt size;
       MemCluster *cluster = *(MemCluster **)VG_(indexXA)(blocks_clusters, i);
-      FPrintf(fd, "  <cluster name=\"x%x\">\n", (UWord)(cluster));
+      FPrintf(fd, "  <cluster name=\"x%x\" is_array=\"%s\">\n", (UWord)(cluster),
+          cluster->is_array ? "true" : "false");
       FPrintf(fd, "    <fields>\n");
       for (ii = 0; ii < cluster->size; ii += size) {
         MemClusterMapEntry *entry = VG_(HT_lookup)(cluster->map, ii);
@@ -47,9 +48,10 @@ void WriteClusters(const char *filename) {
         } else {
           size = entry->size;
           if (entry->cluster != NULL) {
-            FPrintf(fd, "      <field size=\"%u\" points_to=\"x%x\" />\n", (UWord)entry->size, (UWord)entry->cluster);
+            FPrintf(fd, "      <field size=\"%u\" unknown=\"false\" points_to=\"x%x\" />\n",
+                (UWord)entry->size, (UWord)entry->cluster);
           } else {
-            FPrintf(fd, "      <field size=\"%u\" />\n", entry->size);
+            FPrintf(fd, "      <field size=\"%u\" unknown=\"false\" />\n", entry->size);
           }
         }
       }

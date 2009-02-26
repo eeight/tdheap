@@ -2,11 +2,12 @@
 <!ELEMENT cluster (fields, usages)>
 <!ATTLIST cluster
   name ID #REQUIRED
+  is_array PCDATA #REQUIRED
 >
 <!ELEMENT fields (field*)>
 <!ATTLIST field
   size PCDATA #REQUIRED
-  unknown PCDATA #IMPLIED
+  unknown PCDATA #REQUIRED
   points_to ID #IMPLIED
 >
 <!ELEMENT usages (usage*)>
