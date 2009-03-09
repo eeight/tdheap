@@ -29,7 +29,7 @@ void WriteClusters(const char *filename) {
   if (result.isError) {
     VG_(printf)("Cannot open file %s for writing.\n", filename);
   } else {
-    Addr addr;
+    UsedFromEntry *used_from_entry;
     fd = result.res;
     // Output cluster definitions.
     FPrintf(fd, "<clusters>\n");
@@ -59,12 +59,13 @@ void WriteClusters(const char *filename) {
       FPrintf(fd, "    <usages>\n");
 
       // Output cluster fingerprint
-      VG_(OSetWord_ResetIter)(cluster->used_from);
-      // Handle the first address separately.
-      if (VG_(OSetWord_Next)(cluster->used_from, &addr)) {
-        FPrintf(fd, "      <usage address=\"0x%x\" />\n", addr);
-        while (VG_(OSetWord_Next)(cluster->used_from, &addr)) {
-          FPrintf(fd, "      <usage address=\"0x%x\" />\n", addr);
+      VG_(HT_ResetIter)(cluster->used_from);
+      while ((used_from_entry = VG_(HT_Next)(cluster->used_from))) {
+        Addr offset;
+        VG_(OSetWord_ResetIter)(used_from_entry->offsets);
+        while (VG_(OSetWord_Next)(used_from_entry->offsets, &offset)) {
+          FPrintf(fd, "      <usage address=\"0x%x\" offset=\"%ld\"/>\n",
+              used_from_entry->addr, offset);
         }
       }
       FPrintf(fd, "    </usages>\n");

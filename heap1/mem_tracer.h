@@ -8,9 +8,9 @@
 
 // NB: first two fields must be the same as in VGHashNode
 typedef struct _MemNode {
-    struct _MemNode *do_not_use; // this field is managed by HT_* functions
-    UWord key;
-    OSet *blocks;
+  struct _MemNode *do_not_use; // this field is managed by HT_* functions
+  UWord key;
+  OSet *blocks;
 } MemNode;
 
 // NB: first two fields must be the same as in VGHashNode
@@ -22,12 +22,12 @@ typedef struct _MemClusterMapEntry {
 } MemClusterMapEntry;
 
 typedef struct _MemCluster {
-    OSet *used_from;
-    OSet *links_to;
-    XArray *blocks;
-    UWord size;
-    Bool is_array;
-    VgHashTable map;
+  VgHashTable used_from;
+  OSet *links_to;
+  XArray *blocks;
+  UWord size;
+  Bool is_array;
+  VgHashTable map;
 } MemCluster;
 
 // NB: first two fields must be the same as in VGHashNode
@@ -38,14 +38,21 @@ typedef struct _MemBlockMapEntry {
   struct _MemBlock *block;
 } MemBlockMapEntry;
 
+// NB: first two fields must be the same as in VGHashNode
+typedef struct _UsedFromEntry {
+  struct _UsedFromEntry *do_not_use;
+  Addr addr;
+  OSet *offsets;
+} UsedFromEntry;
+
 typedef struct _MemBlock {
-    Addr start_addr; // Addr is always same size with UWord
-    SizeT size;
-    MemCluster *cluster;
-    OSet *used_from;
-    OSet *links_to;
-    VgHashTable map;
-    ULong reads_count, writes_count;
+  Addr start_addr; // Addr is always same size with UWord
+  SizeT size;
+  MemCluster *cluster;
+  VgHashTable used_from;
+  OSet *links_to;
+  VgHashTable map;
+  ULong reads_count, writes_count;
 } MemBlock;
 
 extern XArray *blocks_allocated;
@@ -60,7 +67,7 @@ void RegisterMemoryBlock(Addr addr, SizeT size);
 void InsertInMemTable(MemBlock *block);
 void UnregisterMemoryBlock(Addr addr);
 MemBlock *FindBlockByAddress(Addr addr);
-void VG_REGPARM(2) AddUsedFrom(MemBlock *block, Addr addr);
+void VG_REGPARM(2) AddUsedFrom(MemBlock *block, Addr addr, Addr offset);
 void VG_REGPARM(2) TraceMemWrite8(Addr addr, UWord val);
 void VG_REGPARM(2) TraceMemWrite16(Addr addr, UWord val);
 void VG_REGPARM(2) TraceMemWrite32(Addr add, UWord val);
