@@ -150,9 +150,12 @@ MemBlock *FindBlockByAddress(Addr addr) {
 
 static
 UsedFromEntry *NewUsedFromEntry(Addr addr) {
-  UsedFromEntry *entry = VG_(malloc)(sizeof(*entry));
+  UsedFromEntry *entry = VG_(malloc)(
+      "heap1.newusedfromentry.1",
+      sizeof(*entry));
   entry->offsets = VG_(OSetWord_Create)(
       &VG_(malloc),
+      "heap1.newusedfroentry.2",
       &VG_(free));
   entry->addr = addr;
   return entry;
@@ -302,18 +305,6 @@ Bool AreTwoUsesBelongToSameCluster(VgHashTable a, VgHashTable b) {
 }
 
 static
-void SetAddHashKeys(OSet *to, VgHashTable from) {
-  UsedFromEntry *entry;
-
-  VG_(HT_ResetIter)(from);
-  while ((entry = VG_(HT_Next)(from))) {
-    if (!VG_(OSetWord_Contains)(to, entry->addr)) {
-      VG_(OSetWord_Insert)(to, entry->addr);
-    }
-  }
-}
-
-static
 void SetAdd(OSet *to, OSet *from) {
   Word val;
 
@@ -343,18 +334,22 @@ void HashAdd(VgHashTable to, VgHashTable from) {
 
 static
 void CreateNewMemClusterWithOneElement(MemBlock *a) {
-  MemCluster *cluster = VG_(malloc)(sizeof(*cluster));
+  MemCluster *cluster = VG_(malloc)(
+      "heap1.createnewmemclusterwithoneelement.1",
+      sizeof(*cluster));
   cluster->used_from = VG_(HT_construct)(
-      "heap1.createnewmemclusterwithoneelement.1");
+      "heap1.createnewmemclusterwithoneelement.2");
   cluster->links_to = VG_(OSetWord_Create)(
       &VG_(malloc),
+      "heap1.createnewmemclusterwithoneelement.3",
       &VG_(free));
   cluster->blocks = VG_(newXA)(
       &VG_(malloc),
+      "heap1.createnewmemclusterwithoneelement.4",
       &VG_(free),
       sizeof(void *));
   cluster->map = VG_(HT_construct)(
-      "heap1.createnewmemclusterwithoneelement.2");
+      "heap1.createnewmemclusterwithoneelement.5");
 
   HashAdd(cluster->used_from, a->used_from);
 
@@ -409,6 +404,7 @@ void MergeClusters(void) {
   } while (merged);
   new_clusters = VG_(newXA)(
       &VG_(malloc),
+      "heap1.mergeclusters.1",
       &VG_(free),
       sizeof(void *));
   clusters_count = VG_(sizeXA)(blocks_clusters);
@@ -532,6 +528,7 @@ void ClusterizeMemBlocks(void) {
 
     blocks_clusters = VG_(newXA)(
         &VG_(malloc),
+        "heap1.clusterizememblocks.1",
         &VG_(free),
         sizeof(void *));
     blocks_count = VG_(sizeXA)(blocks_allocated);
