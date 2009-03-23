@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -133,6 +133,9 @@ static void usage_NORETURN ( Bool debug_help )
 "                              only for code found in stacks, or all [stack]\n"
 "    --kernel-variant=variant1,variant2,...  known variants: bproc [none]\n"
 "                              handle non-standard kernel variants\n"
+"    --read-var-info=yes|no    read debug info on stack and global variables\n"
+"                              and use it to print better error messages in\n"
+"                              tools that make use of it (Memcheck, Helgrind)\n"
 "\n"
 "  user options for Valgrind tools that report errors:\n"
 "    --xml=yes                 all output is in XML (some tools only)\n"
@@ -173,7 +176,6 @@ static void usage_NORETURN ( Bool debug_help )
 "    --profile-heap=no|yes     profile Valgrind's own space use\n"
 "    --wait-for-gdb=yes|no     pause on startup to wait for gdb attach\n"
 "    --sym-offsets=yes|no      show syms in form 'name+offset' ? [no]\n"
-"    --read-var-info=yes|no    read variable type & location info? [no]\n"
 "    --command-line-only=no|yes  only use command line options [no]\n"
 "\n"
 "    --vex-iropt-verbosity             0 .. 9 [0]\n"
@@ -203,7 +205,7 @@ static void usage_NORETURN ( Bool debug_help )
 "\n"
 "  Extra options read from ~/.valgrindrc, $VALGRIND_OPTS, ./.valgrindrc\n"
 "\n"
-"  Valgrind is Copyright (C) 2000-2008 Julian Seward et al.\n"
+"  Valgrind is Copyright (C) 2000-2009 Julian Seward et al.\n"
 "  and licensed under the GNU General Public License, version 2.\n"
 "  Bug reports, feedback, admiration, abuse, etc, to: %s.\n"
 "\n"
@@ -211,11 +213,7 @@ static void usage_NORETURN ( Bool debug_help )
 "  tool's start-up message for more information.\n"
 "\n";
 
-#  if defined(GDB_PATH)
    Char* gdb_path = GDB_PATH;
-#  else
-   Char* gdb_path = "/no/gdb/was/found/at/configure/time";
-#  endif
 
    // Ensure the message goes to stdout
    VG_(clo_log_fd) = 1;
@@ -231,7 +229,7 @@ static void usage_NORETURN ( Bool debug_help )
 	 VG_(printf)("    (none)\n");
    }
    if (debug_help) {
-      VG_(printf)(usage2);
+      VG_(printf)("%s", usage2);
 
       if (VG_(details).name) {
          VG_(printf)("  debugging options for %s:\n", VG_(details).name);
@@ -563,15 +561,6 @@ static Bool main_process_cmd_line_options( UInt* client_auxv,
    if (VG_(clo_verbosity) < 0)
       VG_(clo_verbosity) = 0;
 
-   if (VG_(clo_db_attach) && VG_(clo_trace_children)) {
-      VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, 
-         "--db-attach=yes conflicts with --trace-children=yes");
-      VG_(message)(Vg_UserMsg, 
-         "Please choose one or the other, but not both.");
-      VG_(err_bad_option)("--db-attach=yes and --trace-children=yes");
-   }
-
    if (VG_(clo_gen_suppressions) > 0 && 
        !VG_(needs).core_errors && !VG_(needs).tool_errors) {
       VG_(message)(Vg_UserMsg, 
@@ -829,13 +818,13 @@ static void print_preamble(Bool logging_to_fd, const char* toolname)
          "%sUsing LibVEX rev %s, a library for dynamic binary translation.%s",
          xpre, LibVEX_Version(), xpost );
       VG_(message)(Vg_UserMsg, 
-         "%sCopyright (C) 2004-2008, and GNU GPL'd, by OpenWorks LLP.%s",
+         "%sCopyright (C) 2004-2009, and GNU GPL'd, by OpenWorks LLP.%s",
          xpre, xpost );
       VG_(message)(Vg_UserMsg,
          "%sUsing valgrind-%s, a dynamic binary instrumentation framework.%s",
          xpre, VERSION, xpost);
       VG_(message)(Vg_UserMsg, 
-         "%sCopyright (C) 2000-2008, and GNU GPL'd, by Julian Seward et al.%s",
+         "%sCopyright (C) 2000-2009, and GNU GPL'd, by Julian Seward et al.%s",
          xpre, xpost );
 
       if (VG_(clo_verbosity) == 1 && !VG_(clo_xml))
@@ -1360,6 +1349,12 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    //============================================================
 
    //--------------------------------------------------------------
+   // Initialise m_debuginfo
+   //  p: dynamic memory allocation
+   VG_(debugLog)(1, "main", "Initialise m_debuginfo\n");
+   VG_(di_initialise)();
+
+   //--------------------------------------------------------------
    // Look for alternative libdir                                  
    { HChar *cp = VG_(getenv)(VALGRIND_LIB);
      if (cp != NULL)
@@ -1729,6 +1724,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    //   p: setup_code_redirect_table [so that redirs can be recorded]
    //   p: mallocfree
    //   p: probably: setup fds and process CLOs, so that logging works
+   //   p: initialise m_debuginfo
    //
    // While doing this, make a note of the debuginfo-handles that
    // come back from VG_(di_notify_mmap)/VG_(di_aix5_notify_segchange).
@@ -1874,8 +1870,29 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
         NSegment const* seg 
            = VG_(am_find_nsegment)( seg_starts[i] );
         vg_assert(seg);
-        vg_assert(seg->start == seg_starts[i] );
         if (seg->kind == SkFileC || seg->kind == SkAnonC) {
+          /* This next assertion is tricky.  If it is placed
+             immediately before this 'if', it very occasionally fails.
+             Why?  Because previous iterations of the loop may have
+             caused tools (via the new_mem_startup calls) to do
+             dynamic memory allocation, and that may affect the mapped
+             segments; in particular it may cause segment merging to
+             happen.  Hence we cannot assume that seg_starts[i], which
+             reflects the state of the world before we started this
+             loop, is the same as seg->start, as the latter reflects
+             the state of the world (viz, mappings) at this particular
+             iteration of the loop.
+
+             Why does moving it inside the 'if' make it safe?  Because
+             any dynamic memory allocation done by the tools will
+             affect only the state of Valgrind-owned segments, not of
+             Client-owned segments.  And the 'if' guards against that
+             -- we only get in here for Client-owned segments.
+
+             In other words: the loop may change the state of
+             Valgrind-owned segments as it proceeds.  But it should
+             not cause the Client-owned segments to change. */
+           vg_assert(seg->start == seg_starts[i]);
            VG_(debugLog)(2, "main", 
                             "tell tool about %010lx-%010lx %c%c%c\n",
                              seg->start, seg->end,
@@ -2604,6 +2621,18 @@ void _start_valgrind ( AIX5Bootblock* bootblock )
    /*NOTREACHED*/
    VG_(exit)(0);
 }
+
+/* At some point in Oct 2008, static linking appeared to stop working
+   on AIX 5.3.  This breaks the build since we link statically.  The
+   linking fails citing absence of the following five symbols as the
+   reason.  In the absence of a better solution, here are stand-ins
+   for them.  Kludge appears to work; presumably said functions,
+   assuming they are indeed functions, are never called. */
+void encrypted_pw_passlen ( void ) { vg_assert(0); }
+void crypt_r              ( void ) { vg_assert(0); }
+void max_history_size     ( void ) { vg_assert(0); }
+void getpass_auto         ( void ) { vg_assert(0); }
+void max_pw_passlen       ( void ) { vg_assert(0); }
 
 #endif /* defined(VGP_ppc{32,64}_aix5) */
 

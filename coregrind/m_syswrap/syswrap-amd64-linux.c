@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Nicholas Nethercote
+   Copyright (C) 2000-2009 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -948,8 +948,8 @@ PRE(sys_mmap)
 {
    SysRes r;
 
-   PRINT("sys_mmap ( %#lx, %llu, %ld, %ld, %ld, %ld )",
-         ARG1, (ULong)ARG2, ARG3, ARG4, ARG5, ARG6 );
+   PRINT("sys_mmap ( %#lx, %llu, %ld, %ld, %d, %ld )",
+         ARG1, (ULong)ARG2, ARG3, ARG4, (Int)ARG5, ARG6 );
    PRE_REG_READ6(long, "mmap",
                  unsigned long, start, unsigned long, length,
                  unsigned long, prot,  unsigned long, flags,
@@ -1229,7 +1229,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINX_(__NR_delete_module,     sys_delete_module),  // 176 
    //   (__NR_get_kernel_syms,   sys_ni_syscall),     // 177 
    //   (__NR_query_module,      sys_ni_syscall),     // 178 
-   //LINX_(__NR_quotactl,          sys_quotactl),       // 179 
+   LINX_(__NR_quotactl,          sys_quotactl),       // 179 
 
    //   (__NR_nfsservctl,        sys_nfsservctl),     // 180 
    //   (__NR_getpmsg,           sys_ni_syscall),     // 181
@@ -1269,7 +1269,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 
    LINXY(__NR_io_cancel,         sys_io_cancel),      // 210 
    //   (__NR_get_thread_area,   sys_ni_syscall),     // 211 
-   //   (__NR_lookup_dcookie,    sys_lookup_dcookie), // 212 
+   LINXY(__NR_lookup_dcookie,    sys_lookup_dcookie), // 212 
    LINXY(__NR_epoll_create,      sys_epoll_create),   // 213 
    //   (__NR_epoll_ctl_old,     sys_ni_syscall),     // 214 
 
@@ -1317,7 +1317,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 
    LINXY(__NR_keyctl,            sys_keyctl),         // 250
    LINX_(__NR_ioprio_set,        sys_ioprio_set),     // 251
-//   LINX_(__NR_ioprio_get,        sys_ioprio_get),     // 252
+   LINX_(__NR_ioprio_get,        sys_ioprio_get),     // 252
    LINX_(__NR_inotify_init,	 sys_inotify_init),   // 253
    LINX_(__NR_inotify_add_watch, sys_inotify_add_watch), // 254
 
@@ -1350,14 +1350,24 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINX_(__NR_sync_file_range,   sys_sync_file_range),  // 277
 //   LINX_(__NR_vmsplice,          sys_ni_syscall),       // 278
 //   LINX_(__NR_move_pages,        sys_ni_syscall),       // 279
+
    LINX_(__NR_utimensat,         sys_utimensat),        // 280
    LINXY(__NR_epoll_pwait,       sys_epoll_pwait),      // 281
    LINXY(__NR_signalfd,          sys_signalfd),         // 282
    LINXY(__NR_timerfd_create,    sys_timerfd_create),   // 283
    LINX_(__NR_eventfd,           sys_eventfd),          // 284
+
 //   LINX_(__NR_fallocate,        sys_ni_syscall),        // 285
    LINXY(__NR_timerfd_settime,   sys_timerfd_settime),  // 286
    LINXY(__NR_timerfd_gettime,   sys_timerfd_gettime),  // 287
+   //   (__NR_paccept,           sys_ni_syscall)        // 288
+   LINXY(__NR_signalfd4,         sys_signalfd4),        // 289
+
+   LINX_(__NR_eventfd2,          sys_eventfd2),         // 290
+   //   (__NR_epoll_create1,     sys_ni_syscall)        // 291
+   //   (__NR_dup3,              sys_ni_syscall)        // 292
+   LINXY(__NR_pipe2,             sys_pipe2)             // 293
+   //   (__NR_inotify_init1,     sys_ni_syscall)        // 294
 };
 
 const UInt ML_(syscall_table_size) = 

@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -39,6 +39,7 @@
 
 #include "pub_core_basics.h"
 #include "pub_core_options.h"      /* VG_(clo_verbosity) */
+#include "pub_core_debuginfo.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_libcprint.h"
@@ -354,31 +355,42 @@ void ML_(addLineInfo) ( struct _DebugInfo* di,
 
 /* Top-level place to call to add a CFI summary record.  The supplied
    DiCfSI is copied. */
-void ML_(addDiCfSI) ( struct _DebugInfo* di, DiCfSI* cfsi )
+void ML_(addDiCfSI) ( struct _DebugInfo* di, DiCfSI* cfsi_orig )
 {
    static const Bool debug = False;
    UInt    new_sz, i;
    DiCfSI* new_tab;
+   SSizeT  delta;
+
+   /* copy the original, so we can mess with it */
+   DiCfSI cfsi = *cfsi_orig;
 
    if (debug) {
       VG_(printf)("adding DiCfSI: ");
-      ML_(ppDiCfSI)(di->cfsi_exprs, cfsi);
+      ML_(ppDiCfSI)(di->cfsi_exprs, &cfsi);
    }
 
    /* sanity */
-   vg_assert(cfsi->len > 0);
+   vg_assert(cfsi.len > 0);
    /* If this fails, the implication is you have a single procedure
       with more than 5 million bytes of code.  Which is pretty
       unlikely.  Either that, or the debuginfo reader is somehow
-      broken. */
-   vg_assert(cfsi->len < 5000000);
+      broken.  5 million is of course arbitrary; but it's big enough
+      to be bigger than the size of any plausible piece of code that
+      would fall within a single procedure. */
+   vg_assert(cfsi.len < 5000000);
+
+   vg_assert(di->have_rx_map && di->have_rw_map);
+   /* If we have an empty r-x mapping (is that possible?) then the
+      DiCfSI can't possibly fall inside it.  In which case skip. */
+   if (di->rx_map_size == 0)
+      return;
 
    /* Rule out ones which are completely outside the r-x mapped area.
       See "Comment_Regarding_Text_Range_Checks" elsewhere in this file
       for background and rationale. */
-   vg_assert(di->have_rx_map && di->have_rw_map);
-   if (cfsi->base + cfsi->len - 1 < di->rx_map_avma
-       || cfsi->base >= di->rx_map_avma + di->rx_map_size) {
+   if (cfsi.base + cfsi.len - 1 < di->rx_map_avma
+       || cfsi.base >= di->rx_map_avma + di->rx_map_size) {
       static Int complaints = 10;
       if (VG_(clo_trace_cfi) || complaints > 0) {
          complaints--;
@@ -386,17 +398,61 @@ void ML_(addDiCfSI) ( struct _DebugInfo* di, DiCfSI* cfsi )
             VG_(message)(
                Vg_DebugMsg,
                "warning: DiCfSI %#lx .. %#lx outside segment %#lx .. %#lx",
-               cfsi->base, 
-               cfsi->base + cfsi->len - 1,
+               cfsi.base, 
+               cfsi.base + cfsi.len - 1,
                di->text_avma,
                di->text_avma + di->text_size - 1 
             );
          }
          if (VG_(clo_trace_cfi)) 
-            ML_(ppDiCfSI)(di->cfsi_exprs, cfsi);
+            ML_(ppDiCfSI)(di->cfsi_exprs, &cfsi);
       }
       return;
    }
+
+   /* Now we know the range is at least partially inside the r-x
+      mapped area.  That implies that at least one of the ends of the
+      range falls inside the area.  If necessary, clip it so it is
+      completely within the area.  If we don't do this,
+      check_CFSI_related_invariants() in debuginfo.c (invariant #2)
+      will fail.  See
+      "Comment_on_IMPORTANT_CFSI_REPRESENTATIONAL_INVARIANTS" in
+      priv_storage.h for background. */
+   if (cfsi.base < di->rx_map_avma) {
+      /* Lower end is outside the mapped area.  Hence upper end must
+         be inside it. */
+      if (0) VG_(printf)("XXX truncate lower\n");
+      vg_assert(cfsi.base + cfsi.len - 1 >= di->rx_map_avma);
+      delta = (SSizeT)(di->rx_map_avma - cfsi.base);
+      vg_assert(delta > 0);
+      vg_assert(delta < (SSizeT)cfsi.len);
+      cfsi.base += delta;
+      cfsi.len -= delta;
+   }
+   else
+   if (cfsi.base + cfsi.len - 1 > di->rx_map_avma + di->rx_map_size - 1) {
+      /* Upper end is outside the mapped area.  Hence lower end must be
+         inside it. */
+      if (0) VG_(printf)("XXX truncate upper\n");
+      vg_assert(cfsi.base <= di->rx_map_avma + di->rx_map_size - 1);
+      delta = (SSizeT)( (cfsi.base + cfsi.len - 1) 
+                        - (di->rx_map_avma + di->rx_map_size - 1) );
+      vg_assert(delta > 0); vg_assert(delta < (SSizeT)cfsi.len);
+      cfsi.len -= delta;
+   }
+
+   /* Final checks */
+
+   /* Because: either cfsi was entirely inside the range, in which
+      case we asserted that len > 0 at the start, OR it fell partially
+      inside the range, in which case we reduced it by some size
+      (delta) which is < its original size. */
+   vg_assert(cfsi.len > 0);
+
+   /* Similar logic applies for the next two assertions. */
+   vg_assert(cfsi.base >= di->rx_map_avma);
+   vg_assert(cfsi.base + cfsi.len - 1
+             <= di->rx_map_avma + di->rx_map_size - 1);
 
    if (di->cfsi_used == di->cfsi_size) {
       new_sz = 2 * di->cfsi_size;
@@ -412,7 +468,7 @@ void ML_(addDiCfSI) ( struct _DebugInfo* di, DiCfSI* cfsi )
       di->cfsi_size = new_sz;
    }
 
-   di->cfsi[di->cfsi_used] = *cfsi;
+   di->cfsi[di->cfsi_used] = cfsi;
    di->cfsi_used++;
    vg_assert(di->cfsi_used <= di->cfsi_size);
 }
@@ -726,6 +782,8 @@ void ML_(addVar)( struct _DebugInfo* di,
    DiVariable var;
    Bool       all;
    TyEnt*     ent;
+   MaybeULong mul;
+   HChar*     badness;
 
    tl_assert(di && di->admin_tyents);
 
@@ -789,14 +847,23 @@ void ML_(addVar)( struct _DebugInfo* di,
    /* If the type's size is zero (which can mean unknown size), ignore
       it.  We will never be able to actually relate a data address to
       a data object with zero size, so there's no point in storing
-      info on it. */
-   if (ML_(sizeOfType)(di->admin_tyents, typeR).b != True) {
+      info on it.  On 32-bit platforms, also reject types whose size
+      is 2^32 bytes or large.  (It's amazing what junk shows up ..) */
+   mul = ML_(sizeOfType)(di->admin_tyents, typeR);
+
+   badness = NULL;
+   if (mul.b != True) 
+      badness = "unknown size";
+   else if (mul.ul == 0)
+      badness = "zero size   ";
+   else if (sizeof(void*) == 4 && mul.ul >= (1ULL<<32))
+      badness = "implausibly large";
+
+   if (badness) {
       static Int complaints = 10;
       if (VG_(clo_verbosity) >= 2 && complaints > 0) {
-         VG_(message)(Vg_DebugMsg, 
-            "warning: addVar: unknown size (%s)",
-            name
-         );
+         VG_(message)(Vg_DebugMsg, "warning: addVar: %s (%s)",
+                                   badness, name );
          complaints--;
       }
       return;
@@ -967,9 +1034,9 @@ static Int compare_DiSym ( void* va, void* vb )
  */
 static DiSym* prefersym ( struct _DebugInfo* di, DiSym* a, DiSym* b )
 {
-   Int cmp;
-   Int lena, lenb;		/* full length */
-   Int vlena, vlenb;		/* length without version */
+   Word cmp;
+   Word lena, lenb;		/* full length */
+   Word vlena, vlenb;		/* length without version */
    const UChar *vpa, *vpb;
 
    Bool preferA = False;
@@ -1051,7 +1118,7 @@ static DiSym* prefersym ( struct _DebugInfo* di, DiSym* a, DiSym* b )
 
 static void canonicaliseSymtab ( struct _DebugInfo* di )
 {
-   Int   i, j, n_merged, n_truncated;
+   Word  i, j, n_merged, n_truncated;
    Addr  s1, s2, e1, e2;
 
 #  define SWAP(ty,aa,bb) \
@@ -1084,14 +1151,14 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
             di->symtab[di->symtab_used++] = di->symtab[i];
          }
       }
-      TRACE_SYMTAB( "canonicaliseSymtab: %d symbols merged\n", n_merged);
+      TRACE_SYMTAB( "canonicaliseSymtab: %ld symbols merged\n", n_merged);
    }
    while (n_merged > 0);
 
    /* Detect and "fix" overlapping address ranges. */
    n_truncated = 0;
 
-   for (i = 0; i < ((Int)di->symtab_used) -1; i++) {
+   for (i = 0; i < ((Word)di->symtab_used) -1; i++) {
 
       vg_assert(di->symtab[i].addr <= di->symtab[i+1].addr);
 
@@ -1138,7 +1205,7 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
       /* It may be that the i+1 entry now needs to be moved further
          along to maintain the address order requirement. */
       j = i+1;
-      while (j < ((Int)di->symtab_used)-1 
+      while (j < ((Word)di->symtab_used)-1 
              && di->symtab[j].addr > di->symtab[j+1].addr) {
          SWAP(DiSym,di->symtab[j],di->symtab[j+1]);
          j++;
@@ -1149,7 +1216,7 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
    if (n_truncated > 0) goto cleanup_more;
 
    /* Ensure relevant postconditions hold. */
-   for (i = 0; i < ((Int)di->symtab_used)-1; i++) {
+   for (i = 0; i < ((Word)di->symtab_used)-1; i++) {
       /* No zero-sized symbols. */
       vg_assert(di->symtab[i].size > 0);
       /* In order. */
@@ -1178,7 +1245,7 @@ static Int compare_DiLoc ( void* va, void* vb )
 
 static void canonicaliseLoctab ( struct _DebugInfo* di )
 {
-   Int i, j;
+   Word i, j;
 
 #  define SWAP(ty,aa,bb) \
       do { ty tt = (aa); (aa) = (bb); (bb) = tt; } while (0);
@@ -1191,7 +1258,7 @@ static void canonicaliseLoctab ( struct _DebugInfo* di )
                           sizeof(*di->loctab), compare_DiLoc);
 
    /* If two adjacent entries overlap, truncate the first. */
-   for (i = 0; i < ((Int)di->loctab_used)-1; i++) {
+   for (i = 0; i < ((Word)di->loctab_used)-1; i++) {
       vg_assert(di->loctab[i].size < 10000);
       if (di->loctab[i].addr + di->loctab[i].size > di->loctab[i+1].addr) {
          /* Do this in signed int32 because the actual .size fields
@@ -1211,7 +1278,7 @@ static void canonicaliseLoctab ( struct _DebugInfo* di )
    /* Zap any zero-sized entries resulting from the truncation
       process. */
    j = 0;
-   for (i = 0; i < (Int)di->loctab_used; i++) {
+   for (i = 0; i < (Word)di->loctab_used; i++) {
       if (di->loctab[i].size > 0) {
          if (j != i)
             di->loctab[j] = di->loctab[i];
@@ -1221,7 +1288,7 @@ static void canonicaliseLoctab ( struct _DebugInfo* di )
    di->loctab_used = j;
 
    /* Ensure relevant postconditions hold. */
-   for (i = 0; i < ((Int)di->loctab_used)-1; i++) {
+   for (i = 0; i < ((Word)di->loctab_used)-1; i++) {
       /* 
       VG_(printf)("%d   (%d) %d 0x%x\n", 
                    i, di->loctab[i+1].confident, 
@@ -1261,7 +1328,7 @@ static Int compare_DiCfSI ( void* va, void* vb )
 
 static void canonicaliseCFI ( struct _DebugInfo* di )
 {
-   Int   i, j;
+   Word  i, j;
    const Addr minAvma = 0;
    const Addr maxAvma = ~minAvma;
 
@@ -1276,7 +1343,7 @@ static void canonicaliseCFI ( struct _DebugInfo* di )
       address range contained in cfsi[0 .. cfsi_used-1]. */
    di->cfsi_minavma = maxAvma; 
    di->cfsi_maxavma = minAvma;
-   for (i = 0; i < (Int)di->cfsi_used; i++) {
+   for (i = 0; i < (Word)di->cfsi_used; i++) {
       Addr here_min = di->cfsi[i].base;
       Addr here_max = di->cfsi[i].base + di->cfsi[i].len - 1;
       if (here_min < di->cfsi_minavma)
@@ -1286,7 +1353,7 @@ static void canonicaliseCFI ( struct _DebugInfo* di )
    }
 
    if (di->trace_cfi)
-      VG_(printf)("canonicaliseCfiSI: %d entries, %#lx .. %#lx\n",
+      VG_(printf)("canonicaliseCfiSI: %ld entries, %#lx .. %#lx\n",
                   di->cfsi_used,
 	          di->cfsi_minavma, di->cfsi_maxavma);
 
@@ -1294,9 +1361,9 @@ static void canonicaliseCFI ( struct _DebugInfo* di )
    VG_(ssort)(di->cfsi, di->cfsi_used, sizeof(*di->cfsi), compare_DiCfSI);
 
    /* If two adjacent entries overlap, truncate the first. */
-   for (i = 0; i < (Int)di->cfsi_used-1; i++) {
+   for (i = 0; i < (Word)di->cfsi_used-1; i++) {
       if (di->cfsi[i].base + di->cfsi[i].len > di->cfsi[i+1].base) {
-         Int new_len = di->cfsi[i+1].base - di->cfsi[i].base;
+         Word new_len = di->cfsi[i+1].base - di->cfsi[i].base;
          /* how could it be otherwise?  The entries are sorted by the
             .base field. */         
          vg_assert(new_len >= 0);
@@ -1308,7 +1375,7 @@ static void canonicaliseCFI ( struct _DebugInfo* di )
    /* Zap any zero-sized entries resulting from the truncation
       process. */
    j = 0;
-   for (i = 0; i < (Int)di->cfsi_used; i++) {
+   for (i = 0; i < (Word)di->cfsi_used; i++) {
       if (di->cfsi[i].len > 0) {
          if (j != i)
             di->cfsi[j] = di->cfsi[i];
@@ -1319,7 +1386,7 @@ static void canonicaliseCFI ( struct _DebugInfo* di )
    di->cfsi_used = j;
 
    /* Ensure relevant postconditions hold. */
-   for (i = 0; i < (Int)di->cfsi_used; i++) {
+   for (i = 0; i < (Word)di->cfsi_used; i++) {
       /* No zero-length ranges. */
       vg_assert(di->cfsi[i].len > 0);
       /* Makes sense w.r.t. summary address range */
@@ -1364,9 +1431,9 @@ void ML_(canonicaliseTables) ( struct _DebugInfo* di )
 /* Find a symbol-table index containing the specified pointer, or -1
    if not found.  Binary search.  */
 
-Int ML_(search_one_symtab) ( struct _DebugInfo* di, Addr ptr,
-                             Bool match_anywhere_in_sym,
-                             Bool findText )
+Word ML_(search_one_symtab) ( struct _DebugInfo* di, Addr ptr,
+                              Bool match_anywhere_in_sym,
+                              Bool findText )
 {
    Addr a_mid_lo, a_mid_hi;
    Word mid, size, 
@@ -1397,7 +1464,7 @@ Int ML_(search_one_symtab) ( struct _DebugInfo* di, Addr ptr,
 /* Find a location-table index containing the specified pointer, or -1
    if not found.  Binary search.  */
 
-Int ML_(search_one_loctab) ( struct _DebugInfo* di, Addr ptr )
+Word ML_(search_one_loctab) ( struct _DebugInfo* di, Addr ptr )
 {
    Addr a_mid_lo, a_mid_hi;
    Word mid, 
@@ -1421,10 +1488,10 @@ Int ML_(search_one_loctab) ( struct _DebugInfo* di, Addr ptr )
 /* Find a CFI-table index containing the specified pointer, or -1
    if not found.  Binary search.  */
 
-Int ML_(search_one_cfitab) ( struct _DebugInfo* di, Addr ptr )
+Word ML_(search_one_cfitab) ( struct _DebugInfo* di, Addr ptr )
 {
    Addr a_mid_lo, a_mid_hi;
-   Int  mid, size, 
+   Word mid, size, 
         lo = 0, 
         hi = di->cfsi_used-1;
    while (True) {

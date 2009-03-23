@@ -18,7 +18,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2008 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2006-2009 OpenWorks LLP.  All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions
@@ -2113,8 +2113,12 @@ long WRAPPER_FOR(PMPI_Init)(int *argc, char ***argv)
    int    err;
    VALGRIND_GET_ORIG_FN(fn);
    before("Init");
-   check_mem_is_defined_untyped(argc, sizeof(int));
-   check_mem_is_defined_untyped(*argv, *argc * sizeof(char**));
+   if (argc) {
+      check_mem_is_defined_untyped(argc, sizeof(int));
+   }
+   if (argc && argv) {
+      check_mem_is_defined_untyped(*argv, *argc * sizeof(char**));
+   }
    CALL_FN_W_WW(err, fn, argc,argv);
    after("Init", err);
    if (opt_initkludge)

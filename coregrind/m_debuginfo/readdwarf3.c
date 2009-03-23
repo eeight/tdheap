@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2008 OpenWorks LLP
+   Copyright (C) 2008-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -133,6 +133,7 @@
    groupies always show up at the top of performance profiles. */
 
 #include "pub_core_basics.h"
+#include "pub_core_debuginfo.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcprint.h"
@@ -386,7 +387,12 @@ typedef
       Bool   is_dw64;
       /* Which DWARF version ?  (2 or 3) */
       UShort version;
-      /* Length of this Compilation Unit, excluding its Header */
+      /* Length of this Compilation Unit, as stated in the
+         .unit_length :: InitialLength field of the CU Header.
+         However, this size (as specified by the D3 spec) does not
+         include the size of the .unit_length field itself, which is
+         either 4 or 12 bytes (32-bit or 64-bit Dwarf3).  That value
+         can be obtained through the expression ".is_dw64 ? 12 : 4". */
       ULong  unit_length;
       /* Offset of start of this unit in .debug_info */
       UWord  cu_start_offset;
@@ -412,6 +418,9 @@ typedef
       /* Where is .debug_line? */
       UChar* debug_line_img;
       UWord  debug_line_sz;
+      /* Where is .debug_info? */
+      UChar* debug_info_img;
+      UWord  debug_info_sz;
       /* --- Needed so we can add stuff to the string table. --- */
       struct _DebugInfo* di;
       /* --- a cache for set_abbv_Cursor --- */
@@ -895,7 +904,8 @@ void parse_CU_Header ( /*OUT*/CUConst* cc,
 
    /* address size.  If this isn't equal to the host word size, just
       give up.  This makes it safe to assume elsewhere that
-      DW_FORM_addr can be treated as a host word. */
+      DW_FORM_addr and DW_FORM_ref_addr can be treated as a host
+      word. */
    address_size = get_UChar( c );
    if (address_size != sizeof(void*))
       cc->barf( "parse_CU_Header: invalid address_size" );
@@ -1077,12 +1087,43 @@ void get_Form_contents ( /*OUT*/ULong* cts,
          *ctsSzB = sizeof(UWord);
          TRACE_D3("0x%lx", (UWord)*cts);
          break;
+
+      case DW_FORM_ref_addr:
+         /* We make the same word-size assumption as DW_FORM_addr. */
+         /* What does this really mean?  From D3 Sec 7.5.4,
+            description of "reference", it would appear to reference
+            some other DIE, by specifying the offset from the
+            beginning of a .debug_info section.  The D3 spec mentions
+            that this might be in some other shared object and
+            executable.  But I don't see how the name of the other
+            object/exe is specified.
+
+            At least for the DW_FORM_ref_addrs created by icc11, the
+            references seem to be within the same object/executable.
+            So for the moment we merely range-check, to see that they
+            actually do specify a plausible offset within this
+            object's .debug_info, and return the value unchanged.
+         */
+         *cts = (ULong)(UWord)get_UWord(c);
+         *ctsSzB = sizeof(UWord);
+         TRACE_D3("0x%lx", (UWord)*cts);
+         if (0) VG_(printf)("DW_FORM_ref_addr 0x%lx\n", (UWord)*cts);
+         if (/* the following 2 are surely impossible, but ... */
+             cc->debug_info_img == NULL || cc->debug_info_sz == 0
+             || *cts >= (ULong)cc->debug_info_sz) {
+            /* Hmm.  Offset is nonsensical for this object's .debug_info
+               section.  Be safe and reject it. */
+            cc->barf("get_Form_contents: DW_FORM_ref_addr points "
+                     "outside .debug_info");
+         }
+         break;
+
       case DW_FORM_strp: {
          /* this is an offset into .debug_str */
          UChar* str;
          UWord uw = (UWord)get_Dwarfish_UWord( c, cc->is_dw64 );
          if (cc->debug_str_img == NULL || uw >= cc->debug_str_sz)
-            cc->barf("read_and_show_Form: DW_FORM_strp "
+            cc->barf("get_Form_contents: DW_FORM_strp "
                      "points outside .debug_str");
          /* FIXME: check the entire string lies inside debug_str,
             not just the first byte of it. */
@@ -1129,9 +1170,23 @@ void get_Form_contents ( /*OUT*/ULong* cts,
          *ctsMemSzB = (UWord)u64;
          break;
       }
+      case DW_FORM_block2: {
+         ULong  u64b;
+         ULong  u64 = (ULong)get_UShort(c);
+         UChar* block = get_address_of_Cursor(c);
+         TRACE_D3("%llu byte block: ", u64);
+         for (u64b = u64; u64b > 0; u64b--) {
+            UChar u8 = get_UChar(c);
+            TRACE_D3("%x ", (UInt)u8);
+         }
+         *cts = (ULong)(UWord)block;
+         *ctsMemSzB = (UWord)u64;
+         break;
+      }
       default:
-         VG_(printf)("get_Form_contents: unhandled %d (%s)\n",
-                     form, ML_(pp_DW_FORM)(form));
+         VG_(printf)(
+            "get_Form_contents: unhandled %d (%s) at <%lx>\n",
+            form, ML_(pp_DW_FORM)(form), get_position_of_Cursor(c));
          c->barf("get_Form_contents: unhandled DW_FORM");
    }
 }
@@ -2165,14 +2220,13 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       typeE.Te.TyPorR.typeR = D3_FAKEVOID_CUOFF;
       typeE.Te.TyPorR.isPtr = dtag == DW_TAG_pointer_type
                               || dtag == DW_TAG_ptr_to_member_type;
-      /* Pointer types don't *have* to specify their size, in which
-         case we assume it's a machine word.  But if they do specify
-         it, it must be a machine word :-) This probably assumes that
-         the word size of the Dwarf3 we're reading is the same size as
-         that on the machine.  gcc appears to give a size whereas icc9
-         doesn't. */
-      if (typeE.Te.TyPorR.isPtr)
-         typeE.Te.TyPorR.szB = sizeof(Word);
+      /* These three type kinds don't *have* to specify their size, in
+         which case we assume it's a machine word.  But if they do
+         specify it, it must be a machine word :-)  This probably
+         assumes that the word size of the Dwarf3 we're reading is the
+         same size as that on the machine.  gcc appears to give a size
+         whereas icc9 doesn't. */
+      typeE.Te.TyPorR.szB = sizeof(UWord);
       while (True) {
          DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
          DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
@@ -2187,7 +2241,7 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          }
       }
       /* Do we have something that looks sane? */
-      if (typeE.Te.TyPorR.szB != sizeof(Word))
+      if (typeE.Te.TyPorR.szB != sizeof(UWord))
          goto bad_DIE;
       else
          goto acquire_Type;
@@ -2217,17 +2271,51 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
             typeE.Te.TyEnum.szB = cts;
          }
       }
+
+      if (!typeE.Te.TyEnum.name)
+         typeE.Te.TyEnum.name 
+            = ML_(dinfo_strdup)( "di.readdwarf3.pTD.enum_type.3",
+                                 "<anon_enum_type>" );
+
       /* Do we have something that looks sane? */
-      if (typeE.Te.TyEnum.szB == 0 /* we must know the size */
-         /* But the name can be present, or not */)
+      if (typeE.Te.TyEnum.szB == 0 /* we must know the size */)
          goto bad_DIE;
       /* On't stack! */
       typestack_push( cc, parser, td3, &typeE, level );
       goto acquire_Type;
    }
 
+   /* gcc (GCC) 4.4.0 20081017 (experimental) occasionally produces
+      DW_TAG_enumerator with only a DW_AT_name but no
+      DW_AT_const_value.  This is in violation of the Dwarf3 standard,
+      and appears to be a new "feature" of gcc - versions 4.3.x and
+      earlier do not appear to do this.  So accept DW_TAG_enumerator
+      which only have a name but no value.  An example:
+
+      <1><180>: Abbrev Number: 6 (DW_TAG_enumeration_type)
+         <181>   DW_AT_name        : (indirect string, offset: 0xda70):
+                                     QtMsgType
+         <185>   DW_AT_byte_size   : 4
+         <186>   DW_AT_decl_file   : 14
+         <187>   DW_AT_decl_line   : 1480
+         <189>   DW_AT_sibling     : <0x1a7>
+      <2><18d>: Abbrev Number: 7 (DW_TAG_enumerator)
+         <18e>   DW_AT_name        : (indirect string, offset: 0x9e18):
+                                     QtDebugMsg
+      <2><192>: Abbrev Number: 7 (DW_TAG_enumerator)
+         <193>   DW_AT_name        : (indirect string, offset: 0x1505f):
+                                     QtWarningMsg
+      <2><197>: Abbrev Number: 7 (DW_TAG_enumerator)
+         <198>   DW_AT_name        : (indirect string, offset: 0x16f4a):
+                                     QtCriticalMsg
+      <2><19c>: Abbrev Number: 7 (DW_TAG_enumerator)
+         <19d>   DW_AT_name        : (indirect string, offset: 0x156dd):
+                                     QtFatalMsg
+      <2><1a1>: Abbrev Number: 7 (DW_TAG_enumerator)
+         <1a2>   DW_AT_name        : (indirect string, offset: 0x13660):
+                                     QtSystemMsg
+   */
    if (dtag == DW_TAG_enumerator) {
-      Bool have_value = False;
       VG_(memset)( &atomE, 0, sizeof(atomE) );
       atomE.cuOff = posn;
       atomE.tag   = Te_Atom;
@@ -2244,11 +2332,11 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          }
          if (attr == DW_AT_const_value && ctsSzB > 0) {
             atomE.Te.Atom.value = cts;
-            have_value = True;
+            atomE.Te.Atom.valueKnown = True;
          }
       }
       /* Do we have something that looks sane? */
-      if ((!have_value) || atomE.Te.Atom.name == NULL)
+      if (atomE.Te.Atom.name == NULL)
          goto bad_DIE;
       /* Do we have a plausible parent? */
       if (typestack_is_empty(parser)) goto bad_DIE;
@@ -3325,12 +3413,30 @@ void new_dwarf3_reader_wrk (
    while (True) {
       UWord   cu_start_offset, cu_offset_now;
       CUConst cc;
+      /* It may be that the stated size of this CU is larger than the
+         amount of stuff actually in it.  icc9 seems to generate CUs
+         thusly.  We use these variables to figure out if this is
+         indeed the case, and if so how many bytes we need to skip to
+         get to the start of the next CU.  Not skipping those bytes
+         causes us to misidentify the start of the next CU, and it all
+         goes badly wrong after that (not surprisingly). */
+      UWord cu_size_including_IniLen, cu_amount_used;
 
       /* It seems icc9 finishes the DIE info before debug_info_sz
          bytes have been used up.  So be flexible, and declare the
          sequence complete if there is not enough remaining bytes to
          hold even the smallest conceivable CU header.  (11 bytes I
          reckon). */
+      /* JRS 23Jan09: I suspect this is no longer necessary now that
+         the code below contains a 'while (cu_amount_used <
+         cu_size_including_IniLen ...'  style loop, which skips over
+         any leftover bytes at the end of a CU in the case where the
+         CU's stated size is larger than its actual size (as
+         determined by reading all its DIEs).  However, for prudence,
+         I'll leave the following test in place.  I can't see that a
+         CU header can be smaller than 11 bytes, so I don't think
+         there's any harm possible through the test -- it just adds
+         robustness. */
       Word avail = get_remaining_length_Cursor( &info );
       if (avail < 11) {
          if (avail > 0)
@@ -3366,6 +3472,8 @@ void new_dwarf3_reader_wrk (
       cc.debug_loc_sz     = debug_loc_sz;
       cc.debug_line_img   = debug_line_img;
       cc.debug_line_sz    = debug_line_sz;
+      cc.debug_info_img   = debug_info_img;
+      cc.debug_info_sz    = debug_info_sz;
       cc.cu_start_offset  = cu_start_offset;
       cc.di = di;
       /* The CU's svma can be deduced by looking at the AT_low_pc
@@ -3404,10 +3512,36 @@ void new_dwarf3_reader_wrk (
                 &info, td3, &cc, 0 );
 
       cu_offset_now = get_position_of_Cursor( &info );
+
+      if (0) VG_(printf)("Travelled: %lu  size %llu\n",
+                         cu_offset_now - cc.cu_start_offset,
+                         cc.unit_length + (cc.is_dw64 ? 12 : 4));
+
+      /* How big the CU claims it is .. */
+      cu_size_including_IniLen = cc.unit_length + (cc.is_dw64 ? 12 : 4);
+      /* .. vs how big we have found it to be */
+      cu_amount_used = cu_offset_now - cc.cu_start_offset;
+
       if (1) TRACE_D3("offset now %ld, d-i-size %ld\n",
                       cu_offset_now, debug_info_sz);
       if (cu_offset_now > debug_info_sz)
          barf("toplevel DIEs beyond end of CU");
+
+      /* If the CU is bigger than it claims to be, we've got a serious
+         problem. */
+      if (cu_amount_used > cu_size_including_IniLen)
+         barf("CU's actual size appears to be larger than it claims it is");
+
+      /* If the CU is smaller than it claims to be, we need to skip some
+         bytes.  Loop updates cu_offset_new and cu_amount_used. */
+      while (cu_amount_used < cu_size_including_IniLen
+             && get_remaining_length_Cursor( &info ) > 0) {
+         if (0) VG_(printf)("SKIP\n");
+         (void)get_UChar( &info );
+         cu_offset_now = get_position_of_Cursor( &info );
+         cu_amount_used = cu_offset_now - cc.cu_start_offset;
+      }
+
       if (cu_offset_now == debug_info_sz)
          break;
 
@@ -3760,10 +3894,14 @@ void new_dwarf3_reader_wrk (
    ML_(dinfo_free)( tyents_to_keep_cache );
    tyents_to_keep_cache = NULL;
 
-   /* and the file name table (just the array, not the entries 
-      themselves). */
-   vg_assert(varparser.filenameTable);
-   VG_(deleteXA)( varparser.filenameTable );
+   /* and the file name table (just the array, not the entries
+      themselves).  (Apparently, 2008-Oct-23, varparser.filenameTable
+      can be NULL here, for icc9 generated Dwarf3.  Not sure what that
+      signifies (a deeper problem with the reader?)) */
+   if (varparser.filenameTable) {
+      VG_(deleteXA)( varparser.filenameTable );
+      varparser.filenameTable = NULL;
+   }
 
    /* record the GExprs in di so they can be freed later */
    vg_assert(!di->admin_gexprs);

@@ -21,39 +21,23 @@
    drd:ConflictingAccess
    obj:/lib*/ld-*.so
    obj:/lib*/ld-*.so
-   obj:/lib*/ld-*.so
 }
 {
    dl-dlsym-1
    drd:ConflictingAccess
-   obj:/lib/ld-*.so
-   obj:/lib/tls/*/cmov/libc-*.so
+   ...
    fun:_dl_sym
 }
 {
    dl-dlsym-2
    drd:ConflictingAccess
-   obj:/lib/ld-*.so
-   obj:/lib/libc-*.so
-   obj:/lib/libdl-*.so
-   obj:/lib/ld-*.so
-   obj:/lib/libdl-*.so
+   ...
    fun:dlsym
 }
 {
    dl-dlsym-3
    drd:ConflictingAccess
-   obj:/lib/ld-*.so
-   obj:/lib/tls/*/cmov/libc-*.so
-   obj:/lib/ld-*.so
-   fun:__libc_dlsym
-}
-{
-   dl-dlsym-4
-   drd:ConflictingAccess
-   obj:/lib/ld-*.so
-   obj:/lib/libc-*.so
-   obj:/lib/ld-*.so
+   ...
    fun:__libc_dlsym
 }
 {
@@ -61,6 +45,11 @@
    drd:ConflictingAccess
    fun:_dl_addr
    fun:backtrace_symbols
+}
+{
+   libc-stdio
+   drd:ConflictingAccess
+   obj:/lib*/libc-*
 }
 {
    libc
@@ -73,6 +62,30 @@
    drd:ConflictingAccess
    fun:__libc_disable_asynccancel
    obj:/lib*/libc-*
+}
+{
+   libc-exit-io-cleanup
+   drd:ConflictingAccess
+   ...
+   fun:exit
+}
+{
+   libc-random_r
+   drd:ConflictingAccess
+   fun:random_r
+}
+{
+   libc:stdio
+   drd:ConflictingAccess
+   ...
+   fun:_IO_file_xsputn*
+   fun:vfprintf
+}
+{
+   libc:stdio
+   drd:ConflictingAccess
+   ...
+   fun:fflush
 }
 {
    librt
@@ -115,24 +128,13 @@
 {
    pthread
    drd:ConflictingAccess
-   fun:clone
-   fun:create_thread
-   fun:pthread_create*
+   ...
    fun:pthread_create*
 }
 {
    pthread
    drd:ConflictingAccess
-   obj:/lib*/libc-*.so
-   fun:__libc_thread_freeres
-   fun:start_thread
-   fun:clone
-}
-{
-   pthread
-   drd:ConflictingAccess
-   obj:/lib*/libc-*.so
-   obj:/lib*/libc-*.so
+   ...
    fun:__libc_thread_freeres
    fun:start_thread
    fun:clone
@@ -143,26 +145,6 @@
    fun:__nptl_deallocate_tsd
    fun:start_thread
    fun:clone
-}
-{
-   pthread
-   drd:ConflictingAccess
-   fun:pthread_create@@GLIBC_*
-   fun:pthread_create*
-}
-{
-   pthread
-   drd:ConflictingAccess
-   fun:clone
-   fun:do_clone
-   fun:pthread_create@@GLIBC_*
-   fun:pthread_create*
-}
-{
-   pthread-glibc2.7-pthread_create
-   drd:ConflictingAccess
-   fun:memset
-   fun:pthread_create*
 }
 {
    pthread
@@ -179,90 +161,14 @@
 {
    pthread
    drd:ConflictingAccess
-   fun:clone
-   fun:pthread_create*
-}
-{
-   pthread
-   drd:ConflictingAccess
-   fun:do_clone
-   fun:pthread_create@@GLIBC_*
-   fun:pthread_create*
-}
-{
-   pthread
-   drd:ConflictingAccess
-   fun:memset
-   fun:pthread_create@@GLIBC_*
-   fun:pthread_create*
-}
-{
-   pthread
-   drd:ConflictingAccess
-   fun:_dl_allocate_tls_init
-   fun:pthread_create@@GLIBC_*
-   fun:pthread_create*
-}
-{
-   pthread
-   drd:ConflictingAccess
-   fun:memset
-   fun:_dl_allocate_tls_init
-   fun:pthread_create@@GLIBC_*
-   fun:pthread_create*
-}
-{
-   pthread
-   drd:ConflictingAccess
-   fun:mempcpy
-   fun:pthread_create@@GLIBC_*
-   fun:pthread_create*
-}
-{
-   pthread
-   drd:ConflictingAccess
    fun:pthread_join
    fun:pthread_join
 }
 {
    pthread
    drd:ConflictingAccess
-   fun:allocate_stack
-   fun:pthread_create*
-   fun:pthread_create*
-}
-{
-   pthread
-   drd:ConflictingAccess
-   fun:get_cached_stack
-   fun:allocate_stack
-   fun:pthread_create*
-   fun:pthread_create*
-}
-{
-   pthread
-   drd:ConflictingAccess
+   ...
    fun:__deallocate_stack
-}
-{
-   pthread
-   drd:ConflictingAccess
-   fun:__deallocate_stack
-}
-{
-   pthread
-   drd:ConflictingAccess
-   fun:free_stacks
-   fun:__deallocate_stack
-}
-{
-   pthread
-   drd:ConflictingAccess
-   obj:/lib*/libpthread-*
-   obj:/lib*/libpthread-*
-   fun:__deallocate_stack
-   fun:start_thread
-   fun:clone
 }
 {
    pthread
@@ -283,6 +189,12 @@
    pthread
    drd:ConflictingAccess
    fun:pthread_cancel
+}
+{
+   pthread
+   drd:ConflictingAccess
+   ...
+   fun:pthread_cancel_init
 }
 {
    pthread
@@ -319,8 +231,14 @@
 {
    pthread-unwind
    drd:ConflictingAccess
-   fun:_Unwind_ForcedUnwind
+   ...
    fun:__pthread_unwind
+}
+{
+   pthread-unwind
+   drd:ConflictingAccess
+   ...
+   fun:_Unwind_Resume
 }
 {
    pthread-unwind
@@ -339,36 +257,6 @@
    drd:ConflictingAccess
    fun:uw_frame_state_for
    fun:_Unwind_ForcedUnwind_Phase2
-}
-{
-   pthread-unwind-3
-   drd:ConflictingAccess
-   obj:*
-   obj:*
-   obj:*
-   fun:_Unwind_ForcedUnwind
-   fun:__pthread_unwind
-}
-{
-   pthread-unwind-4
-   drd:ConflictingAccess
-   obj:*
-   obj:*
-   obj:*
-   obj:*
-   fun:_Unwind_ForcedUnwind
-   fun:__pthread_unwind
-}
-{
-   pthread-unwind-5
-   drd:ConflictingAccess
-   obj:*
-   obj:*
-   obj:*
-   obj:*
-   obj:*
-   fun:_Unwind_ForcedUnwind
-   fun:__pthread_unwind
 }
 {
    gomp
@@ -395,9 +283,9 @@
 {
    libglib-access-g_threads_got_initialized
    drd:ConflictingAccess
+   ...
    fun:g_slice_alloc
    fun:g_ptr_array_sized_new
-   fun:g_main_context_new
 }
 {
    libglib-access-g_threads_got_initialized
@@ -421,6 +309,12 @@
    libglib-g_private_set_posix_impl
    drd:ConflictingAccess
    fun:g_private_set_posix_impl
+}
+{
+   libglib-g_get_language_names
+   drd:ConflictingAccess
+   fun:g_slice_free_chain_with_offset
+   fun:g_get_language_names
 }
 {
    libQtCore-4.0/4.1-Q_GLOBAL_STATIC-connectionList
@@ -447,4 +341,11 @@
    fun:_ZN7QObjectD2Ev
    fun:_ZN24QAbstractEventDispatcherD2Ev
    fun:_ZN20QEventDispatcherGlibD0Ev
+}
+{
+   libboost_thread_1
+   drd:ConflictingAccess
+   ...
+   fun:_ZN5boost9call_onceIPFvvEEEvRNS_9once_flagET_
+   fun:_ZN5boost6detail23get_current_thread_dataEv
 }

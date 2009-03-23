@@ -13,7 +13,7 @@
    This file is part of drd, a Valgrind tool for verification of
    multithreaded programs.
 
-   Copyright (C) 2006-2008 Bart Van Assche.  All rights reserved.
+   Copyright (C) 2006-2009 Bart Van Assche.  All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions
@@ -68,17 +68,6 @@
    which use client requests.  DO NOT CHANGE THE ORDER OF THESE
    ENTRIES, NOR DELETE ANY -- add new ones at the end.
  */
-
-
-/** Tell DRD to suppress data race detection on the specified variable. */
-#define DRD_IGNORE_VAR(x) vg_drd_ignore_range(&(x), sizeof(x))
-
-/** Tell DRD to trace all memory accesses on the specified variable. 
- *  until the memory that was allocated for the variable is freed.
- */
-#define DRD_TRACE_VAR(x) vg_drd_trace_range(&(x), sizeof(x))
-
-
 enum
 {
   /* Ask the core the thread ID assigned by Valgrind. */
@@ -104,6 +93,15 @@ enum
   VG_USERREQ__DRD_STOP_TRACE_ADDR,
   /* args: Addr, SizeT. */
 };
+
+
+/** Tell DRD to suppress data race detection on the specified variable. */
+#define DRD_IGNORE_VAR(x) vg_drd_ignore_range(&(x), sizeof(x))
+
+/** Tell DRD to trace all memory accesses on the specified variable. 
+ *  until the memory that was allocated for the variable is freed.
+ */
+#define DRD_TRACE_VAR(x) vg_drd_trace_range(&(x), sizeof(x))
 
 
 static __inline__

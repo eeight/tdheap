@@ -2,7 +2,7 @@
    This file is part of Callgrind, a Valgrind tool for call graph
    profiling programs.
 
-   Copyright (C) 2002-2008, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2009, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This tool is derived from and contains lot of code from Cachegrind
    Copyright (C) 2002 Nicholas Nethercote (njn@valgrind.org)
@@ -279,7 +279,7 @@ static void print_config_node(int s, config_node* node)
     char sp[] = "                                        ";
 
     if (s>40) s=40;
-    VG_(printf)(sp+40-s);
+    VG_(printf)("%s", sp+40-s);
     VG_(printf)("'%s'/%d\n", node->name, node->length);
   }
   for(i=0;i<NODE_DEGREE;i++) {

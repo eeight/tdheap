@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -128,7 +128,8 @@ static void copyout ( char* buf, int nbuf )
       if (buf[i] == '\n') {
          fprintf(stdout, "\n(%d) ", conn_count);
       } else {
-         fwrite(&buf[i], 1, 1, stdout);
+         __attribute__((unused)) size_t ignored 
+            = fwrite(&buf[i], 1, 1, stdout);
       }
    }
    fflush(stdout);

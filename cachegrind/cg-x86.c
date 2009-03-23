@@ -1,13 +1,13 @@
 
 /*--------------------------------------------------------------------*/
-/*--- x86-specific definitions.                           cg-x86.c ---*/
+/*--- x86-specific (and AMD64-specific) definitions.      cg-x86.c ---*/
 /*--------------------------------------------------------------------*/
 
 /*
    This file is part of Cachegrind, a Valgrind tool for cache
    profiling programs.
 
-   Copyright (C) 2002-2008 Nicholas Nethercote
+   Copyright (C) 2002-2009 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -100,9 +100,11 @@ Int Intel_cache_info(Int level, cache_t* I1c, cache_t* D1c, cache_t* L2c)
           
       /* TLB info, ignore */
       case 0x01: case 0x02: case 0x03: case 0x04: case 0x05:
-      case 0x50: case 0x51: case 0x52: case 0x56: case 0x57:
+      case 0x4f: case 0x50: case 0x51: case 0x52:
+      case 0x56: case 0x57: case 0x59:
       case 0x5b: case 0x5c: case 0x5d:
-      case 0xb0: case 0xb1: case 0xb3: case 0xb4:
+      case 0xb0: case 0xb1:
+      case 0xb3: case 0xb4: case 0xba: case 0xc0:
           break;      
 
       case 0x06: *I1c = (cache_t) {  8, 4, 32 }; break;
@@ -111,6 +113,7 @@ Int Intel_cache_info(Int level, cache_t* I1c, cache_t* D1c, cache_t* L2c)
 
       case 0x0a: *D1c = (cache_t) {  8, 2, 32 }; break;
       case 0x0c: *D1c = (cache_t) { 16, 4, 32 }; break;
+      case 0x0e: *D1c = (cache_t) { 24, 6, 64 }; break;
       case 0x2c: *D1c = (cache_t) { 32, 8, 64 }; break;
 
       /* IA-64 info -- panic! */
@@ -119,7 +122,8 @@ Int Intel_cache_info(Int level, cache_t* I1c, cache_t* D1c, cache_t* L2c)
       case 0x90: case 0x96: case 0x9b:
          VG_(tool_panic)("IA-64 cache detected?!");
 
-      case 0x22: case 0x23: case 0x25: case 0x29: case 0x46: case 0x47:
+      case 0x22: case 0x23: case 0x25: case 0x29:
+      case 0x46: case 0x47: case 0x4a: case 0x4b: case 0x4c: case 0x4d:
           VG_(message)(Vg_DebugMsg,
              "warning: L3 cache detected but ignored");
           break;
@@ -140,14 +144,16 @@ Int Intel_cache_info(Int level, cache_t* I1c, cache_t* D1c, cache_t* L2c)
       case 0x43: *L2c = (cache_t) {  512, 4, 32 }; L2_found = True; break;
       case 0x44: *L2c = (cache_t) { 1024, 4, 32 }; L2_found = True; break;
       case 0x45: *L2c = (cache_t) { 2048, 4, 32 }; L2_found = True; break;
+      case 0x48: *L2c = (cache_t) { 3072,12, 64 }; L2_found = True; break;
       case 0x49:
 	  if ((family == 15) && (model == 6))
 	      /* On Xeon MP (family F, model 6), this is for L3 */
 	      VG_(message)(Vg_DebugMsg, 
-			   "warning: L3 cache detected but ignored\n");
+			   "warning: L3 cache detected but ignored");
 	  else
 	      *L2c = (cache_t) { 4096, 16, 64 }; L2_found = True;
 	  break;
+      case 0x4e: *L2c = (cache_t) { 6144, 24, 64 }; L2_found = True; break;
 
       /* These are sectored, whatever that means */
       case 0x60: *D1c = (cache_t) { 16, 8, 64 };  break;      /* sectored */
@@ -180,6 +186,9 @@ Int Intel_cache_info(Int level, cache_t* I1c, cache_t* D1c, cache_t* L2c)
       case 0x7c: *L2c = (cache_t) { 1024, 8,  64 }; L2_found = True;  break;
       case 0x7d: *L2c = (cache_t) { 2048, 8,  64 }; L2_found = True;  break;
       case 0x7e: *L2c = (cache_t) {  256, 8, 128 }; L2_found = True;  break;
+
+      case 0x7f: *L2c = (cache_t) {  512, 2, 64 };  L2_found = True;  break;
+      case 0x80: *L2c = (cache_t) {  512, 8, 64 };  L2_found = True;  break;
 
       case 0x81: *L2c = (cache_t) {  128, 8, 32 };  L2_found = True;  break;
       case 0x82: *L2c = (cache_t) {  256, 8, 32 };  L2_found = True;  break;
@@ -291,7 +300,7 @@ Int get_caches_from_CPUID(cache_t* I1c, cache_t* D1c, cache_t* L2c)
    vendor_id[12] = '\0';
 
    if (0 == level) {
-      VG_(message)(Vg_DebugMsg, "CPUID level is 0, early Pentium?\n");
+      VG_(message)(Vg_DebugMsg, "CPUID level is 0, early Pentium?");
       return -1;
    }
 

@@ -8,7 +8,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -3335,11 +3335,12 @@ static Bool isBogusAtom ( IRAtom* at )
    /* VG_(printf)("%llx\n", n); */
    return (/*32*/    n == 0xFEFEFEFFULL
            /*32*/ || n == 0x80808080ULL
+           /*32*/ || n == 0x7F7F7F7FULL
            /*64*/ || n == 0xFFFFFFFFFEFEFEFFULL
            /*64*/ || n == 0xFEFEFEFEFEFEFEFFULL
            /*64*/ || n == 0x0000000000008080ULL
            /*64*/ || n == 0x8080808080808080ULL
-	   /*64*/ || n == 0x0101010101010101ULL
+           /*64*/ || n == 0x0101010101010101ULL
           );
 }
 
@@ -4174,10 +4175,13 @@ static void do_origins_Dirty ( MCEnv* mce, IRDirty* d )
          curr = gen_maxU32( mce, curr, here );
          toDo -= 4;
       }
-      if (toDo != 0)
-         VG_(printf)("Approx: do_origins_Dirty(R): missed %d bytes\n",
-                     (Int)toDo );
-      //tl_assert(toDo == 0); /* also need to handle 1,2-byte excess */
+      /* handle possible 16-bit excess */
+      while (toDo >= 2) {
+         here = gen_load_b( mce, 2, d->mAddr, d->mSize - toDo );
+         curr = gen_maxU32( mce, curr, here );
+         toDo -= 2;
+      }
+      tl_assert(toDo == 0); /* also need to handle 1-byte excess */
    }
 
    /* Whew!  So curr is a 32-bit B-value which should give an origin
@@ -4231,10 +4235,12 @@ static void do_origins_Dirty ( MCEnv* mce, IRDirty* d )
          gen_store_b( mce, 4, d->mAddr, d->mSize - toDo, curr );
          toDo -= 4;
       }
-      if (toDo != 0)
-         VG_(printf)("Approx: do_origins_Dirty(W): missed %d bytes\n",
-                     (Int)toDo );
-      //tl_assert(toDo == 0); /* also need to handle 1,2-byte excess */
+      /* handle possible 16-bit excess */
+      while (toDo >= 2) {
+         gen_store_b( mce, 2, d->mAddr, d->mSize - toDo, curr );
+         toDo -= 2;
+      }
+      tl_assert(toDo == 0); /* also need to handle 1-byte excess */
    }
 
 }

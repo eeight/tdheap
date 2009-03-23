@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -258,6 +258,17 @@ Bool VG_(is_dir) ( HChar* f )
 SysRes VG_(dup) ( Int oldfd )
 {
    return VG_(do_syscall1)(__NR_dup, oldfd);
+}
+
+SysRes VG_(dup2) ( Int oldfd, Int newfd )
+{
+#  if defined(VGO_linux)
+   return VG_(do_syscall2)(__NR_dup2, oldfd, newfd);
+#  elif defined(VGO_aix5)
+   I_die_here;
+#  else
+#    error Unknown OS
+#  endif
 }
 
 /* Returns -1 on error. */

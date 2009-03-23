@@ -9,13 +9,13 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2008 Julian Seward
+   Copyright (C) 2007-2009 Julian Seward
       jseward@acm.org
 
    This code is based on previous work by Nicholas Nethercote
    (coregrind/m_oset.c) which is
 
-   Copyright (C) 2005-2008 Nicholas Nethercote
+   Copyright (C) 2005-2009 Nicholas Nethercote
        njn@valgrind.org
 
    which in turn was derived partially from:
@@ -105,15 +105,32 @@ Bool VG_(lookupFM) ( WordFM* fm,
 // values are returned in *kMinP and *kMaxP.  It follows that if fm is
 // empty then the returned values are simply minKey and maxKey.
 //
+// For convenience the associated value fields are also returned
+// through *vMinP and *vMaxP.  To make that possible in the general
+// case, the caller must supply via minVal and maxVal, the value
+// fields associated with minKey and maxKey.
+//
 // If the operation was successful (that is, the given key is not
 // present), True is returned.  If the given key is in fact present,
-// False is returned, and *kMinP and *kMaxP are undefined.
+// False is returned, and *kMinP, *vMinP, *kMaxP and *vMaxP are
+// undefined.  Any of kMinP, vMinP, kMaxP and vMaxP may be safely
+// supplied as NULL.
 Bool VG_(findBoundsFM)( WordFM* fm,
-                        /*OUT*/UWord* kMinP, /*OUT*/UWord* kMaxP,
-                        UWord minKey, UWord maxKey, UWord key );
+                        /*OUT*/UWord* kMinP, /*OUT*/UWord* vMinP,
+                        /*OUT*/UWord* kMaxP, /*OUT*/UWord* vMaxP,
+                        UWord minKey, UWord minVal,
+                        UWord maxKey, UWord maxVal,
+                        UWord key );
 
-// How many elements are there in fm?
+// How many elements are there in fm?  NOTE: dangerous in the
+// sense that this is not an O(1) operation but rather O(N),
+// since it involves walking the whole tree.
 UWord VG_(sizeFM) ( WordFM* fm );
+
+// Is fm empty?  This at least is an O(1) operation.
+// Code is present in m_wordfm.c but commented out due to no
+// current usage.  Un-comment (and TEST IT) if required.
+//Bool VG_(isEmptyFM)( WordFM* fm );
 
 // set up FM for iteration
 void VG_(initIterFM) ( WordFM* fm );
@@ -140,6 +157,9 @@ void VG_(doneIterFM) ( WordFM* fm );
 // and NULL is returned.  Ditto with dopyV for values.
 WordFM* VG_(dopyFM) ( WordFM* fm,
                       UWord(*dopyK)(UWord), UWord(*dopyV)(UWord) );
+
+// admin: what's the 'common' allocation size (for tree nodes?)
+SizeT VG_(getNodeSizeFM)( void );
 
 //------------------------------------------------------------------//
 //---                         end WordFM                         ---//

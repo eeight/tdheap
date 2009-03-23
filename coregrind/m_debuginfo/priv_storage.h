@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -308,7 +308,46 @@ struct _DebugInfo {
       in some obscure circumstances (to do with data/sdata/bss) it is
       possible for the mapping to be present but have zero size.
       Certainly text_ is mandatory on all platforms; not sure about
-      the rest though. */
+      the rest though. 
+
+      Comment_on_IMPORTANT_CFSI_REPRESENTATIONAL_INVARIANTS: we require that
+ 
+      either (rx_map_size == 0 && cfsi == NULL) (the degenerate case)
+
+      or the normal case, which is the AND of the following:
+      (0) rx_map_size > 0
+      (1) no two DebugInfos with rx_map_size > 0 
+          have overlapping [rx_map_avma,+rx_map_size)
+      (2) [cfsi_minavma,cfsi_maxavma] does not extend 
+          beyond [rx_map_avma,+rx_map_size); that is, the former is a 
+          subrange or equal to the latter.
+      (3) all DiCfSI in the cfsi array all have ranges that fall within
+          [rx_map_avma,+rx_map_size).
+      (4) all DiCfSI in the cfsi array are non-overlapping
+
+      The cumulative effect of these restrictions is to ensure that
+      all the DiCfSI records in the entire system are non overlapping.
+      Hence any address falls into either exactly one DiCfSI record,
+      or none.  Hence it is safe to cache the results of searches for
+      DiCfSI records.  This is the whole point of these restrictions.
+      The caching of DiCfSI searches is done in VG_(use_CF_info).  The
+      cache is flushed after any change to debugInfo_list.  DiCfSI
+      searches are cached because they are central to stack unwinding
+      on amd64-linux.
+
+      Where are these invariants imposed and checked?
+
+      They are checked after a successful read of debuginfo into
+      a DebugInfo*, in check_CFSI_related_invariants.
+
+      (1) is not really imposed anywhere.  We simply assume that the
+      kernel will not map the text segments from two different objects
+      into the same space.  Sounds reasonable.
+
+      (2) follows from (4) and (3).  It is ensured by canonicaliseCFI.
+      (3) is ensured by ML_(addDiCfSI).
+      (4) is ensured by canonicaliseCFI.
+   */
    /* .text */
    Bool   text_present;
    Addr   text_avma;
@@ -327,12 +366,24 @@ struct _DebugInfo {
    Addr   sdata_avma;
    SizeT  sdata_size;
    OffT   sdata_bias;
+   /* .rodata */
+   Bool   rodata_present;
+   Addr   rodata_svma;
+   Addr   rodata_avma;
+   SizeT  rodata_size;
+   OffT   rodata_bias;
    /* .bss */
    Bool   bss_present;
    Addr   bss_svma;
    Addr   bss_avma;
    SizeT  bss_size;
    OffT   bss_bias;
+   /* .sbss */
+   Bool   sbss_present;
+   Addr   sbss_svma;
+   Addr   sbss_avma;
+   SizeT  sbss_size;
+   OffT   sbss_bias;
    /* .plt */
    Bool   plt_present;
    Addr	  plt_avma;
@@ -372,8 +423,8 @@ struct _DebugInfo {
       records require any expression nodes, they are stored in
       cfsi_exprs. */
    DiCfSI* cfsi;
-   UInt    cfsi_used;
-   UInt    cfsi_size;
+   UWord   cfsi_used;
+   UWord   cfsi_size;
    Addr    cfsi_minavma;
    Addr    cfsi_maxavma;
    XArray* cfsi_exprs; /* XArray of CfiExpr */
@@ -464,17 +515,17 @@ extern void ML_(canonicaliseTables) ( struct _DebugInfo* di );
 
 /* Find a symbol-table index containing the specified pointer, or -1
    if not found.  Binary search.  */
-extern Int ML_(search_one_symtab) ( struct _DebugInfo* di, Addr ptr,
-                                    Bool match_anywhere_in_sym,
-                                    Bool findText );
+extern Word ML_(search_one_symtab) ( struct _DebugInfo* di, Addr ptr,
+                                     Bool match_anywhere_in_sym,
+                                     Bool findText );
 
 /* Find a location-table index containing the specified pointer, or -1
    if not found.  Binary search.  */
-extern Int ML_(search_one_loctab) ( struct _DebugInfo* di, Addr ptr );
+extern Word ML_(search_one_loctab) ( struct _DebugInfo* di, Addr ptr );
 
 /* Find a CFI-table index containing the specified pointer, or -1 if
    not found.  Binary search.  */
-extern Int ML_(search_one_cfitab) ( struct _DebugInfo* di, Addr ptr );
+extern Word ML_(search_one_cfitab) ( struct _DebugInfo* di, Addr ptr );
 
 /* ------ Misc ------ */
 

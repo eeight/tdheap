@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -502,7 +502,7 @@ void VG_(scheduler_init_phase2) ( ThreadId tid_main,
    VG_(threads)[tid_main].client_stack_szB 
       = clstack_size;
 
-   VG_(atfork_child)(sched_fork_cleanup);
+   VG_(atfork)(NULL, NULL, sched_fork_cleanup);
 }
 
 

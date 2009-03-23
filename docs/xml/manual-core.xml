@@ -365,7 +365,12 @@ them.</para>
 
 <formalpara><title>Note:</title> <para>By far the easiest way to add
 suppressions is to use the <option>--gen-suppressions=yes</option> flag
-described in <xref linkend="manual-core.flags"/>.</para>
+described in <xref linkend="manual-core.flags"/>.  This generates
+suppressions automatically.  For best results,
+though, you may want to edit the output
+    of  <option>--gen-suppressions=yes</option> by hand, in which
+case it would be advisable to read through this section.
+</para>
 </formalpara>
 
 <para>Each error to be suppressed is described very specifically, to
@@ -436,8 +441,8 @@ tool_name1,tool_name2:suppression_name]]></programlisting>
     the chain of function calls that led to it.  There can be up to 24
     of these lines.</para>
 
-    <para>Locations may be either names of shared objects/executables or
-    wildcards matching function names.  They begin
+    <para>Locations may be names of either shared objects or
+    functions.  They begin
     <computeroutput>obj:</computeroutput> and
     <computeroutput>fun:</computeroutput> respectively.  Function and
     object names to match against may use the wildcard characters
@@ -447,7 +452,22 @@ tool_name1,tool_name2:suppression_name]]></programlisting>
     <para><command>Important note: </command> C++ function names must be
     <command>mangled</command>.  If you are writing suppressions by
     hand, use the <option>--demangle=no</option> option to get the
-    mangled names in your error messages.</para>
+    mangled names in your error messages.  An example of a mangled
+    C++ name is  <computeroutput>_ZN9QListView4showEv</computeroutput>.
+    This is the form that the GNU C++ compiler uses internally, and
+    the form that must be used in suppression files.  The equivalent
+    demangled name, <computeroutput>QListView::show()</computeroutput>,
+    is what you see at the C++ source code level.
+    </para>
+
+    <para>A location line may also be
+    simply "<computeroutput>...</computeroutput>" (three dots).  This is
+    a frame-level wildcard, which matches zero or more frames.  Frame
+    level wildcards are useful because they make it easy to ignore
+    varying numbers of uninteresting frames in between frames of
+    interest.  That is often important when writing suppressions which
+    are intended to be robust against variations in the amount of
+    function inlining done by compilers.</para>
   </listitem>
 
   <listitem>
@@ -496,7 +516,7 @@ on the specifics of Memcheck's suppression kinds.)</para>
   obj:/usr/X11R6/lib/libXaw.so.7.0
 }]]></programlisting>
 
-<para>Suppress any size 4 uninitialised-value error which occurs
+<para>This suppresses any size 4 uninitialised-value error which occurs
 anywhere in <filename>libX11.so.6.2</filename>, when called from
 anywhere in the same library, when called from anywhere in
 <filename>libXaw.so.7.0</filename>.  The inexact specification of
@@ -508,6 +528,28 @@ was made have had their symbol tables removed.</para>
 freely mix <computeroutput>obj:</computeroutput> and
 <computeroutput>fun:</computeroutput> lines in a suppression.</para>
 
+<para>Finally, here's an example using three frame-level wildcards:</para>
+
+<programlisting><![CDATA[
+{
+   a-contrived-example
+   Memcheck:Leak
+   fun:malloc
+   ...
+   fun:ddd
+   ...
+   fun:ccc
+   ...
+   fun:main
+}
+]]></programlisting>
+This suppresses Memcheck memory-leak errors, in the case where
+the allocation was done by <computeroutput>main</computeroutput>
+calling (though any number of intermediaries, including zero)
+<computeroutput>ccc</computeroutput>,
+calling onwards via
+<computeroutput>ddd</computeroutput> and eventually
+to <computeroutput>malloc.</computeroutput>.
 </sect1>
 
 
@@ -916,8 +958,15 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
       required.</para>
 
       <para>Note that the suppressions printed are as specific as
-      possible.  You may want to common up similar ones, eg. by adding
-      wildcards to function names.  Sometimes two different errors
+      possible.  You may want to common up similar ones, by adding
+      wildcards to function names, and by using frame-level wildcards.
+      The wildcarding facilities are powerful yet flexible, and with a
+      bit of careful editing, you may be able to suppress a whole
+      family of related errors with only a few suppressions.  For
+      details on how to do this, see
+      <xref linkend="manual-core.suppress"/>.</para>
+
+      <para>Sometimes two different errors
       are suppressed by the same suppression, in which case Valgrind
       will output the suppression more than once, but you only need to
       have one copy in your suppression file (but having more than one
@@ -950,18 +999,6 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
 
       <para><varname>C Ret</varname> or <varname>c Ret</varname> causes
       Valgrind not to start a debugger, and not to ask again.</para>
-
-      <para><command>Note:</command> <option>--db-attach=yes</option>
-      conflicts with <option>--trace-children=yes</option>.  You can't
-      use them together.  Valgrind refuses to start up in this
-      situation.</para>
-
-      <para>May 2002: this is a historical relic which could be easily
-      fixed if it gets in your way.  Mail us and complain if this is a
-      problem for you.</para>
-      <para>Nov 2002: if you're sending output to a logfile or to a
-      network socket, I guess this option doesn't make any sense.
-      Caveat emptor.</para>
     </listitem>
   </varlistentry>
 
@@ -1309,7 +1346,15 @@ processed earlier; for example, options in
 precedence over those in
 <computeroutput>~/.valgrindrc</computeroutput>.  The first two
 are particularly useful for setting the default tool to
-use.</para>
+use.
+</para>
+
+<para>Please note that the <computeroutput>./.valgrindrc</computeroutput>
+file is ignored if it is marked as world writeable or not owned 
+by the current user. This is because the .valgrindrc can contain options
+that are potentially harmful or can be used by a local attacker to
+execute code under your user account.
+</para>
 
 <para>Any tool-specific options put in
 <computeroutput>$VALGRIND_OPTS</computeroutput> or the
@@ -1420,7 +1465,7 @@ will create a core dump in the usual way.</para>
 <computeroutput>make</computeroutput>, <computeroutput>make
 install</computeroutput> mechanism, and we have attempted to
 ensure that it works on machines with kernel 2.4 or 2.6 and glibc
-2.2.X to 2.5.X.  Once you have completed 
+2.2.X to 2.9.X.  Once you have completed 
 <computeroutput>make install</computeroutput> you may then want 
 to run the regression tests
 with <computeroutput>make regtest</computeroutput>.

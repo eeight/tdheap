@@ -24,6 +24,9 @@ usage: valgrind [options] prog-and-args
                               only for code found in stacks, or all [stack]
     --kernel-variant=variant1,variant2,...  known variants: bproc [none]
                               handle non-standard kernel variants
+    --read-var-info=yes|no    read debug info on stack and global variables
+                              and use it to print better error messages in
+                              tools that make use of it (Memcheck, Helgrind)
 
   user options for Valgrind tools that report errors:
     --xml=yes                 all output is in XML (some tools only)
@@ -61,9 +64,9 @@ usage: valgrind [options] prog-and-args
     --debug-dump=frames       mimic /usr/bin/readelf --debug-dump=frames
     --trace-redir=no|yes      show redirection details? [no]
     --trace-sched=no|yes      show thread scheduler details? [no]
+    --profile-heap=no|yes     profile Valgrind's own space use
     --wait-for-gdb=yes|no     pause on startup to wait for gdb attach
     --sym-offsets=yes|no      show syms in form 'name+offset' ? [no]
-    --read-var-info=yes|no    read variable type & location info? [no]
     --command-line-only=no|yes  only use command line options [no]
 
     --vex-iropt-verbosity             0 .. 9 [0]
@@ -93,7 +96,7 @@ usage: valgrind [options] prog-and-args
 
   Extra options read from ~/.valgrindrc, $VALGRIND_OPTS, ./.valgrindrc
 
-  Valgrind is Copyright (C) 2000-2008 Julian Seward et al.
+  Valgrind is Copyright (C) 2000-2009 Julian Seward et al.
   and licensed under the GNU General Public License, version 2.
   Bug reports, feedback, admiration, abuse, etc, to: www.valgrind.org.
 

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -467,6 +467,11 @@ ExeContext* VG_(get_ExeContext_from_ECU)( UInt ecu )
       }
    }
    return NULL;
+}
+
+ExeContext* VG_(make_ExeContext_from_StackTrace)( Addr* ips, UInt n_ips )
+{
+   return record_ExeContext_wrk2(ips, n_ips);
 }
 
 /*--------------------------------------------------------------------*/

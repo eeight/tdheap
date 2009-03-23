@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2008, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2009, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -180,7 +180,7 @@ Int CLG_(sprint_eventset)(Char* buf, EventSet* es)
 
   for(i=0; i< es->size; i++) {
     if (pos>0) buf[pos++] = ' ';
-    pos += VG_(sprintf)(buf + pos, es->e[i].type->name);
+    pos += VG_(sprintf)(buf + pos, "%s", es->e[i].type->name);
   }
   buf[pos] = 0;
 
@@ -538,7 +538,7 @@ Int CLG_(sprint_eventmapping)(Char* buf, EventMapping* em)
 
   for(i=0; i< em->size; i++) {
     if (pos>0) buf[pos++] = ' ';
-    pos += VG_(sprintf)(buf + pos, em->set->e[em->index[i]].type->name);
+    pos += VG_(sprintf)(buf + pos, "%s", em->set->e[em->index[i]].type->name);
   }
   buf[pos] = 0;
 

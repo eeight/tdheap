@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a data race detector.
 
-  Copyright (C) 2006-2008 Bart Van Assche
+  Copyright (C) 2006-2009 Bart Van Assche
   bart.vanassche@gmail.com
 
   This program is free software; you can redistribute it and/or
@@ -524,7 +524,8 @@ static void suppress_relocation_conflicts(const Addr a, const SizeT len)
 
     avma = VG_(seginfo_get_plt_avma)(di);
     size = VG_(seginfo_get_plt_size)(di);
-    if (size > 0 && a <= avma && avma + size <= a + len)
+    tl_assert((avma && size) || (avma == 0 && size == 0));
+    if (size > 0)
     {
 #if 0
       VG_(printf)("Suppressing .plt @ 0x%lx size %ld\n", avma, size);
@@ -535,7 +536,8 @@ static void suppress_relocation_conflicts(const Addr a, const SizeT len)
 
     avma = VG_(seginfo_get_gotplt_avma)(di);
     size = VG_(seginfo_get_gotplt_size)(di);
-    if (size > 0 && a <= avma && avma + size <= a + len)
+    tl_assert((avma && size) || (avma == 0 && size == 0));
+    if (size > 0)
     {
 #if 0
       VG_(printf)("Suppressing .got.plt @ 0x%lx size %ld\n", avma, size);
@@ -1227,7 +1229,7 @@ void drd_pre_clo_init(void)
   VG_(details_name)            ("drd");
   VG_(details_version)         (NULL);
   VG_(details_description)     ("a thread error detector");
-  VG_(details_copyright_author)("Copyright (C) 2006-2008, and GNU GPL'd,"
+  VG_(details_copyright_author)("Copyright (C) 2006-2009, and GNU GPL'd,"
                                 " by Bart Van Assche.");
   VG_(details_bug_reports_to)  (VG_BUGS_TO);
 

@@ -20,6 +20,16 @@ EXTRA_DIST =                                        \
 	atomic_var.stderr.exp-with-atomic-builtins    \
 	atomic_var.stderr.exp-without-atomic-builtins \
 	atomic_var.vgtest			    \
+	bar_bad.stderr.exp			    \
+	bar_bad.vgtest				    \
+	bar_trivial.stdout.exp			    \
+	bar_trivial.stderr.exp			    \
+	bar_trivial.vgtest			    \
+	boost_thread.stderr.exp			    \
+	boost_thread.vgtest			    \
+	circular_buffer.stderr.exp-with-atomic-builtins		\
+	circular_buffer.stderr.exp-without-atomic-builtins	\
+	circular_buffer.vgtest			    \
 	drd_bitmap_test.stderr.exp                  \
 	drd_bitmap_test.stdout.exp                  \
 	drd_bitmap_test.vgtest                      \
@@ -54,6 +64,8 @@ EXTRA_DIST =                                        \
 	matinv.vgtest                               \
 	memory_allocation.stderr.exp		    \
 	memory_allocation.vgtest		    \
+	monitor_example.stderr.exp		    \
+	monitor_example.vgtest			    \
 	new_delete.stderr.exp                       \
 	new_delete.vgtest                           \
 	omp_matinv.stderr.exp                       \
@@ -64,6 +76,8 @@ EXTRA_DIST =                                        \
 	omp_matinv_racy.vgtest                      \
 	omp_prime_racy.stderr.exp                   \
 	omp_prime_racy.vgtest                       \
+	omp_printf.stderr.exp                       \
+	omp_printf.vgtest                           \
 	pth_barrier.stderr.exp                      \
 	pth_barrier.vgtest                          \
 	pth_barrier2.stderr.exp                     \
@@ -95,6 +109,8 @@ EXTRA_DIST =                                        \
 	pth_detached_sem.vgtest                     \
 	pth_inconsistent_cond_wait.stderr.exp       \
 	pth_inconsistent_cond_wait.vgtest           \
+	pth_process_shared_mutex.vgtest             \
+	pth_process_shared_mutex.c                  \
 	pth_spinlock.stderr.exp                     \
 	pth_spinlock.vgtest                         \
 	qt4_mutex.stderr.exp                        \
@@ -189,6 +205,9 @@ AM_CXXFLAGS = $(AM_CFLAGS)
 
 check_PROGRAMS =      \
   atomic_var          \
+  bar_bad	      \
+  bar_trivial         \
+  circular_buffer     \
   drd_bitmap_test     \
   fp_race             \
   hg01_all_ok         \
@@ -201,6 +220,7 @@ check_PROGRAMS =      \
   linuxthreads_det    \
   matinv              \
   memory_allocation   \
+  monitor_example     \
   new_delete          \
   pth_barrier         \
   pth_barrier_reinit  \
@@ -210,6 +230,7 @@ check_PROGRAMS =      \
   pth_create_chain    \
   pth_detached        \
   pth_detached_sem    \
+  pth_process_shared_mutex   \
   pth_inconsistent_cond_wait \
   pth_spinlock        \
   recursive_mutex     \
@@ -242,17 +263,30 @@ check_PROGRAMS =      \
   tc24_nonzero_sem    \
   trylock
 
-if HAVE_QTCORE
-check_PROGRAMS += qt4_mutex qt4_rwlock qt4_semaphore
+if HAVE_BOOST_1_35
+check_PROGRAMS += boost_thread
 endif
 
 if HAVE_OPENMP
-check_PROGRAMS += omp_matinv omp_prime
+check_PROGRAMS += omp_matinv omp_prime omp_printf
+endif
+
+if HAVE_QTCORE
+check_PROGRAMS += qt4_mutex qt4_rwlock qt4_semaphore
 endif
 
 
 atomic_var_SOURCES          = atomic_var.c
 atomic_var_LDADD            = -lpthread
+
+bar_bad_SOURCES             = ../../helgrind/tests/bar_bad.c
+bar_bad_LDADD               = -lpthread
+
+bar_trivial_SOURCES         = ../../helgrind/tests/bar_trivial.c
+bar_trivial_LDADD           = -lpthread
+
+circular_buffer_SOURCES     = circular_buffer.c
+circular_buffer_LDADD       = -lpthread
 
 drd_bitmap_test_SOURCES     = drd_bitmap_test.c
 drd_bitmap_test_CFLAGS      = $(AM_CFLAGS) -O2 \
@@ -291,6 +325,9 @@ matinv_LDADD                = -lpthread -lm
 
 memory_allocation_SOURCES   = memory_allocation.c
 
+monitor_example_SOURCES     = monitor_example.cpp
+monitor_example_LDADD       = -lpthread
+
 new_delete_SOURCES          = new_delete.cpp
 
 pth_barrier_SOURCES         = pth_barrier.c
@@ -320,22 +357,11 @@ pth_detached_sem_LDADD      = -lpthread
 pth_inconsistent_cond_wait_SOURCES = pth_inconsistent_cond_wait.c
 pth_inconsistent_cond_wait_LDADD   = -lpthread
 
+pth_process_shared_mutex_SOURCES = pth_process_shared_mutex.c
+pth_process_shared_mutex_LDADD   = -lpthread
+
 pth_spinlock_SOURCES        = pth_spinlock.c
 pth_spinlock_LDADD          = -lpthread
-
-if HAVE_QTCORE
-qt4_mutex_SOURCES           = qt4_mutex.cpp
-qt4_mutex_CXXFLAGS          = $(AM_CXXFLAGS) $(QTCORE_CFLAGS)
-qt4_mutex_LDADD             = $(QTCORE_LIBS)
-
-qt4_rwlock_SOURCES          = qt4_rwlock.cpp
-qt4_rwlock_CXXFLAGS         = $(AM_CXXFLAGS) $(QTCORE_CFLAGS)
-qt4_rwlock_LDADD            = $(QTCORE_LIBS)
-
-qt4_semaphore_SOURCES       = qt4_semaphore.cpp
-qt4_semaphore_CXXFLAGS      = $(AM_CXXFLAGS) $(QTCORE_CFLAGS)
-qt4_semaphore_LDADD         = $(QTCORE_LIBS)
-endif
 
 recursive_mutex_SOURCES     = recursive_mutex.c
 recursive_mutex_LDADD       = -lpthread
@@ -424,6 +450,12 @@ tc24_nonzero_sem_LDADD      = -lpthread
 trylock_SOURCES             = trylock.c
 trylock_LDADD               = -lpthread -lrt
 
+if HAVE_BOOST_1_35
+boost_thread_SOURCES        = boost_thread.cpp
+boost_thread_CXXFLAGS       = $(AM_CXXFLAGS) $(BOOST_CFLAGS)
+boost_thread_LDADD          = $(BOOST_LIBS)
+endif
+
 if HAVE_OPENMP
 omp_matinv_SOURCES          = omp_matinv.c
 omp_matinv_CFLAGS           = $(AM_CFLAGS) -fopenmp
@@ -434,4 +466,23 @@ omp_prime_SOURCES           = omp_prime.c
 omp_prime_CFLAGS            = $(AM_CFLAGS) -fopenmp
 omp_prime_LDFLAGS           = -fopenmp
 omp_prime_LDADD             = -lm
+
+omp_printf_SOURCES          = omp_printf.c
+omp_printf_CFLAGS           = $(AM_CFLAGS) -fopenmp
+omp_printf_LDFLAGS          = -fopenmp
+omp_printf_LDADD            = -lm
+endif
+
+if HAVE_QTCORE
+qt4_mutex_SOURCES           = qt4_mutex.cpp
+qt4_mutex_CXXFLAGS          = $(AM_CXXFLAGS) $(QTCORE_CFLAGS)
+qt4_mutex_LDADD             = $(QTCORE_LIBS)
+
+qt4_rwlock_SOURCES          = qt4_rwlock.cpp
+qt4_rwlock_CXXFLAGS         = $(AM_CXXFLAGS) $(QTCORE_CFLAGS)
+qt4_rwlock_LDADD            = $(QTCORE_LIBS)
+
+qt4_semaphore_SOURCES       = qt4_semaphore.cpp
+qt4_semaphore_CXXFLAGS      = $(AM_CXXFLAGS) $(QTCORE_CFLAGS)
+qt4_semaphore_LDADD         = $(QTCORE_LIBS)
 endif

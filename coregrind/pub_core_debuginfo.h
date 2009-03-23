@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -38,6 +38,9 @@
 //--------------------------------------------------------------------
 
 #include "pub_tool_debuginfo.h"
+
+/* Initialise the entire module.  Must be called first of all. */
+extern void VG_(di_initialise) ( void );
 
 /* LINUX: Notify the debuginfo system about a new mapping, or the
    disappearance of such, or a permissions change on an existing

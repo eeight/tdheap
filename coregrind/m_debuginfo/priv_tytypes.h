@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2008 OpenWorks LLP
+   Copyright (C) 2008-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -72,6 +72,7 @@ typedef
          } UNKNOWN;
          struct {
             UChar* name; /* in mallocville */
+            Bool   valueKnown; /* atoms w/ unknown value are possible */
             Long   value;
          } Atom;
          struct {
@@ -160,7 +161,7 @@ void ML_(TyEnt__make_EMPTY) ( TyEnt* te );
 /* How big is this type?  If .b in the returned struct is False, the
    size is unknown. */
 
-MaybeUWord ML_(sizeOfType)( XArray* /* of TyEnt */ tyents,
+MaybeULong ML_(sizeOfType)( XArray* /* of TyEnt */ tyents,
                             UWord cuOff );
 
 /* Describe where in the type 'offset' falls.  Caller must

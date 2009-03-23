@@ -6,7 +6,7 @@
 /*
   This file is part of drd, a data race detector.
 
-  Copyright (C) 2006-2008 Bart Van Assche
+  Copyright (C) 2006-2009 Bart Van Assche
   bart.vanassche@gmail.com
 
   This program is free software; you can redistribute it and/or
@@ -98,11 +98,15 @@ static void init(void)
 {
   check_threading_library();
   vg_set_main_thread_state();
-  /* glibc up to and including version 2.7 triggers conflicting accesses   */
+  /* glibc up to and including version 2.8 triggers conflicting accesses   */
   /* on stdout and stderr when sending output to one of these streams from */
   /* more than one thread. Suppress data race reports on these objects.    */
   DRD_IGNORE_VAR(*stdout);
   DRD_IGNORE_VAR(*stderr);
+#if defined(HAVE_LIBC_FILE_LOCK)
+  DRD_IGNORE_VAR(*(pthread_mutex_t*)(stdout->_lock));
+  DRD_IGNORE_VAR(*(pthread_mutex_t*)(stderr->_lock));
+#endif
 }
 
 static MutexT pthread_to_drd_mutex_type(const int kind)
@@ -128,15 +132,18 @@ static MutexT pthread_to_drd_mutex_type(const int kind)
 
 /** @note The function mutex_type() has been declared inline in order
  *  to avoid that it shows up in call stacks.
+ * @note glibc stores the mutex type in the lowest two bits, and uses the
+ *   higher bits for flags like PTHREAD_MUTEXATTR_FLAG_ROBUST and
+ *   PTHREAD_MUTEXATTR_FLAG_PSHARED.
  */
 static __inline__ MutexT mutex_type(pthread_mutex_t* mutex)
 {
 #if defined(HAVE_PTHREAD_MUTEX_T__M_KIND)
   /* LinuxThreads. */
-  const int kind = mutex->__m_kind;
+  const int kind = mutex->__m_kind & 3;
 #elif defined(HAVE_PTHREAD_MUTEX_T__DATA__KIND)
   /* NPTL. */
-  const int kind = mutex->__data.__kind;
+  const int kind = mutex->__data.__kind & 3;
 #else
   /* Another POSIX threads implementation. Regression tests will fail. */
   const int kind = PTHREAD_MUTEX_DEFAULT;

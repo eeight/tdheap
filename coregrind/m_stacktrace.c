@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -140,11 +140,6 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
     * This most frequently happens at the end of a function when
     * a tail call occurs and we wind up using the CFI info for the
     * next function which is completely wrong.
-    *
-    * Note that VG_(get_data_description) (in m_debuginfo) has to take
-    * this same problem into account when unwinding the stack to
-    * examine local variable descriptions (as documented therein in
-    * comments).
     */
    while (True) {
 
@@ -161,7 +156,8 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
          fails, and is expensive. */
       /* Deal with frames resulting from functions which begin "pushl%
          ebp ; movl %esp, %ebp" which is the ABI-mandated preamble. */
-      if (fp_min <= fp && fp <= fp_max) {
+      if (fp_min <= fp && fp <= fp_max
+                                - 1 * sizeof(UWord)/*see comment below*/) {
          /* fp looks sane, so use it. */
          ip = (((UWord*)fp)[1]);
          sp = fp + sizeof(Addr) /*saved %ebp*/ 
@@ -169,10 +165,10 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
          fp = (((UWord*)fp)[0]);
          if (sps) sps[i] = sp;
          if (fps) fps[i] = fp;
-         ips[i++] = ip;
+         ips[i++] = ip - 1; /* -1: refer to calling insn, not the RA */
          if (debug)
             VG_(printf)("     ipsF[%d]=0x%08lx\n", i-1, ips[i-1]);
-         ip = ip - 1;
+         ip = ip - 1; /* as per comment at the head of this loop */
          continue;
       }
 
@@ -181,10 +177,10 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
       if ( VG_(use_CF_info)( &ip, &sp, &fp, fp_min, fp_max ) ) {
          if (sps) sps[i] = sp;
          if (fps) fps[i] = fp;
-         ips[i++] = ip;
+         ips[i++] = ip - 1; /* -1: refer to calling insn, not the RA */
          if (debug)
             VG_(printf)("     ipsC[%d]=0x%08lx\n", i-1, ips[i-1]);
-         ip = ip - 1;
+         ip = ip - 1; /* as per comment at the head of this loop */
          continue;
       }
 
@@ -217,11 +213,6 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
     * This most frequently happens at the end of a function when
     * a tail call occurs and we wind up using the CFI info for the
     * next function which is completely wrong.
-    *
-    * Note that VG_(get_data_description) (in m_debuginfo) has to take
-    * this same problem into account when unwinding the stack to
-    * examine local variable descriptions (as documented therein in
-    * comments).
     */
    while (True) {
 
@@ -236,10 +227,10 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
       if ( VG_(use_CF_info)( &ip, &sp, &fp, fp_min, fp_max ) ) {
          if (sps) sps[i] = sp;
          if (fps) fps[i] = fp;
-         ips[i++] = ip;
+         ips[i++] = ip - 1; /* -1: refer to calling insn, not the RA */
          if (debug)
             VG_(printf)("     ipsC[%d]=%#08lx\n", i-1, ips[i-1]);
-         ip = ip - 1;
+         ip = ip - 1; /* as per comment at the head of this loop */
          continue;
       }
 
@@ -251,7 +242,11 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
          the start of the fn, like GDB does, there's no reliable way
          to tell.  Hence the hack of first trying out CFI, and if that
          fails, then use this as a fallback. */
-      if (fp_min <= fp && fp <= fp_max) {
+      /* Note: re "- 1 * sizeof(UWord)", need to take account of the
+         fact that we are prodding at & ((UWord*)fp)[1] and so need to
+         adjust the limit check accordingly.  Omitting this has been
+         observed to cause segfaults on rare occasions. */
+      if (fp_min <= fp && fp <= fp_max - 1 * sizeof(UWord)) {
          /* fp looks sane, so use it. */
          ip = (((UWord*)fp)[1]);
          sp = fp + sizeof(Addr) /*saved %rbp*/ 
@@ -259,10 +254,10 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
          fp = (((UWord*)fp)[0]);
          if (sps) sps[i] = sp;
          if (fps) fps[i] = fp;
-         ips[i++] = ip;
+         ips[i++] = ip - 1; /* -1: refer to calling insn, not the RA */
          if (debug)
             VG_(printf)("     ipsF[%d]=%#08lx\n", i-1, ips[i-1]);
-         ip = ip - 1;
+         ip = ip - 1; /* as per comment at the head of this loop */
          continue;
       }
 
@@ -282,10 +277,13 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
          ip = ((UWord*)sp)[0];
          if (sps) sps[i] = sp;
          if (fps) fps[i] = fp;
-         ips[i++] = ip;
+         ips[i++] = ip == 0 
+                    ? 0 /* sp[0] == 0 ==> stuck at the bottom of a
+                           thread stack */
+                    : ip - 1; /* -1: refer to calling insn, not the RA */
          if (debug)
             VG_(printf)("     ipsH[%d]=%#08lx\n", i-1, ips[i-1]);
-         ip = ip - 1;
+         ip = ip - 1; /* as per comment at the head of this loop */
          sp += 8;
          continue;
       }
@@ -337,6 +335,8 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
    {
 #     define M_VG_ERRTXT 1000
       UChar buf_lr[M_VG_ERRTXT], buf_ip[M_VG_ERRTXT];
+      /* The following conditional looks grossly inefficient and
+         surely could be majorly improved, with not much effort. */
       if (VG_(get_fnname_nodemangle) (lr, buf_lr, M_VG_ERRTXT))
          if (VG_(get_fnname_nodemangle) (ip, buf_ip, M_VG_ERRTXT))
             if (VG_(strncmp)(buf_lr, buf_ip, M_VG_ERRTXT))
@@ -371,7 +371,7 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
 
          /* Try to derive a new (ip,fp) pair from the current set. */
 
-         if (fp_min <= fp && fp <= fp_max) {
+         if (fp_min <= fp && fp <= fp_max - lr_offset * sizeof(UWord)) {
             /* fp looks sane, so use it. */
 
             if (i == 1 && lr_is_first_RA)
@@ -405,9 +405,12 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
             fp = (((UWord*)fp)[0]);
             if (sps) sps[i] = fp; /* NB. not sp */
             if (fps) fps[i] = fp;
-            ips[i++] = ip;
+            ips[i++] = ip - 1; /* -1: refer to calling insn, not the RA */
             if (debug)
                VG_(printf)("     ipsF[%d]=%#08lx\n", i-1, ips[i-1]);
+            ip = ip - 1; /* ip is probably dead at this point, but
+                            play safe, a la x86/amd64 above.  See
+                            extensive comments above. */
             continue;
          }
 
@@ -538,8 +541,6 @@ void VG_(apply_StackTrace)( void(*action)(UInt n, Addr ip),
    vg_assert(n_ips > 0);
    do {
       Addr ip = ips[i];
-      if (i > 0) 
-         ip -= VG_MIN_INSTR_SZB;   // point to calling line
 
       // Stop after the first appearance of "main" or one of the other names
       // (the appearance of which is a pretty good sign that we've gone past
@@ -560,7 +561,13 @@ void VG_(apply_StackTrace)( void(*action)(UInt n, Addr ip),
       action(i, ip);
 
       i++;
-   } while (i < n_ips && ips[i] != 0 && !main_done);
+      // re 'while' condition: stop if we hit a zero value (the traditional
+      // end-of-stack marker) or a ~0 value.  The latter because r8818 
+      // (in this file) changes the meaning of entries [1] and above in a
+      // stack trace, by subtracting 1 from them.  Hence stacks that used
+      // to end with a zero value now end in -1 and so we must detect
+      // that too.
+   } while (i < n_ips && ips[i] != 0 && ips[i] != ~(Addr)0 && !main_done);
 
    #undef MYBUF_LEN
 }

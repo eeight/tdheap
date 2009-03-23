@@ -6,7 +6,7 @@
    This file is part of Massif, a Valgrind tool for profiling memory
    usage of programs.
 
-   Copyright (C) 2003-2008 Nicholas Nethercote
+   Copyright (C) 2003-2009 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -397,7 +397,7 @@ static Bool ms_process_cmd_line_option(Char* arg)
       VG_(addToXA)(alloc_fns, &alloc_fn);
    }
 
-   else if (VG_CLO_STREQN(14, arg, "--massif-out-file=")) {
+   else if (VG_CLO_STREQN(18, arg, "--massif-out-file=")) {
       clo_massif_out_file = &arg[18];
    }
 
@@ -1925,7 +1925,7 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, Char* depth_str,
    switch (sxpt->tag) {
     case SigSXPt:
       // Print the SXPt itself.
-      if (sxpt->Sig.ip == 0) {
+      if (0 == depth) {
          ip_desc =
             "(heap allocation functions) malloc/new/new[], --alloc-fns, etc.";
       } else {
@@ -2205,7 +2205,7 @@ static void ms_pre_clo_init(void)
    VG_(details_version)         (NULL);
    VG_(details_description)     ("a heap profiler");
    VG_(details_copyright_author)(
-      "Copyright (C) 2003-2008, and GNU GPL'd, by Nicholas Nethercote");
+      "Copyright (C) 2003-2009, and GNU GPL'd, by Nicholas Nethercote");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
 
    // Basic functions

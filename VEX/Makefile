@@ -125,6 +125,18 @@ TAG_amd64_linux:
 	if [ ! -f TAG_amd64_linux ] ; then rm -f $(LIB_OBJS) TAG_* libvex.a ; fi
 	touch TAG_amd64_linux
 
+libvex_x86_darwin.a: TAG_x86_darwin libvex.a
+	mv -f libvex.a libvex_x86_darwin.a
+TAG_x86_darwin:
+	if [ ! -f TAG_x86_darwin ] ; then rm -f $(LIB_OBJS) TAG_* libvex.a ; fi
+	touch TAG_x86_darwin
+
+libvex_amd64_darwin.a: TAG_amd64_darwin libvex.a
+	mv -f libvex.a libvex_amd64_darwin.a
+TAG_amd64_darwin:
+	if [ ! -f TAG_amd64_darwin ] ; then rm -f $(LIB_OBJS) TAG_* libvex.a ; fi
+	touch TAG_amd64_darwin
+
 libvex_ppc32_linux.a: TAG_ppc32_linux libvex.a
 	mv -f libvex.a libvex_ppc32_linux.a
 TAG_ppc32_linux:
@@ -156,7 +168,8 @@ TAG_ppc64_aix5:
 # doing 'make ; make clean ; make' (or distclean) would fail.
 clean:
 	rm -f $(LIB_OBJS) *.a vex test_main.o TAG_* \
-		pub/libvex_guest_offsets.h
+		pub/libvex_guest_offsets.h \
+		auxprogs/genoffsets.s
 
 version:
 	rm -f priv/main/vex_svnversion.h
@@ -178,9 +191,17 @@ minidist: version
 	@cat priv/main/vex_svnversion.h
 	@echo
 
+# This is very uggerly.  Need to sed out both "xyzzyN" and
+# "xyzzy$N" since gcc on different targets emits the constants
+# differently -- with a leading $ on x86/amd64 but none on ppc32/64.
 pub/libvex_guest_offsets.h:
-	$(CC) -Wall -g -o auxprogs/genoffsets auxprogs/genoffsets.c
-	./auxprogs/genoffsets > pub/libvex_guest_offsets.h
+	rm -f auxprogs/genoffsets.s
+	$(CC) $(CCFLAGS) -O -S -o auxprogs/genoffsets.s \
+				auxprogs/genoffsets.c
+	grep xyzzy auxprogs/genoffsets.s | grep define \
+	   | sed "s/xyzzy\\$$//g" | sed "s/xyzzy//g" \
+	   > pub/libvex_guest_offsets.h
+	rm -f auxprogs/genoffsets.s
 
 
 ALL_HEADERS  = $(PUB_HEADERS) $(PRIV_HEADERS)

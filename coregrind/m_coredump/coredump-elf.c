@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -286,7 +286,7 @@ static void fill_xfpu(const ThreadState *tst, vki_elf_fpxregset_t *xfpu)
 static
 void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, UInt max_size)
 {
-   Char buf[1000];
+   Char* buf = NULL;
    Char *basename = "vgcore";
    Char *coreext = "";
    Int seq = 0;
@@ -306,8 +306,17 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, UInt max_size)
 
    if (VG_(clo_log_name) != NULL) {
       coreext = ".core";
-      basename = VG_(clo_log_name);
+      basename = VG_(expand_file_name)(
+                    "--log-file (while creating core filename)",
+                    VG_(clo_log_name));
    }
+
+   vg_assert(coreext);
+   vg_assert(basename);
+   buf = VG_(malloc)( "coredump-elf.mec.1", 
+                      VG_(strlen)(coreext) + VG_(strlen)(basename)
+                         + 100/*for the two %ds. */ );
+   vg_assert(buf);
 
    for(;;) {
       SysRes sres;

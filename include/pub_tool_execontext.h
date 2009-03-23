@@ -6,7 +6,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -54,6 +54,9 @@ typedef
 // ThreadId should be passed in by the core.  The initial IP value to 
 // use is adjusted by first_ip_delta before the stack is unwound.
 // A safe value to pass is zero.
+//
+// See comments in pub_tool_stacktrace.h for precise definition of
+// the meaning of the code addresses in the returned ExeContext.
 extern 
 ExeContext* VG_(record_ExeContext) ( ThreadId tid, Word first_ip_delta );
 
@@ -104,6 +107,8 @@ static inline Bool VG_(is_plausible_ECU)( UInt ecu ) {
    return (ecu > 0) && ((ecu & 3) == 0);
 }
 
+// Make an ExeContext containing exactly the specified stack frames.
+ExeContext* VG_(make_ExeContext_from_StackTrace)( Addr* ips, UInt n_ips );
 
 #endif   // __PUB_TOOL_EXECONTEXT_H
 

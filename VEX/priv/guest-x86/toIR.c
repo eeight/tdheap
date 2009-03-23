@@ -10016,7 +10016,11 @@ DisResult disInstr_X86_WRK (
       vassert(sz == 4);
       modrm = getIByte(delta+3);
       if (epartIsReg(modrm)) {
-         /* fall through, we don't yet have a test case */
+         putXMMRegLane64( eregOfRM(modrm), 0,
+                          getXMMRegLane64( gregOfRM(modrm), 0 ));
+         DIP("movsd %s,%s\n", nameXMMReg(gregOfRM(modrm)),
+                              nameXMMReg(eregOfRM(modrm)));
+         delta += 3+1;
       } else {
          addr = disAMode ( &alen, sorb, delta+3, dis_buf );
          storeLE( mkexpr(addr),
@@ -10024,8 +10028,8 @@ DisResult disInstr_X86_WRK (
          DIP("movsd %s,%s\n", nameXMMReg(gregOfRM(modrm)),
                               dis_buf);
          delta += 3+alen;
-         goto decode_success;
       }
+      goto decode_success;
    }
 
    /* 66 0F 59 = MULPD -- mul 64Fx2 from R/M to R */
@@ -12569,6 +12573,12 @@ DisResult disInstr_X86_WRK (
    case 0xCD: /* INT imm8 */
       d32 = getIByte(delta); delta++;
 
+      /* For any of the cases where we emit a jump (that is, for all
+         currently handled cases), it's important that all ArchRegs
+         carry their up-to-date value at this point.  So we declare an
+         end-of-block here, which forces any TempRegs caching ArchRegs
+         to be flushed. */
+
       /* Handle int $0x40 .. $0x43 by synthesising a segfault and a
          restart of this instruction (hence the "-2" two lines below,
          to get the restart EIP to be this instruction.  This is
@@ -12581,14 +12591,29 @@ DisResult disInstr_X86_WRK (
          break;
       }
 
-      if (d32 != 0x80) goto decode_failure;
-      /* It's important that all ArchRegs carry their up-to-date value
-         at this point.  So we declare an end-of-block here, which
-         forces any TempRegs caching ArchRegs to be flushed. */
-      jmp_lit(Ijk_Sys_int128,((Addr32)guest_EIP_bbstart)+delta);
-      dres.whatNext = Dis_StopHere;
-      DIP("int $0x80\n");
-      break;
+      /* Handle int $0x80 (linux syscalls), int $0x81 and $0x82
+         (darwin syscalls). */
+      if (d32 == 0x80) {
+         jmp_lit(Ijk_Sys_int128,((Addr32)guest_EIP_bbstart)+delta);
+         dres.whatNext = Dis_StopHere;
+         DIP("int $0x80\n");
+         break;
+      }
+      if (d32 == 0x81) {
+         jmp_lit(Ijk_Sys_int129,((Addr32)guest_EIP_bbstart)+delta);
+         dres.whatNext = Dis_StopHere;
+         DIP("int $0x81\n");
+         break;
+      }
+      if (d32 == 0x82) {
+         jmp_lit(Ijk_Sys_int130,((Addr32)guest_EIP_bbstart)+delta);
+         dres.whatNext = Dis_StopHere;
+         DIP("int $0x82\n");
+         break;
+      }
+
+      /* none of the above */
+      goto decode_failure;
 
    /* ------------------------ Jcond, byte offset --------- */
 
@@ -13643,6 +13668,9 @@ DisResult disInstr_X86_WRK (
 
    /* ------------------------ (Grp1 extensions) ---------- */
 
+   case 0x82: /* Grp1 Ib,Eb too.  Apparently this is the same as 
+                 case 0x80, but only in 32-bit mode. */
+      /* fallthru */
    case 0x80: /* Grp1 Ib,Eb */
       modrm = getIByte(delta);
       am_sz = lengthAMode(delta);

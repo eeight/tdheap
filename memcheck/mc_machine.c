@@ -9,7 +9,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2008-2008 OpenWorks Ltd
+   Copyright (C) 2008-2009 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -343,6 +343,7 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    if (o == GOF(CIA_AT_SC) && sz == 4) return -1;
    if (o == GOF(RESVN)     && sz == 4) return -1;
    if (o == GOF(FPROUND)   && sz == 4) return -1;
+   if (o == GOF(VRSAVE)    && sz == 4) return -1;
    if (o == GOF(EMWARN)    && sz == 4) return -1;
    if (o == GOF(TISTART)   && sz == 4) return -1;
    if (o == GOF(TILEN)     && sz == 4) return -1;

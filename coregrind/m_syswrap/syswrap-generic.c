@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -1580,6 +1580,11 @@ UInt get_sem_count( Int semid )
    union vki_semun arg;
    SysRes res;
 
+   /* Doesn't actually seem to be necessary, but gcc-4.4.0 20081017
+      (experimental) otherwise complains that the use in the return
+      statement below is uninitialised. */
+   buf.sem_nsems = 0;
+
    arg.buf = &buf;
 
 #  ifdef __NR_semctl
@@ -1587,7 +1592,7 @@ UInt get_sem_count( Int semid )
 #  else
    res = VG_(do_syscall5)(__NR_ipc, 3 /* IPCOP_semctl */, semid, 0,
                           VKI_IPC_STAT, (UWord)&arg);
-# endif
+#  endif
    if (res.isError)
       return 0;
 
@@ -2057,24 +2062,6 @@ PRE(sys_iopl)
    PRINT("sys_iopl ( %ld )", ARG1);
    PRE_REG_READ1(long, "iopl", unsigned long, level);
 }
-
-// XXX: this wrapper is only suitable for 32-bit platforms
-#if defined(VGP_x86_linux)
-PRE(sys_lookup_dcookie)
-{
-   PRINT("sys_lookup_dcookie (0x%llx, %#lx, %ld)", LOHI64(ARG1,ARG2), ARG3, ARG4);
-   PRE_REG_READ4(long, "lookup_dcookie",
-                 vki_u32, cookie_low32, vki_u32, cookie_high32,
-                 char *, buf, vki_size_t, len);
-   PRE_MEM_WRITE( "lookup_dcookie(buf)", ARG3, ARG4);
-}
-POST(sys_lookup_dcookie)
-{
-   vg_assert(SUCCESS);
-   if (ARG3 != (Addr)NULL)
-      POST_MEM_WRITE( ARG3, RES);
-}
-#endif
 
 PRE(sys_fsync)
 {
@@ -2977,6 +2964,8 @@ PRE(sys_fork)
 
    SET_STATUS_from_SysRes( VG_(do_syscall0)(__NR_fork) );
 
+   VG_(do_atfork_pre)(tid);
+
    if (SUCCESS && RES == 0) {
       /* child */
       VG_(do_atfork_child)(tid);
@@ -2994,6 +2983,8 @@ PRE(sys_fork)
    else 
    if (SUCCESS && RES > 0) {
       /* parent */
+      VG_(do_atfork_parent)(tid);
+
       PRINT("   fork: process %d created child %ld\n", VG_(getpid)(), RES);
 
       /* restore signal mask */
@@ -3360,10 +3351,9 @@ PRE(sys_ioctl)
       PRE_MEM_WRITE( "ioctl(SG_GET_RESERVED_SIZE)", ARG3, sizeof(int) );
       break;
    case VKI_SG_GET_TIMEOUT:
-      PRE_MEM_WRITE( "ioctl(SG_GET_TIMEOUT)", ARG3, sizeof(int) );
       break;
    case VKI_SG_GET_VERSION_NUM:
-      PRE_MEM_READ(  "ioctl(SG_GET_VERSION_NUM)",  ARG3, sizeof(int) );
+      PRE_MEM_WRITE(  "ioctl(SG_GET_VERSION_NUM)",  ARG3, sizeof(int) );
       break;
    case VKI_SG_EMULATED_HOST: /* 0x2203 */
       PRE_MEM_WRITE( "ioctl(SG_EMULATED_HOST)",    ARG3, sizeof(int) );
@@ -4218,6 +4208,99 @@ PRE(sys_ioctl)
       PRE_MEM_WRITE( "ioctl(I2C_FUNCS)", ARG3, sizeof(unsigned long) );
       break;
 
+      /* Wireless extensions ioctls */
+   case VKI_SIOCSIWCOMMIT:
+   case VKI_SIOCSIWNWID:
+   case VKI_SIOCSIWFREQ:
+   case VKI_SIOCSIWMODE:
+   case VKI_SIOCSIWSENS:
+   case VKI_SIOCSIWRANGE:
+   case VKI_SIOCSIWPRIV:
+   case VKI_SIOCSIWSTATS:
+   case VKI_SIOCSIWSPY:
+   case VKI_SIOCSIWTHRSPY:
+   case VKI_SIOCSIWAP:
+   case VKI_SIOCSIWSCAN:
+   case VKI_SIOCSIWESSID:
+   case VKI_SIOCSIWRATE:
+   case VKI_SIOCSIWNICKN:
+   case VKI_SIOCSIWRTS:
+   case VKI_SIOCSIWFRAG:
+   case VKI_SIOCSIWTXPOW:
+   case VKI_SIOCSIWRETRY:
+   case VKI_SIOCSIWENCODE:
+   case VKI_SIOCSIWPOWER:
+   case VKI_SIOCSIWGENIE:
+   case VKI_SIOCSIWMLME:
+   case VKI_SIOCSIWAUTH:
+   case VKI_SIOCSIWENCODEEXT:
+   case VKI_SIOCSIWPMKSA:
+      break;
+   case VKI_SIOCGIWNAME:
+      if (ARG3) {
+         PRE_MEM_WRITE("ioctl(SIOCGIWNAME)",
+                       (Addr)((struct vki_iwreq *)ARG3)->u.name,
+                       sizeof(((struct vki_iwreq *)ARG3)->u.name));
+      }
+      break;
+   case VKI_SIOCGIWNWID:
+   case VKI_SIOCGIWSENS:
+   case VKI_SIOCGIWRATE:
+   case VKI_SIOCGIWRTS:
+   case VKI_SIOCGIWFRAG:
+   case VKI_SIOCGIWTXPOW:
+   case VKI_SIOCGIWRETRY:
+   case VKI_SIOCGIWPOWER:
+   case VKI_SIOCGIWAUTH:
+      if (ARG3) {
+         PRE_MEM_WRITE("ioctl(SIOCGIW[NWID|SENS|RATE|RTS|FRAG|TXPOW|"
+                       "RETRY|PARAM|AUTH])",
+                       (Addr)&((struct vki_iwreq *)ARG3)->u.nwid,
+                       sizeof(struct vki_iw_param));
+      }
+      break;
+   case VKI_SIOCGIWFREQ:
+      if (ARG3) {
+         PRE_MEM_WRITE("ioctl(SIOCGIWFREQ",
+                       (Addr)&((struct vki_iwreq *)ARG3)->u.freq,
+                       sizeof(struct vki_iw_freq));
+      }
+      break;
+   case VKI_SIOCGIWMODE:
+      if (ARG3) {
+         PRE_MEM_WRITE("ioctl(SIOCGIWMODE",
+                       (Addr)&((struct vki_iwreq *)ARG3)->u.mode,
+                       sizeof(__vki_u32));
+      }
+      break;
+   case VKI_SIOCGIWRANGE:
+   case VKI_SIOCGIWPRIV:
+   case VKI_SIOCGIWSTATS:
+   case VKI_SIOCGIWSPY:
+   case VKI_SIOCGIWTHRSPY:
+   case VKI_SIOCGIWAPLIST:
+   case VKI_SIOCGIWSCAN:
+   case VKI_SIOCGIWESSID:
+   case VKI_SIOCGIWNICKN:
+   case VKI_SIOCGIWENCODE:
+   case VKI_SIOCGIWGENIE:
+   case VKI_SIOCGIWENCODEEXT:
+      if (ARG3) {
+         struct vki_iw_point* point;
+         point = &((struct vki_iwreq *)ARG3)->u.data;
+         PRE_MEM_WRITE("ioctl(SIOCGIW[RANGE|PRIV|STATS|SPY|THRSPY|"
+                       "APLIST|SCAN|ESSID|NICKN|ENCODE|GENIE|ENCODEEXT])",
+                       (Addr)point->pointer, point->length);
+      }
+      break;
+   case VKI_SIOCGIWAP:
+      if (ARG3) {
+         PRE_MEM_WRITE("ioctl(SIOCGIWAP)",
+                       (Addr)&((struct vki_iwreq *)ARG3)->u.ap_addr,
+                       sizeof(struct vki_sockaddr));
+      }
+      break;
+
       /* We don't have any specific information on it, so
 	 try to do something reasonable based on direction and
 	 size bits.  The encoding scheme is described in
@@ -4347,9 +4430,9 @@ POST(sys_ioctl)
       POST_MEM_WRITE(ARG3, sizeof(int));
       break;
    case VKI_SG_GET_TIMEOUT:
-      POST_MEM_WRITE(ARG3, sizeof(int));
       break;
    case VKI_SG_GET_VERSION_NUM:
+      POST_MEM_WRITE(ARG3, sizeof(int));
       break;
    case VKI_SG_EMULATED_HOST:
       POST_MEM_WRITE(ARG3, sizeof(int));
@@ -4934,6 +5017,91 @@ POST(sys_ioctl)
       break;
    case VKI_I2C_FUNCS:
       POST_MEM_WRITE( ARG3, sizeof(unsigned long) );
+      break;
+
+      /* Wireless extensions ioctls */
+   case VKI_SIOCSIWCOMMIT:
+   case VKI_SIOCSIWNWID:
+   case VKI_SIOCSIWFREQ:
+   case VKI_SIOCSIWMODE:
+   case VKI_SIOCSIWSENS:
+   case VKI_SIOCSIWRANGE:
+   case VKI_SIOCSIWPRIV:
+   case VKI_SIOCSIWSTATS:
+   case VKI_SIOCSIWSPY:
+   case VKI_SIOCSIWTHRSPY:
+   case VKI_SIOCSIWAP:
+   case VKI_SIOCSIWSCAN:
+   case VKI_SIOCSIWESSID:
+   case VKI_SIOCSIWRATE:
+   case VKI_SIOCSIWNICKN:
+   case VKI_SIOCSIWRTS:
+   case VKI_SIOCSIWFRAG:
+   case VKI_SIOCSIWTXPOW:
+   case VKI_SIOCSIWRETRY:
+   case VKI_SIOCSIWENCODE:
+   case VKI_SIOCSIWPOWER:
+   case VKI_SIOCSIWGENIE:
+   case VKI_SIOCSIWMLME:
+   case VKI_SIOCSIWAUTH:
+   case VKI_SIOCSIWENCODEEXT:
+   case VKI_SIOCSIWPMKSA:
+      break;
+   case VKI_SIOCGIWNAME:
+      if (ARG3) {
+         POST_MEM_WRITE((Addr)((struct vki_iwreq *)ARG3)->u.name,
+                        sizeof(((struct vki_iwreq *)ARG3)->u.name));
+      }
+      break;
+   case VKI_SIOCGIWNWID:
+   case VKI_SIOCGIWSENS:
+   case VKI_SIOCGIWRATE:
+   case VKI_SIOCGIWRTS:
+   case VKI_SIOCGIWFRAG:
+   case VKI_SIOCGIWTXPOW:
+   case VKI_SIOCGIWRETRY:
+   case VKI_SIOCGIWPOWER:
+   case VKI_SIOCGIWAUTH:
+      if (ARG3) {
+         POST_MEM_WRITE((Addr)&((struct vki_iwreq *)ARG3)->u.param,
+                        sizeof(struct vki_iw_param));
+      }
+      break;
+   case VKI_SIOCGIWFREQ:
+      if (ARG3) {
+         POST_MEM_WRITE((Addr)&((struct vki_iwreq *)ARG3)->u.freq,
+                        sizeof(struct vki_iw_freq));
+      }
+      break;
+   case VKI_SIOCGIWMODE:
+      if (ARG3) {
+         POST_MEM_WRITE((Addr)&((struct vki_iwreq *)ARG3)->u.mode,
+                       sizeof(__vki_u32));
+      }
+      break;
+   case VKI_SIOCGIWRANGE:
+   case VKI_SIOCGIWPRIV:
+   case VKI_SIOCGIWSTATS:
+   case VKI_SIOCGIWSPY:
+   case VKI_SIOCGIWTHRSPY:
+   case VKI_SIOCGIWAPLIST:
+   case VKI_SIOCGIWSCAN:
+   case VKI_SIOCGIWESSID:
+   case VKI_SIOCGIWNICKN:
+   case VKI_SIOCGIWENCODE:
+   case VKI_SIOCGIWGENIE:
+   case VKI_SIOCGIWENCODEEXT:
+      if (ARG3) {
+         struct vki_iw_point* point;
+         point = &((struct vki_iwreq *)ARG3)->u.data;
+         POST_MEM_WRITE((Addr)point->pointer, point->length);
+      }
+      break;
+   case VKI_SIOCGIWAP:
+      if (ARG3) {
+         POST_MEM_WRITE((Addr)&((struct vki_iwreq *)ARG3)->u.ap_addr,
+                        sizeof(struct vki_sockaddr));
+      }
       break;
 
       /* We don't have any specific information on it, so

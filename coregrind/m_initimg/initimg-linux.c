@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -955,7 +955,7 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
       all other registers zeroed. */
 
 #  if defined(VGP_x86_linux)
-   vg_assert(0 == sizeof(VexGuestX86State) % 8);
+   vg_assert(0 == sizeof(VexGuestX86State) % 16);
 
    /* Zero out the initial state, and set up the simulated FPU in a
       sane way. */
@@ -976,7 +976,7 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    asm volatile("movw %%ss, %0" : : "m" (arch->vex.guest_SS));
 
 #  elif defined(VGP_amd64_linux)
-   vg_assert(0 == sizeof(VexGuestAMD64State) % 8);
+   vg_assert(0 == sizeof(VexGuestAMD64State) % 16);
 
    /* Zero out the initial state, and set up the simulated FPU in a
       sane way. */
@@ -991,7 +991,7 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    arch->vex.guest_RIP = iifii.initial_client_IP;
 
 #  elif defined(VGP_ppc32_linux)
-   vg_assert(0 == sizeof(VexGuestPPC32State) % 8);
+   vg_assert(0 == sizeof(VexGuestPPC32State) % 16);
 
    /* Zero out the initial state, and set up the simulated FPU in a
       sane way. */

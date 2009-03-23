@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Nicholas Nethercote
+   Copyright (C) 2000-2009 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -313,6 +313,8 @@ SysRes ML_(do_fork_clone) ( ThreadId tid, UInt flags,
    VG_(sigfillset)(&mask);
    VG_(sigprocmask)(VKI_SIG_SETMASK, &mask, &fork_saved_mask);
 
+   VG_(do_atfork_pre)(tid);
+
    /* Since this is the fork() form of clone, we don't need all that
       VG_(clone) stuff */
 #if defined(VGP_x86_linux) || defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
@@ -346,6 +348,8 @@ SysRes ML_(do_fork_clone) ( ThreadId tid, UInt flags,
    else 
    if (!res.isError && res.res > 0) {
       /* parent */
+      VG_(do_atfork_parent)(tid);
+
       if (VG_(clo_trace_syscalls))
 	  VG_(printf)("   clone(fork): process %d created child %ld\n",
                       VG_(getpid)(), res.res);
@@ -1099,6 +1103,22 @@ PRE(sys_eventfd)
 POST(sys_eventfd)
 {
    if (!ML_(fd_allowed)(RES, "eventfd", tid, True)) {
+      VG_(close)(RES);
+      SET_STATUS_Failure( VKI_EMFILE );
+   } else {
+      if (VG_(clo_track_fds))
+         ML_(record_fd_open_nameless) (tid, RES);
+   }
+}
+
+PRE(sys_eventfd2)
+{
+   PRINT("sys_eventfd2 ( %lu, %ld )", ARG1,ARG2);
+   PRE_REG_READ2(long, "sys_eventfd2", unsigned int, count, int, flags);
+}
+POST(sys_eventfd2)
+{
+   if (!ML_(fd_allowed)(RES, "eventfd2", tid, True)) {
       VG_(close)(RES);
       SET_STATUS_Failure( VKI_EMFILE );
    } else {
@@ -2231,9 +2251,35 @@ PRE(sys_pipe)
 POST(sys_pipe)
 {
    Int *p = (Int *)ARG1;
-
    if (!ML_(fd_allowed)(p[0], "pipe", tid, True) ||
        !ML_(fd_allowed)(p[1], "pipe", tid, True)) {
+      VG_(close)(p[0]);
+      VG_(close)(p[1]);
+      SET_STATUS_Failure( VKI_EMFILE );
+   } else {
+      POST_MEM_WRITE( ARG1, 2*sizeof(int) );
+      if (VG_(clo_track_fds)) {
+         ML_(record_fd_open_nameless)(tid, p[0]);
+         ML_(record_fd_open_nameless)(tid, p[1]);
+      }
+   }
+}
+
+/* pipe2 (a kernel 2.6.twentysomething invention) is like pipe, except
+   there's a second arg containing flags to be applied to the new file
+   descriptors.  It hardly seems worth the effort to factor out the
+   duplicated code, hence: */
+PRE(sys_pipe2)
+{
+   PRINT("sys_pipe2 ( %#lx, %#lx )", ARG1, ARG2);
+   PRE_REG_READ2(int, "pipe", int *, filedes, long, flags);
+   PRE_MEM_WRITE( "pipe2(filedes)", ARG1, 2*sizeof(int) );
+}
+POST(sys_pipe2)
+{
+   Int *p = (Int *)ARG1;
+   if (!ML_(fd_allowed)(p[0], "pipe2", tid, True) ||
+       !ML_(fd_allowed)(p[1], "pipe2", tid, True)) {
       VG_(close)(p[0]);
       VG_(close)(p[1]);
       SET_STATUS_Failure( VKI_EMFILE );
@@ -2283,6 +2329,13 @@ PRE(sys_sync_file_range)
                  unsigned int, flags);
    if (!ML_(fd_allowed)(ARG1, "sync_file_range", tid, False))
       SET_STATUS_Failure( VKI_EBADF );
+}
+
+PRE(sys_stime)
+{
+   PRINT("sys_stime ( %#lx )", ARG1);
+   PRE_REG_READ1(int, "stime", vki_time_t*, t);
+   PRE_MEM_READ( "stime(t)", ARG1, sizeof(vki_time_t) );
 }
 
 /* ---------------------------------------------------------------------
@@ -2378,7 +2431,7 @@ POST(sys_sigprocmask)
 
 PRE(sys_signalfd)
 {
-   PRINT("sys_signalfd ( %d, %#lx, %llu )", (Int)ARG1, ARG2, (ULong) ARG3);
+   PRINT("sys_signalfd ( %d, %#lx, %llu )", (Int)ARG1,ARG2,(ULong)ARG3);
    PRE_REG_READ3(long, "sys_signalfd",
                  int, fd, vki_sigset_t *, sigmask, vki_size_t, sigsetsize);
    PRE_MEM_READ( "signalfd(sigmask)", ARG2, sizeof(vki_sigset_t) );
@@ -2388,6 +2441,26 @@ PRE(sys_signalfd)
 POST(sys_signalfd)
 {
    if (!ML_(fd_allowed)(RES, "signalfd", tid, True)) {
+      VG_(close)(RES);
+      SET_STATUS_Failure( VKI_EMFILE );
+   } else {
+      if (VG_(clo_track_fds))
+         ML_(record_fd_open_nameless) (tid, RES);
+   }
+}
+
+PRE(sys_signalfd4)
+{
+   PRINT("sys_signalfd4 ( %d, %#lx, %llu, %ld )", (Int)ARG1,ARG2,(ULong)ARG3,ARG4);
+   PRE_REG_READ4(long, "sys_signalfd4",
+                 int, fd, vki_sigset_t *, sigmask, vki_size_t, sigsetsize, int, flags);
+   PRE_MEM_READ( "signalfd(sigmask)", ARG2, sizeof(vki_sigset_t) );
+   if ((int)ARG1 != -1 && !ML_(fd_allowed)(ARG1, "signalfd", tid, False))
+      SET_STATUS_Failure( VKI_EBADF );
+}
+POST(sys_signalfd4)
+{
+   if (!ML_(fd_allowed)(RES, "signalfd4", tid, True)) {
       VG_(close)(RES);
       SET_STATUS_Failure( VKI_EMFILE );
    } else {
@@ -3004,12 +3077,16 @@ POST(sys_keyctl)
    ioprio_ wrappers
    ------------------------------------------------------------------ */
 
-/* _syscall3(int, ioprio_set, int, which, int, who, int, ioprio); */
-
 PRE(sys_ioprio_set)
 {
    PRINT("sys_ioprio_set ( %ld, %ld, %ld )", ARG1,ARG2,ARG3);
    PRE_REG_READ3(int, "ioprio_set", int, which, int, who, int, ioprio);
+}
+
+PRE(sys_ioprio_get)
+{
+   PRINT("sys_ioprio_get ( %ld, %ld )", ARG1,ARG2);
+   PRE_REG_READ2(int, "ioprio_get", int, which, int, who);
 }
 
 /* ---------------------------------------------------------------------
@@ -3035,6 +3112,48 @@ PRE(sys_delete_module)
                  const char *, name_user, unsigned int, flags);
    PRE_MEM_RASCIIZ("delete_module(name_user)", ARG1);
 }
+
+/* ---------------------------------------------------------------------
+   oprofile-related wrappers
+   ------------------------------------------------------------------ */
+
+#if defined(VGP_x86_linux)
+PRE(sys_lookup_dcookie)
+{
+   PRINT("sys_lookup_dcookie (0x%llx, %#lx, %ld)",
+         LOHI64(ARG1,ARG2), ARG3, ARG4);
+   PRE_REG_READ4(long, "lookup_dcookie",
+                 vki_u32, cookie_low32, vki_u32, cookie_high32,
+                 char *, buf, vki_size_t, len);
+   PRE_MEM_WRITE( "lookup_dcookie(buf)", ARG3, ARG4);
+}
+POST(sys_lookup_dcookie)
+{
+   vg_assert(SUCCESS);
+   if (ARG3 != (Addr)NULL)
+      POST_MEM_WRITE( ARG3, RES);
+}
+#endif
+
+#if defined(VGP_amd64_linux)
+PRE(sys_lookup_dcookie)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_lookup_dcookie ( %llu, %#lx, %llu )",
+	 (ULong)ARG1, ARG2, (ULong)ARG3);
+   PRE_REG_READ3(int, "lookup_dcookie",
+                 unsigned long long, cookie, char *, buf, vki_size_t, len);
+
+   PRE_MEM_WRITE( "sys_lookup_dcookie(buf)", ARG2, ARG3 );
+}
+
+POST(sys_lookup_dcookie)
+{
+   vg_assert(SUCCESS);
+   if (ARG2 != (Addr)NULL)
+     POST_MEM_WRITE( ARG2, RES );
+}
+#endif
 
 #undef PRE
 #undef POST

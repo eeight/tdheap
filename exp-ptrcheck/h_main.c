@@ -11,12 +11,12 @@
 
    Initial version (Annelid):
 
-   Copyright (C) 2003-2008 Nicholas Nethercote
+   Copyright (C) 2003-2009 Nicholas Nethercote
       njn@valgrind.org
 
    Valgrind-3.X port:
 
-   Copyright (C) 2008-2008 OpenWorks Ltd
+   Copyright (C) 2008-2009 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -255,8 +255,6 @@ static ULong stats__client_mallocs = 0;
 static ULong stats__client_frees   = 0;
 static ULong stats__segs_allocd    = 0;
 static ULong stats__segs_recycled  = 0;
-static ULong stats__slow_searches  = 0;
-static ULong stats__slow_totcmps   = 0;
 
 
 //////////////////////////////////////////////////////////////
@@ -417,13 +415,13 @@ static void set_Seg_freed ( Seg* seg )
    }
 }
 
-static WordFM* addr_to_seg_map = NULL;
+static WordFM* addr_to_seg_map = NULL; /* GuestAddr -> Seg* */
 
 static void addr_to_seg_map_ENSURE_INIT ( void )
 {
    if (UNLIKELY(addr_to_seg_map == NULL)) {
       addr_to_seg_map = VG_(newFM)( VG_(malloc), "pc.h_main.attmEI.1",
-                                    VG_(free), NULL );
+                                    VG_(free), NULL/*unboxedcmp*/ );
    }
 }
 
@@ -780,8 +778,93 @@ static inline void set_mem_vseg ( Addr a, Seg* vseg )
    sm->vseg[sm_off] = vseg;
 }
 
+// Find the Seg which contains the given address.
 // Returns UNKNOWN if no matches.  Never returns BOTTOM or NONPTR.
 // Also, only returns in-use segments, not freed ones.
+/* Doing this fast is distinctly difficult when there are more than a
+   few heap allocated blocks live.  Basically it is done by searching
+   addr_to_seg_map for 'a'.
+
+   First, if 'a' is the start address of a segment, then we can detect
+   that by simply doing a VG_(lookupFM) of 'a', and we are done (nice
+   and easy).
+
+   If 'a' is within some segment, but does not point to the start, it
+   is much more complex.  We use VG_(findBoundsFM) to find the segment
+   with the largest .addr field which is <= a, and we then inspect the
+   segment to see if 'a' really falls inside it or not.  This is all a
+   bit complex and fragile, and so there's a lot of assertery in the
+   code below.  It has been crosschecked however against the trivial
+   _SLOW implementation shown after the end of this fn.
+*/
+static Seg* get_Seg_containing_addr( Addr a )
+{
+   UWord keyW, valW;
+   Seg*  s2;
+
+   /* Since we are going to poke around in it */
+   addr_to_seg_map_ENSURE_INIT();
+
+   /* first, see if 'a' is at the start of a block.  We do this both
+      because it's easy and more imporantly because VG_(findBoundsFM)
+      will fail in this case, so we need to exclude it first. */
+   if (VG_(lookupFM)( addr_to_seg_map, &keyW, &valW, a )) {
+      tl_assert(keyW == a);
+      s2 = (Seg*)valW;
+      tl_assert(s2->addr == a);
+   } else {
+      Bool  ok;
+      UWord kMin, vMin, kMax, vMax;
+      Seg   minSeg;
+      Seg   maxSeg;
+      UWord minAddr = 0;
+      UWord maxAddr = ~minAddr;
+      VG_(memset)(&minSeg, 0, sizeof(minSeg));
+      VG_(memset)(&maxSeg, 0, sizeof(maxSeg));
+      minSeg.addr = minAddr;
+      maxSeg.addr = maxAddr;
+      ok = VG_(findBoundsFM)( addr_to_seg_map,
+                              &kMin, &vMin, &kMax, &vMax,
+                              minAddr, (UWord)&minSeg,
+                              maxAddr, (UWord)&maxSeg, a );
+      tl_assert(ok); /* must be so, since False is only returned when
+                        'a' is directly present in the map, and we
+                        just established that it isn't. */
+      /* At this point, either vMin points at minSeg, or it points at a
+         real Seg.  In the former case, there is no live heap-allocated
+         Seg which has a start address <= a, so a is not in any block.
+         In the latter case, the Seg vMin points at may or may not
+         actually contain 'a'; we can only tell that by inspecting the
+         Seg itself. */
+      s2 = (Seg*)vMin;
+      tl_assert(kMin == s2->addr);
+      if (s2 == &minSeg) {
+         /* the former */
+         s2 = UNKNOWN;
+      } else {
+         /* the latter */
+         tl_assert(s2->addr <= a);
+         /* if s2 doesn't actually contain 'a', we must forget about it. */
+         if (s2->szB == 0 /* a zero sized block can't contain anything */
+             || s2->addr + s2->szB < a /* the usual range check */)
+            s2 = UNKNOWN;
+      }
+      /* while we're at it, do as much assertery as we can, since this
+         is all rather complex.  Either vMax points at maxSeg, or it
+         points to a real block, which must have a start address
+         greater than a. */
+      tl_assert(kMax == ((Seg*)vMax)->addr);
+      if (vMax == (UWord)&maxSeg) {
+         /* nothing we can check */
+      } else {
+         tl_assert(a < kMax); /* hence also a < ((Seg*)vMax)->addr */
+      }
+   }
+
+   return s2;
+}
+
+/* XXXX very slow reference implementation.  Do not use.
 static Seg* get_Seg_containing_addr_SLOW( Addr a )
 {
    SegGroup* group;
@@ -799,6 +882,8 @@ static Seg* get_Seg_containing_addr_SLOW( Addr a )
    }
    return UNKNOWN;
 }
+*/
+
 
 
 /*------------------------------------------------------------*/
@@ -1084,8 +1169,8 @@ static void pre_mem_access2 ( CorePart part, ThreadId tid, Char* str,
    }
 
    // Check first and last bytes match
-   seglo = get_Seg_containing_addr_SLOW( s );
-   seghi = get_Seg_containing_addr_SLOW( e );
+   seglo = get_Seg_containing_addr( s );
+   seghi = get_Seg_containing_addr( e );
    tl_assert( BOTTOM != seglo && NONPTR != seglo );
    tl_assert( BOTTOM != seghi && NONPTR != seghi );
 
@@ -1258,7 +1343,7 @@ static void get_IntRegInfo ( /*OUT*/IntRegInfo* iii, Int offset, Int szB )
    if (o == GOF(ECX)     && is21) {         o -= 0; goto contains_o; }
    if (o == GOF(ECX)+1   && is21) { o -= 1; o -= 0; goto contains_o; }
    if (o == GOF(EBX)     && is21) {         o -= 0; goto contains_o; }
-   // bl case
+   if (o == GOF(EBX)+1   && is21) { o -= 1; o -= 0; goto contains_o; }
    if (o == GOF(EDX)     && is21) {         o -= 0; goto contains_o; }
    if (o == GOF(EDX)+1   && is21) { o -= 1; o -= 0; goto contains_o; }
    if (o == GOF(ESI)     && is21) {         o -= 0; goto contains_o; }
@@ -1556,6 +1641,9 @@ static void get_IntRegInfo ( /*OUT*/IntRegInfo* iii, Int offset, Int szB )
    if (o == GOF(VR30) && sz == 16) goto none;
    if (o == GOF(VR31) && sz == 16) goto none;
 
+   /* Altivec admin related */
+   if (o == GOF(VRSAVE) && is4) goto none;
+
    VG_(printf)("get_IntRegInfo(ppc32):failing on (%d,%d)\n", o, sz);
    tl_assert(0);
 #  undef GOF
@@ -1716,6 +1804,9 @@ static void get_IntRegInfo ( /*OUT*/IntRegInfo* iii, Int offset, Int szB )
    if (o == GOF(VR29) && sz == 16) goto none;
    if (o == GOF(VR30) && sz == 16) goto none;
    if (o == GOF(VR31) && sz == 16) goto none;
+
+   /* Altivec admin related */
+   if (o == GOF(VRSAVE) && is4) goto none;
 
    VG_(printf)("get_IntRegInfo(ppc64):failing on (%d,%d)\n", o, sz);
    tl_assert(0);
@@ -2088,6 +2179,7 @@ static void setup_post_syscall_table ( void )
       ADD(0, __NR_accept);
 #     endif
       ADD(0, __NR_access);
+      ADD(0, __NR_alarm);
 #     if defined(__NR_bind)
       ADD(0, __NR_bind);
 #     endif
@@ -2096,6 +2188,9 @@ static void setup_post_syscall_table ( void )
 #     endif
       ADD(0, __NR_chmod);
       ADD(0, __NR_chown);
+#     if defined(__NR_chown32)
+      ADD(0, __NR_chown32);
+#     endif
       ADD(0, __NR_clock_getres);
       ADD(0, __NR_clock_gettime);
       ADD(0, __NR_clone);
@@ -2103,12 +2198,14 @@ static void setup_post_syscall_table ( void )
 #     if defined(__NR_connect)
       ADD(0, __NR_connect);
 #     endif
+      ADD(0, __NR_creat);
       ADD(0, __NR_dup);
       ADD(0, __NR_dup2);
       ADD(0, __NR_execve); /* presumably we see this because the call failed? */
       ADD(0, __NR_exit); /* hmm, why are we still alive? */
       ADD(0, __NR_exit_group);
       ADD(0, __NR_fadvise64);
+      ADD(0, __NR_fallocate);
       ADD(0, __NR_fchmod);
       ADD(0, __NR_fchown);
 #     if defined(__NR_fchown32)
@@ -2119,6 +2216,7 @@ static void setup_post_syscall_table ( void )
       ADD(0, __NR_fcntl64);
 #     endif
       ADD(0, __NR_fdatasync);
+      ADD(0, __NR_flock);
       ADD(0, __NR_fstat);
 #     if defined(__NR_fstat64)
       ADD(0, __NR_fstat64);
@@ -2145,29 +2243,39 @@ static void setup_post_syscall_table ( void )
 #     if defined(__NR_getgid32)
       ADD(0, __NR_getgid32);
 #     endif
+      ADD(0, __NR_getgroups);
       ADD(0, __NR_getitimer);
 #     if defined(__NR_getpeername)
       ADD(0, __NR_getpeername);
 #     endif
       ADD(0, __NR_getpid);
+      ADD(0, __NR_getpgrp);
       ADD(0, __NR_getppid);
       ADD(0, __NR_getresgid);
       ADD(0, __NR_getresuid);
+#     if defined(__NR_getresuid32)
+      ADD(0, __NR_getresuid32);
+#     endif
       ADD(0, __NR_getrlimit);
+      ADD(0, __NR_getrusage);
 #     if defined(__NR_getsockname)
       ADD(0, __NR_getsockname);
 #     endif
 #     if defined(__NR_getsockopt)
       ADD(0, __NR_getsockopt);
 #     endif
+      ADD(0, __NR_gettid);
       ADD(0, __NR_gettimeofday);
       ADD(0, __NR_getuid);
 #     if defined(__NR_getuid32)
       ADD(0, __NR_getuid32);
 #     endif
       ADD(0, __NR_getxattr);
+      ADD(0, __NR_inotify_add_watch);
       ADD(0, __NR_inotify_init);
+      ADD(0, __NR_inotify_rm_watch);
       ADD(0, __NR_ioctl); // ioctl -- assuming no pointers returned
+      ADD(0, __NR_ioprio_get);
       ADD(0, __NR_kill);
       ADD(0, __NR_link);
 #     if defined(__NR_listen)
@@ -2180,8 +2288,10 @@ static void setup_post_syscall_table ( void )
 #     endif
       ADD(0, __NR_madvise);
       ADD(0, __NR_mkdir);
+      ADD(0, __NR_mlock);
       ADD(0, __NR_mprotect);
       ADD(0, __NR_munmap); // die_mem_munmap already called, segment remove);
+      ADD(0, __NR_nanosleep);
       ADD(0, __NR_open);
       ADD(0, __NR_pipe);
       ADD(0, __NR_poll);
@@ -2203,25 +2313,45 @@ static void setup_post_syscall_table ( void )
       ADD(0, __NR_rt_sigreturn); /* not sure if we should see this or not */
       ADD(0, __NR_sched_get_priority_max);
       ADD(0, __NR_sched_get_priority_min);
+      ADD(0, __NR_sched_getaffinity);
       ADD(0, __NR_sched_getparam);
       ADD(0, __NR_sched_getscheduler);
+      ADD(0, __NR_sched_setaffinity);
       ADD(0, __NR_sched_setscheduler);
       ADD(0, __NR_sched_yield);
       ADD(0, __NR_select);
+#     if defined(__NR_semctl)
+      ADD(0, __NR_semctl);
+#     endif
+#     if defined(__NR_semget)
+      ADD(0, __NR_semget);
+#     endif
+#     if defined(__NR_semop)
+      ADD(0, __NR_semop);
+#     endif
 #     if defined(__NR_sendto)
       ADD(0, __NR_sendto);
+#     endif
+#     if defined(__NR_sendmsg)
+      ADD(0, __NR_sendmsg);
 #     endif
       ADD(0, __NR_set_robust_list);
 #     if defined(__NR_set_thread_area)
       ADD(0, __NR_set_thread_area);
 #     endif
       ADD(0, __NR_set_tid_address);
+      ADD(0, __NR_setfsgid);
+      ADD(0, __NR_setfsuid);
+      ADD(0, __NR_setgid);
       ADD(0, __NR_setitimer);
+      ADD(0, __NR_setpgid);
+      ADD(0, __NR_setresgid);
       ADD(0, __NR_setrlimit);
       ADD(0, __NR_setsid);
 #     if defined(__NR_setsockopt)
       ADD(0, __NR_setsockopt);
 #     endif
+      ADD(0, __NR_setuid);
 #     if defined(__NR_shmctl)
       ADD(0, __NR_shmctl);
       ADD(0, __NR_shmdt);
@@ -2229,11 +2359,15 @@ static void setup_post_syscall_table ( void )
 #     if defined(__NR_shutdown)
       ADD(0, __NR_shutdown);
 #     endif
+      ADD(0, __NR_sigaltstack);
 #     if defined(__NR_socket)
       ADD(0, __NR_socket);
 #     endif
 #     if defined(__NR_socketcall)
       ADD(0, __NR_socketcall); /* the nasty x86-linux socket multiplexor */
+#     endif
+#     if defined(__NR_socketpair)
+      ADD(0, __NR_socketpair);
 #     endif
 #     if defined(__NR_statfs64)
       ADD(0, __NR_statfs64);
@@ -2509,9 +2643,9 @@ Seg* nonptr_or_unknown(UWord x)
 //zz    VG_(printf)("%u =\n", bb);
 //zz }
 
-static ULong stats__tot_mem_refs  = 0;
-static ULong stats__refs_in_a_seg = 0;
-static ULong stats__refs_lost_seg = 0;
+//static ULong stats__tot_mem_refs  = 0;
+//static ULong stats__refs_in_a_seg = 0;
+//static ULong stats__refs_lost_seg = 0;
 
 typedef
    struct { ExeContext* ec; UWord count; }
@@ -2519,23 +2653,23 @@ typedef
 
 static OSet* lossage = NULL;
 
-static void inc_lossage ( ExeContext* ec ) 
-{
-   Lossage key, *res, *nyu;
-   key.ec = ec;
-   key.count = 0; /* frivolous */
-   res = VG_(OSetGen_Lookup)(lossage, &key);
-   if (res) {
-      tl_assert(res->ec == ec);
-      res->count++;
-   } else {
-      nyu = (Lossage*)VG_(OSetGen_AllocNode)(lossage, sizeof(Lossage));
-      tl_assert(nyu);
-      nyu->ec = ec;
-      nyu->count = 1;
-      VG_(OSetGen_Insert)( lossage, nyu );
-   }
-}
+//static void inc_lossage ( ExeContext* ec ) 
+//{
+//   Lossage key, *res, *nyu;
+//   key.ec = ec;
+//   key.count = 0; /* frivolous */
+//   res = VG_(OSetGen_Lookup)(lossage, &key);
+//   if (res) {
+//      tl_assert(res->ec == ec);
+//      res->count++;
+//   } else {
+//      nyu = (Lossage*)VG_(OSetGen_AllocNode)(lossage, sizeof(Lossage));
+//      tl_assert(nyu);
+//      nyu->ec = ec;
+//      nyu->count = 1;
+//      VG_(OSetGen_Insert)( lossage, nyu );
+//   }
+//}
 
 static void init_lossage ( void )
 {
@@ -2546,28 +2680,28 @@ static void init_lossage ( void )
    tl_assert(lossage);
 }
 
-static void show_lossage ( void )
-{
-   Lossage* elem;
-   VG_(OSetGen_ResetIter)( lossage );
-   while ( (elem = VG_(OSetGen_Next)(lossage)) ) {
-      if (elem->count < 10) continue;
-      //Char buf[100];
-      //(void)VG_(describe_IP)(elem->ec, buf, sizeof(buf)-1);
-      //buf[sizeof(buf)-1] = 0;
-      //VG_(printf)("  %,8lu  %s\n", elem->count, buf);
-      VG_(message)(Vg_UserMsg, "Lossage count %'lu at", elem->count);
-      VG_(pp_ExeContext)(elem->ec);
-   }
-}
+//static void show_lossage ( void )
+//{
+//   Lossage* elem;
+//   VG_(OSetGen_ResetIter)( lossage );
+//   while ( (elem = VG_(OSetGen_Next)(lossage)) ) {
+//      if (elem->count < 10) continue;
+//      //Char buf[100];
+//      //(void)VG_(describe_IP)(elem->ec, buf, sizeof(buf)-1);
+//      //buf[sizeof(buf)-1] = 0;
+//      //VG_(printf)("  %,8lu  %s\n", elem->count, buf);
+//      VG_(message)(Vg_UserMsg, "Lossage count %'lu at", elem->count);
+//      VG_(pp_ExeContext)(elem->ec);
+//   }
+//}
 
 // This function is called *a lot*; inlining it sped up Konqueror by 20%.
 static inline
 void check_load_or_store(Bool is_write, Addr m, UWord sz, Seg* mptr_vseg)
 {
-   if (h_clo_lossage_check) {
-     tl_assert(0);
 #if 0
+   tl_assert(0);
+   if (h_clo_lossage_check) {
       Seg* seg;
       stats__tot_mem_refs++;
       if (ISList__findI0( seglist, (Addr)m, &seg )) {
@@ -2604,8 +2738,8 @@ void check_load_or_store(Bool is_write, Addr m, UWord sz, Seg* mptr_vseg)
             }
          }
       }
-#endif
    } /* clo_lossage_check */
+#endif
 
 #  if SC_SEGS
    checkSeg(mptr_vseg);
@@ -4641,12 +4775,9 @@ void h_fini ( Int exitcode )
       VG_(message)(Vg_DebugMsg,
                    "  h_:  %'10llu Segs allocd,   %'10llu Segs recycled", 
                    stats__segs_allocd, stats__segs_recycled);
-      VG_(message)(Vg_DebugMsg,
-                   "  h_:  %'10llu slow searches, %'10llu total cmps",
-                   stats__slow_searches, stats__slow_totcmps);
-
    }
 
+#if 0
    if (h_clo_lossage_check) {
       VG_(message)(Vg_UserMsg, "");
       VG_(message)(Vg_UserMsg, "%12lld total memory references",
@@ -4661,6 +4792,7 @@ void h_fini ( Int exitcode )
    } else {
       tl_assert( 0 == VG_(OSetGen_Size)(lossage) );
    }
+#endif
 }
 
 

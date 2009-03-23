@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2008 OpenWorks LLP
+   Copyright (C) 2007-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -162,7 +162,7 @@ static inline void ensureSpaceXA ( struct _XArray* xa )
          else if (xa->elemSzB == 2) newsz = 4;
          else newsz = 2;
       } else {
-         newsz = 1 + (3 * xa->totsizeE) / 2;  /* 2 * xa->totsizeE; */
+         newsz = 2 + (3 * xa->totsizeE) / 2;  /* 2 * xa->totsizeE; */
       }
       if (0 && xa->totsizeE >= 10000) 
          VG_(printf)("addToXA: increasing from %ld to %ld\n", 

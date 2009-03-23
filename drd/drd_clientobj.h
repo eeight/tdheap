@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a data race detector.
 
-  Copyright (C) 2006-2008 Bart Van Assche
+  Copyright (C) 2006-2009 Bart Van Assche
   bart.vanassche@gmail.com
 
   This program is free software; you can redistribute it and/or
@@ -32,6 +32,7 @@
 #include "pub_tool_basics.h"
 #include "pub_tool_execontext.h" /* ExeContext */
 #include "pub_tool_oset.h"
+#include "pub_tool_xarray.h"
 
 
 // Forward declarations.
@@ -88,10 +89,12 @@ struct semaphore_info
   ObjType     type;
   void        (*cleanup)(union drd_clientobj*);
   ExeContext* first_observed_at;
-  UWord       value;             // Semaphore value.
+  UInt        waits_to_skip;     // Number of sem_wait() calls to skip
+                                 // (due to the value assigned by sem_init()).
+  UInt        value;             // Semaphore value.
   UWord       waiters;           // Number of threads inside sem_wait().
   DrdThreadId last_sem_post_tid; // Thread ID associated with last sem_post().
-  Segment*    last_sem_post_segment;
+  XArray*     last_sem_post_seg; // array of Segment*, used as a stack.
 };
 
 struct barrier_info

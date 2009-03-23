@@ -9,7 +9,7 @@
    This file is part of Ptrcheck, a Valgrind tool for checking pointer
    use in programs.
 
-   Copyright (C) 2008-2008 OpenWorks Ltd
+   Copyright (C) 2008-2009 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -58,13 +58,15 @@
 //                                                          //
 //////////////////////////////////////////////////////////////
 
-Bool h_clo_partial_loads_ok = True;   /* user visible */
-Bool h_clo_lossage_check    = False;  /* dev flag only */
+Bool h_clo_partial_loads_ok  = True;   /* user visible */
+/* Bool h_clo_lossage_check     = False; */ /* dev flag only */
+Bool sg_clo_enable_sg_checks = True;   /* user visible */
 
 Bool pc_process_cmd_line_options(Char* arg)
 {
         VG_BOOL_CLO(arg, "--partial-loads-ok", h_clo_partial_loads_ok)
-   else VG_BOOL_CLO(arg, "--lossage-check",    h_clo_lossage_check)
+   /* else VG_BOOL_CLO(arg, "--lossage-check",    h_clo_lossage_check) */
+   else VG_BOOL_CLO(arg, "--enable-sg-checks", sg_clo_enable_sg_checks)
    else
       return VG_(replacement_malloc_process_cmd_line_option)(arg);
 
@@ -74,16 +76,19 @@ Bool pc_process_cmd_line_options(Char* arg)
 void pc_print_usage(void)
 {
    VG_(printf)(
-   "    --partial-loads-ok=no|yes same as for Memcheck [yes]\n"
+   "    --partial-loads-ok=no|yes  same as for Memcheck [yes]\n"
+   "    --enable-sg-checks=no|yes  enable stack & global array checking? [yes]\n"
    );
    VG_(replacement_malloc_print_usage)();
 }
 
 void pc_print_debug_usage(void)
 {
+  /*
    VG_(printf)(
-   "    --lossage-check=no|yes gather stats for quality control [no]\n"
+   "    --lossage-check=no|yes    gather stats for quality control [no]\n"
    );
+  */
    VG_(replacement_malloc_print_debug_usage)();
 }
 
@@ -392,7 +397,7 @@ void pc_pp_Error ( Error* err )
          VG_(pp_ExeContext)( VG_(get_error_where)(err) );
 
          VG_(message)(Vg_UserMsg, " Address %#lx is %ld bytes inside a "
-                                  "%ld-byte block alloc'd",
+                                  "%ld-byte block free'd",
                                   lo, lo-Seg__addr(seglo),
                                   Seg__size(seglo) );
          VG_(pp_ExeContext)(Seg__where(seglo));
