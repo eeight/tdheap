@@ -180,7 +180,7 @@ void VG_REGPARM(2) AddUsedFrom(MemBlock *block, Addr addr, Addr offset) {
 
 static
 void SanityFail(const char *msg) {
-  VG_(printf)("Sanity check failed: %s\n", msg);
+  // VG_(printf)("Sanity check failed: %s\n", msg);
 }
 
 static
@@ -205,7 +205,7 @@ void VG_REGPARM(2) TraceMemWrite(Addr addr, UChar size) {
     // This field was already used.
     if (entry != NULL) {
       if (entry->size != size) {
-        VG_(printf)("%d vs %d\n", entry->size, size);
+        //VG_(printf)("%d vs %d\n", entry->size, size);
         SanityFail("Size does not match");
         entry->size = size;
       }
