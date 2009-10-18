@@ -2,7 +2,7 @@
    This file is part of Callgrind, a Valgrind tool for call graph
    profiling programs.
 
-   Copyright (C) 2002-2008, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2009, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This tool is derived from and contains lot of code from Cachegrind
    Copyright (C) 2002 Nicholas Nethercote (njn@valgrind.org)
@@ -108,18 +108,18 @@ static void setup_control(void)
 
   /* create info file to indicate that we are running */ 
   res = VG_(open)(info_file, VKI_O_WRONLY|VKI_O_TRUNC, 0);
-  if (res.isError) { 
+  if (sr_isError(res)) { 
     res = VG_(open)(info_file, VKI_O_CREAT|VKI_O_WRONLY,
 		   VKI_S_IRUSR|VKI_S_IWUSR);
-    if (res.isError) {
+    if (sr_isError(res)) {
       VG_(message)(Vg_DebugMsg, 
-		   "warning: can't write info file '%s'", info_file);
+		   "warning: can't write info file '%s'\n", info_file);
       info_file = 0;
       fd = -1;
     }
   }
-  if (!res.isError)
-      fd = (Int) res.res;
+  if (!sr_isError(res))
+      fd = (Int) sr_Res(res);
   if (fd>=0) {
     Char buf[512];
     Int i;
@@ -177,8 +177,8 @@ static Int createRes(Int fd)
     /* VG_(open) can return any negative number on error. Remap errors to -1,
      * to not confuse it with our special value -2
      */
-    if (res.isError) fd = -1;
-    else fd = (Int) res.res;
+    if (sr_isError(res)) fd = -1;
+    else fd = (Int) sr_Res(res);
 
     return fd;
 }
@@ -380,8 +380,8 @@ void CLG_(check_command)()
     }
     
     res = VG_(open)(current_command_file, VKI_O_RDONLY,0);
-    if (!res.isError) {
-	fd = (Int) res.res;
+    if (!sr_isError(res)) {
+        fd = (Int) sr_Res(res);
 	bytesRead = VG_(read)(fd,cmdBuffer,500);
 	cmdBuffer[500] = 0; /* no command overrun please */
 	VG_(close)(fd);
@@ -524,7 +524,8 @@ void CLG_(check_command)()
 
     if (do_kill) {
       VG_(message)(Vg_UserMsg,
-		   "Killed because of command from %s", current_command_file);
+		   "Killed because of command from %s\n",
+                   current_command_file);
       CLG_(fini)(0);
       VG_(exit)(1);
     }

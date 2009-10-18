@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Nicholas Nethercote
+   Copyright (C) 2000-2009 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -28,6 +28,8 @@
 
    The GNU General Public License is contained in the file COPYING.
 */
+
+#if defined(VGP_x86_linux)
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
@@ -409,12 +411,12 @@ static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
    if (stackseg == NULL || !stackseg->hasR || !stackseg->hasW) {
       VG_(message)(
          Vg_UserMsg,
-         "Can't extend stack to %#lx during signal delivery for thread %d:",
+         "Can't extend stack to %#lx during signal delivery for thread %d:\n",
          addr, tid);
       if (stackseg == NULL)
-         VG_(message)(Vg_UserMsg, "  no stack segment");
+         VG_(message)(Vg_UserMsg, "  no stack segment\n");
       else
-         VG_(message)(Vg_UserMsg, "  too small or bad protection modes");
+         VG_(message)(Vg_UserMsg, "  too small or bad protection modes\n");
 
       /* set SIGSEGV to default handler */
       VG_(set_default_handler)(VKI_SIGSEGV);
@@ -438,7 +440,6 @@ static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
 
 static void build_vg_sigframe(struct vg_sigframe *frame,
 			      ThreadState *tst,
-			      const vki_sigset_t *mask,
 			      UInt flags,
 			      Int sigNo)
 {
@@ -459,7 +460,7 @@ static Addr build_sigframe(ThreadState *tst,
 			   Addr esp_top_of_frame,
 			   const vki_siginfo_t *siginfo,
                            const struct vki_ucontext *siguc,
-			   void *handler, UInt flags,
+			   UInt flags,
 			   const vki_sigset_t *mask,
 			   void *restorer)
 {
@@ -507,7 +508,7 @@ static Addr build_sigframe(ThreadState *tst,
    VG_TRACK( post_mem_write, Vg_CoreSignal, tst->tid, 
              esp, offsetof(struct sigframe, vg) );
 
-   build_vg_sigframe(&frame->vg, tst, mask, flags, sigNo);
+   build_vg_sigframe(&frame->vg, tst, flags, sigNo);
    
    return esp;
 }
@@ -517,7 +518,7 @@ static Addr build_rt_sigframe(ThreadState *tst,
 			      Addr esp_top_of_frame,
 			      const vki_siginfo_t *siginfo,
                               const struct vki_ucontext *siguc,
-			      void *handler, UInt flags,
+			      UInt flags,
 			      const vki_sigset_t *mask,
 			      void *restorer)
 {
@@ -570,7 +571,7 @@ static Addr build_rt_sigframe(ThreadState *tst,
    VG_TRACK( post_mem_write,  Vg_CoreSignal, tst->tid, 
              esp, offsetof(struct rt_sigframe, vg) );
 
-   build_vg_sigframe(&frame->vg, tst, mask, flags, sigNo);
+   build_vg_sigframe(&frame->vg, tst, flags, sigNo);
    
    return esp;
 }
@@ -591,10 +592,10 @@ void VG_(sigframe_create)( ThreadId tid,
 
    if (flags & VKI_SA_SIGINFO)
       esp = build_rt_sigframe(tst, esp_top_of_frame, siginfo, siguc,
-                                   handler, flags, mask, restorer);
+                                   flags, mask, restorer);
    else
       esp = build_sigframe(tst, esp_top_of_frame, siginfo, siguc,
-                                handler, flags, mask, restorer);
+                                flags, mask, restorer);
 
    /* Set the thread so it will next run the handler. */
    /* tst->m_esp  = esp;  also notify the tool we've updated ESP */
@@ -626,7 +627,7 @@ Bool restore_vg_sigframe ( ThreadState *tst,
    if (frame->magicPI != 0x31415927 ||
        frame->magicE  != 0x27182818) {
       VG_(message)(Vg_UserMsg, "Thread %d return signal frame "
-                               "corrupted.  Killing process.",
+                               "corrupted.  Killing process.\n",
 		   tst->tid);
       VG_(set_default_handler)(VKI_SIGSEGV);
       VG_(synth_fault)(tst->tid);
@@ -715,13 +716,15 @@ void VG_(sigframe_destroy)( ThreadId tid, Bool isRT )
    if (VG_(clo_trace_signals))
       VG_(message)(
          Vg_DebugMsg, 
-         "VG_(signal_return) (thread %d): isRT=%d valid magic; EIP=%#x",
+         "VG_(signal_return) (thread %d): isRT=%d valid magic; EIP=%#x\n",
          tid, isRT, tst->arch.vex.guest_EIP);
 
    /* tell the tools */
    VG_TRACK( post_deliver_signal, tid, sigNo );
 }
 
+#endif // defined(VGP_x86_linux)
+
 /*--------------------------------------------------------------------*/
-/*--- end                                     sigframe-x86-linux.c ---*/
+/*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/

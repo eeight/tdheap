@@ -1,0 +1,23 @@
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/basic_tree_policy
+END
+basic_tree_policy_base.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/basic_tree_policy/basic_tree_policy_base.hpp
+END
+null_node_metadata.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/basic_tree_policy/null_node_metadata.hpp
+END
+traits.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/basic_tree_policy/traits.hpp
+END

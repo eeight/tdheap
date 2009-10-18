@@ -10,7 +10,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2008 OpenWorks LLP
+   Copyright (C) 2006-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -35,6 +35,8 @@
    used to endorse or promote products derived from this software
    without prior written permission.
 */
+
+#if defined(VGO_aix5)
 
 /* *************************************************************
    DO NOT INCLUDE ANY OTHER FILES HERE.
@@ -162,7 +164,7 @@ typedef
       Bool   fromP;     // AnonC, AnonV only: originated from PreAlloc?
       UChar* fname;     // MText, FileV only: filename
       UChar* mname;     // MText only: member name if present
-      ULong  offset;    // FileV only: file offset
+      Off64T offset;    // FileV only: file offset
    }
    AixSegment;
 
@@ -2635,6 +2637,7 @@ static void parse_procselfmap ( /*OUT*/AixSegments* segs )
       show_AixSegments(0, "as read from procmap", segs);
 }
 
+#endif // defined(VGO_aix5)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

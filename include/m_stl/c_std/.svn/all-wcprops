@@ -1,0 +1,119 @@
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std
+END
+csignal
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/csignal
+END
+cstdlib
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/cstdlib
+END
+cstdio
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/cstdio
+END
+cstdarg
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/cstdarg
+END
+cctype
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/cctype
+END
+cerrno
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/cerrno
+END
+cmath
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/cmath
+END
+ciso646
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/ciso646
+END
+ctime
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/ctime
+END
+clocale
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/clocale
+END
+cmath.tcc
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/cmath.tcc
+END
+climits
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/climits
+END
+cassert
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/cassert
+END
+csetjmp
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/csetjmp
+END
+cwchar
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/cwchar
+END
+cfloat
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/cfloat
+END
+cstring
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/cstring
+END
+cstddef
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/cstddef
+END
+cwctype
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_std/cwctype
+END

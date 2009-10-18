@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -29,10 +29,11 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-/* The files syswrap-generic.c, syswrap-linux.c, syswrap-x86-linux.c,
-   syswrap-amd64-linux.c and syswrap-ppc32-linux.c, and associated
-   vki*.h header files, constitute Valgrind's model of how a vanilla
-   Linux kernel behaves with respect to syscalls.
+#if defined(VGO_linux)
+
+/* The files syswrap-generic.c, syswrap-linux.c, syswrap-*-linux.c,
+   and associated vki*.h header files, constitute Valgrind's model of how a
+   vanilla Linux kernel behaves with respect to syscalls.
 
    On a few occasions, it is useful to run with a kernel that has some
    (minor) extensions to the vanilla model, either due to running on a
@@ -86,7 +87,8 @@ void ML_(linux_variant_POST_sys_bproc)( UWord arg1, UWord arg2,
 {
 }
 
+#endif // defined(VGO_linux)
 
 /*--------------------------------------------------------------------*/
-/*--- end                                 syswrap-linux-variants.c ---*/
+/*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/

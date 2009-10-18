@@ -2,7 +2,7 @@
    This file is part of Callgrind, a Valgrind tool for call graph
    profiling programs.
 
-   Copyright (C) 2002-2008, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2009, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This tool is derived from and contains lot of code from Cachegrind
    Copyright (C) 2002 Nicholas Nethercote (njn@valgrind.org)
@@ -41,7 +41,7 @@ static void print_indent(int s)
     /* max of 40 spaces */
     char sp[] = "                                        ";
     if (s>40) s=40;
-    VG_(printf)(sp+40-s);
+    VG_(printf)("%s", sp+40-s);
 }
 
 void CLG_(print_bb)(int s, BB* bb)
@@ -112,7 +112,7 @@ void CLG_(print_execstate)(int s, exec_state* es)
 }
 
 
-void CLG_(print_bbcc)(int s, BBCC* bbcc, Bool jumpaddr)
+void CLG_(print_bbcc)(int s, BBCC* bbcc)
 {
   BB* bb;
 
@@ -129,16 +129,9 @@ void CLG_(print_bbcc)(int s, BBCC* bbcc, Bool jumpaddr)
   bb = bbcc->bb;
   CLG_ASSERT(bb!=0);
 
-#if 0 
-  if (jumpaddr)
-    VG_(printf)("%s +%p=%p, ",
+  VG_(printf)("%s +%#lx=%#lx, ",
 	      bb->obj->name + bb->obj->last_slash_pos,
-	      bb->jmp_offset, bb_jmpaddr(bb));
-  else
-#endif
-    VG_(printf)("%s +%#lx=%#lx, ",
-		bb->obj->name + bb->obj->last_slash_pos,
-		bb->offset, bb_addr(bb));
+	      bb->offset, bb_addr(bb));
   CLG_(print_cxt)(s+8, bbcc->cxt, bbcc->rec_index);
 }
 
@@ -168,7 +161,7 @@ void CLG_(print_eventset)(int s, EventSet* es)
 	if (es->e[i-1].nextTop == i)
 	  VG_(printf)("| ");
       }
-      VG_(printf)(es->e[i].type->name);
+      VG_(printf)("%s", es->e[i].type->name);
     }
   }
   VG_(printf)("\n");
@@ -224,9 +217,9 @@ void CLG_(print_short_jcc)(jCC* jcc)
 		    bb_jmpaddr(jcc->from->bb),
 		    bb_addr(jcc->to->bb),
 		    jcc->call_counter,
-		    jcc->cost ? jcc->cost[CLG_(sets).off_sim_Ir]:0,
-		    jcc->cost ? jcc->cost[CLG_(sets).off_sim_Dr]:0,
-		    jcc->cost ? jcc->cost[CLG_(sets).off_sim_Dw]:0);
+		    jcc->cost ? jcc->cost[CLG_(sets).off_full_Ir]:0,
+		    jcc->cost ? jcc->cost[CLG_(sets).off_full_Dr]:0,
+		    jcc->cost ? jcc->cost[CLG_(sets).off_full_Dw]:0);
     else
 	VG_(printf)("[Skipped JCC]");
 }
@@ -243,10 +236,10 @@ void CLG_(print_jcc)(int s, jCC* jcc)
 	return;
     }
     VG_(printf)("JCC %p from ", jcc);
-    CLG_(print_bbcc)(s+9, jcc->from, True);
+    CLG_(print_bbcc)(s+9, jcc->from);
     print_indent(s+4);    
     VG_(printf)("to   ");
-    CLG_(print_bbcc)(s+9, jcc->to, False);
+    CLG_(print_bbcc)(s+9, jcc->to);
     print_indent(s+4);
     VG_(printf)("Calls %llu\n", jcc->call_counter);
     print_indent(s+4);
@@ -334,7 +327,7 @@ void CLG_(print_bbcc_cost)(int s, BBCC* bbcc)
   bb = bbcc->bb;
   CLG_ASSERT(bb!=0);
     
-  CLG_(print_bbcc)(s, bbcc, False);
+  CLG_(print_bbcc)(s, bbcc);
 
   ecounter = bbcc->ecounter_sum;
 
@@ -386,7 +379,7 @@ void CLG_(print_addr)(Addr addr)
 	VG_(printf)("%#lx %s", addr, fn_buf);
 
     if (di) {
-      obj_name = VG_(seginfo_filename)(di);
+      obj_name = VG_(DebugInfo_get_filename)(di);
       if (obj_name) {
 	while(obj_name[i]) {
 	  if (obj_name[i]=='/') opos = i+1;
@@ -440,7 +433,7 @@ void* CLG_(malloc)(HChar* cc, UWord s, char* f)
 void CLG_(print_bbno)(void) {}
 void CLG_(print_context)(void) {}
 void CLG_(print_jcc)(int s, jCC* jcc) {}
-void CLG_(print_bbcc)(int s, BBCC* bbcc, Bool b) {}
+void CLG_(print_bbcc)(int s, BBCC* bbcc) {}
 void CLG_(print_bbcc_fn)(BBCC* bbcc) {}
 void CLG_(print_cost)(int s, EventSet* es, ULong* cost) {}
 void CLG_(print_bb)(int s, BB* bb) {}

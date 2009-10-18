@@ -1,0 +1,63 @@
+.\" ** You probably do not want to edit this file directly **
+.\" It was generated using the DocBook XSL Stylesheets (version 1.69.1).
+.\" Instead of manually editing it, you probably should edit the DocBook XML
+.\" source for it and then use the DocBook XSL Stylesheets to regenerate it.
+.TH "CG_ANNOTATE" "1" "08/19/2009" "Release 3.5.0" "Release 3.5.0"
+.\" disable hyphenation
+.nh
+.\" disable justification (adjust text to left margin only)
+.ad l
+.SH "NAME"
+cg_annotate \- post\-processing tool for Cachegrind
+.SH "SYNOPSIS"
+.HP 12
+\fBcg_annotate\fR [\fIoptions\fR] \fIcachegrind\-out\-file\fR [\fIsource\-files\fR...]
+.SH "DESCRIPTION"
+.PP
+\fBcg_annotate\fR
+takes an output file produced by the Valgrind tool Cachegrind and prints the information in an easy\-to\-read form.
+.SH "OPTIONS"
+.TP
+\fB\-h \-\-help \fR
+Show the help message.
+.TP
+\fB\-\-version \fR
+Show the version number.
+.TP
+\fB\-\-show=A,B,C [default: all, using order in cachegrind.out.<pid>] \fR
+Specifies which events to show (and the column order). Default is to use all present in the
+\fIcachegrind.out.<pid>\fR
+file (and use the order in the file). Useful if you want to concentrate on, for example, I cache misses (\fB\-\-show=I1mr,I2mr\fR), or data read misses (\fB\-\-show=D1mr,D2mr\fR), or L2 data misses (\fB\-\-show=D2mr,D2mw\fR). Best used in conjunction with
+\fB\-\-sort\fR.
+.TP
+\fB\-\-sort=A,B,C [default: order in cachegrind.out.<pid>] \fR
+Specifies the events upon which the sorting of the function\-by\-function entries will be based.
+.TP
+\fB\-\-threshold=X [default: 99%] \fR
+Sets the threshold for the function\-by\-function summary. Functions are shown that account for more than X% of the primary sort event. If auto\-annotating, also affects which files are annotated.
+.sp
+Note: thresholds can be set for more than one of the events by appending any events for the
+\fB\-\-sort\fR
+option with a colon and a number (no spaces, though). E.g. if you want to see the functions that cover 99% of L2 read misses and 99% of L2 write misses, use this option:
+.sp
+\fB\-\-sort=D2mr:99,D2mw:99\fR
+.TP
+\fB\-\-auto=<no|yes> [default: no] \fR
+When enabled, automatically annotates every file that is mentioned in the function\-by\-function summary that can be found. Also gives a list of those that couldn't be found.
+.TP
+\fB\-\-context=N [default: 8] \fR
+Print N lines of context before and after each annotated line. Avoids printing large sections of source files that were not executed. Use a large number (e.g. 100000) to show all source lines.
+.TP
+\fB\-I<dir> \-\-include=<dir> [default: none] \fR
+Adds a directory to the list in which to search for files. Multiple
+\fB\-I\fR/\fB\-\-include\fR
+options can be given to add multiple directories.
+.SH "SEE ALSO"
+.PP
+valgrind(1),
+\fI$INSTALL/share/doc/valgrind/html/index.html\fR
+or
+\fIhttp://www.valgrind.org/docs/manual/index.html\fR.
+.SH "AUTHOR"
+.PP
+Nicholas Nethercote.

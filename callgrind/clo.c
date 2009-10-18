@@ -2,7 +2,7 @@
    This file is part of Callgrind, a Valgrind tool for call graph
    profiling programs.
 
-   Copyright (C) 2002-2008, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2009, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This tool is derived from and contains lot of code from Cachegrind
    Copyright (C) 2002 Nicholas Nethercote (njn@valgrind.org)
@@ -98,24 +98,24 @@ static config_node* fn_configs = 0;
 static __inline__ 
 fn_config* new_fnc(void)
 {
-   fn_config* new = (fn_config*) CLG_MALLOC("cl.clo.nf.1",
+   fn_config* fnc = (fn_config*) CLG_MALLOC("cl.clo.nf.1",
                                             sizeof(fn_config));
 
-   new->dump_before  = CONFIG_DEFAULT;
-   new->dump_after   = CONFIG_DEFAULT;
-   new->zero_before  = CONFIG_DEFAULT;
-   new->toggle_collect = CONFIG_DEFAULT;
-   new->skip         = CONFIG_DEFAULT;
-   new->pop_on_jump  = CONFIG_DEFAULT;
-   new->group        = CONFIG_DEFAULT;
-   new->separate_callers    = CONFIG_DEFAULT;
-   new->separate_recursions = CONFIG_DEFAULT;
+   fnc->dump_before  = CONFIG_DEFAULT;
+   fnc->dump_after   = CONFIG_DEFAULT;
+   fnc->zero_before  = CONFIG_DEFAULT;
+   fnc->toggle_collect = CONFIG_DEFAULT;
+   fnc->skip         = CONFIG_DEFAULT;
+   fnc->pop_on_jump  = CONFIG_DEFAULT;
+   fnc->group        = CONFIG_DEFAULT;
+   fnc->separate_callers    = CONFIG_DEFAULT;
+   fnc->separate_recursions = CONFIG_DEFAULT;
 
 #if CLG_ENABLE_DEBUG
-   new->verbosity    = CONFIG_DEFAULT;
+   fnc->verbosity    = CONFIG_DEFAULT;
 #endif
 
-   return new;
+   return fnc;
 }
 
 
@@ -264,13 +264,13 @@ static fn_config* get_fnc2(config_node* node, Char* name)
   while(name[offset] && (!is_wild(name[offset]))) offset++;
 
   new_sub = new_config(name, offset);
-  new_sub->next = n->sub_node[ name[offset]%NODE_DEGREE ];
-  n->sub_node[ name[offset]%NODE_DEGREE ] = new_sub;	
+  new_sub->next = n->sub_node[ name[0]%NODE_DEGREE ];
+  n->sub_node[ name[0]%NODE_DEGREE ] = new_sub;
 
   return get_fnc2(new_sub, name+offset);
 }
 
-static void print_config_node(int s, config_node* node)
+static void print_config_node(int depth, int hash, config_node* node)
 {
   config_node* n;
   int i;
@@ -278,19 +278,22 @@ static void print_config_node(int s, config_node* node)
   if (node != fn_configs) {
     char sp[] = "                                        ";
 
-    if (s>40) s=40;
-    VG_(printf)(sp+40-s);
-    VG_(printf)("'%s'/%d\n", node->name, node->length);
+    if (depth>40) depth=40;
+    VG_(printf)("%s", sp+40-depth);
+    if (hash >=0) VG_(printf)(" [hash %2d]", hash);
+    else if (hash == -2) VG_(printf)(" [wildc ?]");
+    else if (hash == -3) VG_(printf)(" [wildc *]");
+    VG_(printf)(" '%s' (len %d)\n", node->name, node->length);
   }
   for(i=0;i<NODE_DEGREE;i++) {
     n = node->sub_node[i];
     while(n) {
-      print_config_node(s+1, n);
+      print_config_node(depth+1, i, n);
       n = n->next;
     }
   }
-  if (node->wild_char) print_config_node(s+1, node->wild_char);
-  if (node->wild_star) print_config_node(s+1, node->wild_star);
+  if (node->wild_char) print_config_node(depth+1, -2, node->wild_char);
+  if (node->wild_star) print_config_node(depth+1, -3, node->wild_star);
 }
 
 /* get a function config for a name pattern (from command line) */
@@ -305,7 +308,7 @@ static fn_config* get_fnc(Char* name)
 
   CLG_DEBUGIF(3) {
     CLG_DEBUG(3, " -get_fnc(%s):\n", name);
-    print_config_node(3, fn_configs);
+    print_config_node(3, -1, fn_configs);
   }
   return fnc;
 }
@@ -358,7 +361,7 @@ static void update_fn_config2(fn_node* fn, Char* name, config_node* node)
     CLG_DEBUG(3, "  update_fn_config2('%s', node '%s'): \n",
 	     name, node->name);
     if ((*name == 0) && node->config) {
-      CLG_DEBUG(3, "Found!\n");
+      CLG_DEBUG(3, "   found!\n");
       update_fn_config1(fn, node->config);
       return;
     }
@@ -368,12 +371,19 @@ static void update_fn_config2(fn_node* fn, Char* name, config_node* node)
       if (VG_(strncmp)(name, n->name, n->length)==0) break;
       n = n->next;
     }
-    if (n) update_fn_config2(fn, name+n->length, n);
+    if (n) {
+	CLG_DEBUG(3, "   '%s' matching at hash %d\n",
+		  n->name, name[0]%NODE_DEGREE);
+	update_fn_config2(fn, name+n->length, n);
+    }
     
-    if (node->wild_char)
-      update_fn_config2(fn, name+1, node->wild_char);
+    if (node->wild_char) {
+	CLG_DEBUG(3, "   skip '%c' for wildcard '?'\n", *name);
+	update_fn_config2(fn, name+1, node->wild_char);
+    }
 
     if (node->wild_star) {
+      CLG_DEBUG(3, "   wildcard '*'\n");
       while(*name) {
 	update_fn_config2(fn, name, node->wild_star);
 	name++;
@@ -395,251 +405,127 @@ void CLG_(update_fn_config)(fn_node* fn)
 /*--- Command line processing                                      ---*/
 /*--------------------------------------------------------------------*/
 
-static Char* getUInt(Char* s, UInt* pn)
-{
-    UInt n = 0;
-    while((*s >='0') && (*s <='9')) {
-	n = 10*n + (*s-'0');
-	s++;
-    }
-    if (pn) *pn = n;
-    return s;
-}
-
-__attribute__((unused))
-static UWord getUWord(Char* s)
-{
-    UWord n = 0;
-    Bool isHex = False;
-
-    if ((s[0] == '0') && (s[1] == 'x')) {
-	isHex = True;
-	s += 2;
-    }
-
-    if (!isHex) {
-	while((*s >='0') && (*s <='9')) {
-	    n = 10*n + (*s-'0');
-	    s++;
-	}
-    }
-    else {
-	while(1) {
-	    if ((*s >='0') && (*s <='9')) {
-		n = 16*n + (*s-'0');
-		s++;
-		continue;
-	    }
-	    if ((*s >='a') && (*s <='f')) {
-		n = 16*n + (*s-'a'+10);
-		s++;
-		continue;
-	    }
-	    if ((*s >='A') && (*s <='F')) {
-		n = 16*n + (*s-'A'+10);
-		s++;
-		continue;
-	    }
-	    break;
-	}
-    }
-
-    return n;
-}
-
 Bool CLG_(process_cmd_line_option)(Char* arg)
 {
-   if (0 == VG_(strcmp)(arg, "--skip-plt=yes"))
-       CLG_(clo).skip_plt = True;
-   else if (0 == VG_(strcmp)(arg, "--skip-plt=no"))
-       CLG_(clo).skip_plt = False;
+   Char* tmp_str;
 
-   else if (0 == VG_(strcmp)(arg, "--collect-jumps=yes"))
-       CLG_(clo).collect_jumps = True;
-   else if (0 == VG_(strcmp)(arg, "--collect-jumps=no"))
-       CLG_(clo).collect_jumps = False;
+   if      VG_BOOL_CLO(arg, "--skip-plt", CLG_(clo).skip_plt) {}
+
+   else if VG_BOOL_CLO(arg, "--collect-jumps", CLG_(clo).collect_jumps) {}
    /* compatibility alias, deprecated option */
-   else if (0 == VG_(strcmp)(arg, "--trace-jump=yes"))
-       CLG_(clo).collect_jumps = True;
-   else if (0 == VG_(strcmp)(arg, "--trace-jump=no"))
-       CLG_(clo).collect_jumps = False;
+   else if VG_BOOL_CLO(arg, "--trace-jump",    CLG_(clo).collect_jumps) {}
 
-   else if (0 == VG_(strcmp)(arg, "--combine-dumps=yes"))
-       CLG_(clo).combine_dumps = True;
-   else if (0 == VG_(strcmp)(arg, "--combine-dumps=no"))
-       CLG_(clo).combine_dumps = False;
+   else if VG_BOOL_CLO(arg, "--combine-dumps", CLG_(clo).combine_dumps) {}
 
-   else if (0 == VG_(strcmp)(arg, "--collect-atstart=yes"))
-       CLG_(clo).collect_atstart = True;
-   else if (0 == VG_(strcmp)(arg, "--collect-atstart=no"))
-       CLG_(clo).collect_atstart = False;
+   else if VG_BOOL_CLO(arg, "--collect-atstart", CLG_(clo).collect_atstart) {}
 
-   else if (0 == VG_(strcmp)(arg, "--instr-atstart=yes"))
-       CLG_(clo).instrument_atstart = True;
-   else if (0 == VG_(strcmp)(arg, "--instr-atstart=no"))
-       CLG_(clo).instrument_atstart = False;
+   else if VG_BOOL_CLO(arg, "--instr-atstart", CLG_(clo).instrument_atstart) {}
 
-   else if (0 == VG_(strcmp)(arg, "--separate-threads=yes"))
-       CLG_(clo).separate_threads = True;
-   else if (0 == VG_(strcmp)(arg, "--separate-threads=no"))
-       CLG_(clo).separate_threads = False;
+   else if VG_BOOL_CLO(arg, "--separate-threads", CLG_(clo).separate_threads) {}
 
-   else if (0 == VG_(strcmp)(arg, "--compress-strings=yes"))
-       CLG_(clo).compress_strings = True;
-   else if (0 == VG_(strcmp)(arg, "--compress-strings=no"))
-       CLG_(clo).compress_strings = False;
+   else if VG_BOOL_CLO(arg, "--compress-strings", CLG_(clo).compress_strings) {}
+   else if VG_BOOL_CLO(arg, "--compress-mangled", CLG_(clo).compress_mangled) {}
+   else if VG_BOOL_CLO(arg, "--compress-pos",     CLG_(clo).compress_pos) {}
 
-   else if (0 == VG_(strcmp)(arg, "--compress-mangled=yes"))
-       CLG_(clo).compress_mangled = True;
-   else if (0 == VG_(strcmp)(arg, "--compress-mangled=no"))
-       CLG_(clo).compress_mangled = False;
-
-   else if (0 == VG_(strcmp)(arg, "--compress-pos=yes"))
-       CLG_(clo).compress_pos = True;
-   else if (0 == VG_(strcmp)(arg, "--compress-pos=no"))
-       CLG_(clo).compress_pos = False;
-
-   else if (0 == VG_(strncmp)(arg, "--fn-skip=", 10)) {
-       fn_config* fnc = get_fnc(arg+10);
+   else if VG_STR_CLO(arg, "--fn-skip", tmp_str) {
+       fn_config* fnc = get_fnc(tmp_str);
        fnc->skip = CONFIG_TRUE;
    }
 
-   else if (0 == VG_(strncmp)(arg, "--dump-before=", 14)) {
-       fn_config* fnc = get_fnc(arg+14);
+   else if VG_STR_CLO(arg, "--dump-before", tmp_str) {
+       fn_config* fnc = get_fnc(tmp_str);
        fnc->dump_before = CONFIG_TRUE;
    }
 
-   else if (0 == VG_(strncmp)(arg, "--zero-before=", 14)) {
-       fn_config* fnc = get_fnc(arg+14);
+   else if VG_STR_CLO(arg, "--zero-before", tmp_str) {
+       fn_config* fnc = get_fnc(tmp_str);
        fnc->zero_before = CONFIG_TRUE;
    }
 
-   else if (0 == VG_(strncmp)(arg, "--dump-after=", 13)) {
-       fn_config* fnc = get_fnc(arg+13);
+   else if VG_STR_CLO(arg, "--dump-after", tmp_str) {
+       fn_config* fnc = get_fnc(tmp_str);
        fnc->dump_after = CONFIG_TRUE;
    }
 
-   else if (0 == VG_(strncmp)(arg, "--toggle-collect=", 17)) {
-       fn_config* fnc = get_fnc(arg+17);
+   else if VG_STR_CLO(arg, "--toggle-collect", tmp_str) {
+       fn_config* fnc = get_fnc(tmp_str);
        fnc->toggle_collect = CONFIG_TRUE;
        /* defaults to initial collection off */
        CLG_(clo).collect_atstart = False;
    }
 
-   else if (0 == VG_(strncmp)(arg, "--separate-recs=", 16))
-        CLG_(clo).separate_recursions = (Int)VG_(atoll)(&arg[16]);
+   else if VG_INT_CLO(arg, "--separate-recs", CLG_(clo).separate_recursions) {}
 
    /* change handling of a jump between functions to ret+call */
-   else if (0 == VG_(strcmp)(arg, "--pop-on-jump")) {
-        CLG_(clo).pop_on_jump = True;
-   }
-   else if (0 == VG_(strncmp)(arg, "--pop-on-jump=", 14)) {
-       fn_config* fnc = get_fnc(arg+14);
+   else if VG_XACT_CLO(arg, "--pop-on-jump", CLG_(clo).pop_on_jump, True) {}
+   else if VG_STR_CLO( arg, "--pop-on-jump", tmp_str) {
+       fn_config* fnc = get_fnc(tmp_str);
        fnc->pop_on_jump = CONFIG_TRUE;
    }
 
 #if CLG_ENABLE_DEBUG
-   else if (0 == VG_(strncmp)(arg, "--ct-verbose=", 13))
-        CLG_(clo).verbose = (Int)VG_(atoll)(&arg[13]);
+   else if VG_INT_CLO(arg, "--ct-verbose", CLG_(clo).verbose) {}
+   else if VG_INT_CLO(arg, "--ct-vstart",  CLG_(clo).verbose_start) {}
 
-   else if (0 == VG_(strncmp)(arg, "--ct-vstart=", 12))
-        CLG_(clo).verbose_start = (ULong)VG_(atoll)(&arg[12]);
-
-   else if (0 == VG_(strncmp)(arg, "--ct-verbose", 12)) {
-       UInt n;
+   else if VG_STREQN(12, arg, "--ct-verbose") {
        fn_config* fnc;
-       Char* s = getUInt(arg+12, &n);
-       if ((n == 0) || *s != '=') return False;
+       Char* s;
+       UInt n = VG_(strtoll10)(arg+12, &s);
+       if ((n <= 0) || *s != '=') return False;
        fnc = get_fnc(s+1);
        fnc->verbosity = n;
    }
 #endif
 
-   else if (0 == VG_(strncmp)(arg, "--separate-callers=", 19)) {
-     if (0 == VG_(strcmp)(arg+19, "auto"))
-       CLG_(clo).separate_callers = CONFIG_AUTO;
-     else
-       CLG_(clo).separate_callers = (Int)VG_(atoll)(&arg[19]);
-   }
+   else if VG_XACT_CLO(arg, "--separate-callers=auto", 
+                            CLG_(clo).separate_callers, CONFIG_AUTO) {}
+   else if VG_INT_CLO( arg, "--separate-callers", 
+                            CLG_(clo).separate_callers) {}
 
-   else if (0 == VG_(strncmp)(arg, "--fn-group", 10)) {
-       UInt n;
+   else if VG_STREQN(10, arg, "--fn-group") {
        fn_config* fnc;
-       Char* s = getUInt(arg+10, &n);
-       if ((n == 0) || *s != '=') return False;
+       Char* s;
+       UInt n = VG_(strtoll10)(arg+10, &s);
+       if ((n <= 0) || *s != '=') return False;
        fnc = get_fnc(s+1);
        fnc->group = n;
    }
 
-   else if (0 == VG_(strncmp)(arg, "--separate-callers", 18)) {
-       UInt n;
+   else if VG_STREQN(18, arg, "--separate-callers") {
        fn_config* fnc;
-       Char* s = getUInt(arg+18, &n);
-       if ((n == 0) || *s != '=') return False;
+       Char* s;
+       UInt n = VG_(strtoll10)(arg+18, &s);
+       if ((n <= 0) || *s != '=') return False;
        fnc = get_fnc(s+1);
        fnc->separate_callers = n;
    }
 
-   else if (0 == VG_(strncmp)(arg, "--separate-recs", 15)) {
-       UInt n;
+   else if VG_STREQN(15, arg, "--separate-recs") {
        fn_config* fnc;
-       Char* s = getUInt(arg+15, &n);
-       if ((n == 0) || *s != '=') return False;
+       Char* s;
+       UInt n = VG_(strtoll10)(arg+15, &s);
+       if ((n <= 0) || *s != '=') return False;
        fnc = get_fnc(s+1);
        fnc->separate_recursions = n;
    }
 
-   else if (0 == VG_(strncmp)(arg, "--callgrind-out-file=", 21))
-       CLG_(clo).out_format = VG_(strdup)("cl.clo.pclo.1", arg+21);
+   else if VG_STR_CLO(arg, "--callgrind-out-file", CLG_(clo).out_format) {}
 
-   else if (0 == VG_(strcmp)(arg, "--mangle-names=yes"))
-       CLG_(clo).mangle_names = True;
-   else if (0 == VG_(strcmp)(arg, "--mangle-names=no"))
-       CLG_(clo).mangle_names = False;
+   else if VG_BOOL_CLO(arg, "--mangle-names", CLG_(clo).mangle_names) {}
 
-   else if (0 == VG_(strcmp)(arg, "--skip-direct-rec=yes"))
-       CLG_(clo).skip_direct_recursion = True;
-   else if (0 == VG_(strcmp)(arg, "--skip-direct-rec=no"))
-       CLG_(clo).skip_direct_recursion = False;
+   else if VG_BOOL_CLO(arg, "--skip-direct-rec",
+                            CLG_(clo).skip_direct_recursion) {}
 
-   else if (0 == VG_(strcmp)(arg, "--dump-bbs=yes"))
-       CLG_(clo).dump_bbs = True;
-   else if (0 == VG_(strcmp)(arg, "--dump-bbs=no"))
-       CLG_(clo).dump_bbs = False;
+   else if VG_BOOL_CLO(arg, "--dump-bbs",   CLG_(clo).dump_bbs) {}
+   else if VG_BOOL_CLO(arg, "--dump-line",  CLG_(clo).dump_line) {}
+   else if VG_BOOL_CLO(arg, "--dump-instr", CLG_(clo).dump_instr) {}
+   else if VG_BOOL_CLO(arg, "--dump-bb",    CLG_(clo).dump_bb) {}
 
-   else if (0 == VG_(strcmp)(arg, "--dump-line=yes"))
-       CLG_(clo).dump_line = True;
-   else if (0 == VG_(strcmp)(arg, "--dump-line=no"))
-       CLG_(clo).dump_line = False;
+   else if VG_INT_CLO( arg, "--dump-every-bb", CLG_(clo).dump_every_bb) {}
 
-   else if (0 == VG_(strcmp)(arg, "--dump-instr=yes"))
-       CLG_(clo).dump_instr = True;
-   else if (0 == VG_(strcmp)(arg, "--dump-instr=no"))
-       CLG_(clo).dump_instr = False;
-
-   else if (0 == VG_(strcmp)(arg, "--dump-bb=yes"))
-       CLG_(clo).dump_bb = True;
-   else if (0 == VG_(strcmp)(arg, "--dump-bb=no"))
-       CLG_(clo).dump_bb = False;
-
-   else if (0 == VG_(strncmp)(arg, "--dump-every-bb=", 16))
-        CLG_(clo).dump_every_bb = (ULong)VG_(atoll)(&arg[16]);
-
-
-   else if (0 == VG_(strcmp)(arg, "--collect-alloc=yes"))
-       CLG_(clo).collect_alloc = True;
-   else if (0 == VG_(strcmp)(arg, "--collect-alloc=no"))
-       CLG_(clo).collect_alloc = False;
-
-   else if (0 == VG_(strcmp)(arg, "--collect-systime=yes"))
-       CLG_(clo).collect_systime = True;
-   else if (0 == VG_(strcmp)(arg, "--collect-systime=no"))
-       CLG_(clo).collect_systime = False;
-
-   else if (0 == VG_(strcmp)(arg, "--simulate-cache=yes"))
-       CLG_(clo).simulate_cache = True;
-   else if (0 == VG_(strcmp)(arg, "--simulate-cache=no"))
-       CLG_(clo).simulate_cache = False;
+   else if VG_BOOL_CLO(arg, "--collect-alloc",   CLG_(clo).collect_alloc) {}
+   else if VG_BOOL_CLO(arg, "--collect-systime", CLG_(clo).collect_systime) {}
+   else if VG_BOOL_CLO(arg, "--simulate-cache",  CLG_(clo).simulate_cache) {}
 
    else {
        Bool isCachesimOption = (*CLG_(cachesim).parse_opt)(arg);
@@ -694,10 +580,10 @@ void CLG_(print_usage)(void)
 "\n   cost entity separation options:\n"
 "    --separate-threads=no|yes Separate data per thread [no]\n"
 "    --separate-callers=<n>    Separate functions by call chain length [0]\n"
-"    --separate-recs=<n>       Separate function recursions upto level [2]\n"
-"    --skip-plt=no|yes         Ignore calls to/from PLT sections? [yes]\n"
-"    --separate-recs<n>=<f>    Separate <n> recursions for function <f>\n"
 "    --separate-callers<n>=<f> Separate <n> callers for function <f>\n"
+"    --separate-recs=<n>       Separate function recursions up to level [2]\n"
+"    --separate-recs<n>=<f>    Separate <n> recursions for function <f>\n"
+"    --skip-plt=no|yes         Ignore calls to/from PLT sections? [yes]\n"
 "    --skip-direct-rec=no|yes  Ignore direct recursions? [yes]\n"
 "    --fn-skip=<function>      Ignore calls to/from function?\n"
 #if CLG_EXPERIMENTAL

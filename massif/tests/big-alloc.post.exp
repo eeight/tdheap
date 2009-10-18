@@ -1,6 +1,6 @@
 --------------------------------------------------------------------------------
 Command:            ./big-alloc
-Massif arguments:   --stacks=no --time-unit=B --massif-out-file=massif.out
+Massif arguments:   --stacks=no --time-unit=B --massif-out-file=massif.out --ignore-fn=__part_load_locale --ignore-fn=__time_load_locale --ignore-fn=dwarf2_unwind_dyld_add_image_hook --ignore-fn=get_or_create_key_element
 ms_print arguments: massif.out
 --------------------------------------------------------------------------------
 
@@ -8,23 +8,23 @@ ms_print arguments: massif.out
     MB
 100.0^                                                                       :
      |                                                                       :
+     |                                                                @@@@@@@:
      |                                                                @      :
-     |                                                                @      :
+     |                                                         :::::::@      :
      |                                                         :      @      :
-     |                                                         :      @      :
+     |                                                  ::::::::      @      :
      |                                                  :      :      @      :
-     |                                                  :      :      @      :
+     |                                           ::::::::      :      @      :
      |                                           :      :      :      @      :
-     |                                           :      :      :      @      :
+     |                                    ::::::::      :      :      @      :
      |                                    :      :      :      :      @      :
-     |                                    :      :      :      :      @      :
+     |                            :::::::::      :      :      :      @      :
      |                            :       :      :      :      :      @      :
-     |                            :       :      :      :      :      @      :
+     |                     ::::::::       :      :      :      :      @      :
      |                     :      :       :      :      :      :      @      :
-     |                     :      :       :      :      :      :      @      :
+     |              ::::::::      :       :      :      :      :      @      :
      |              :      :      :       :      :      :      :      @      :
-     |              :      :      :       :      :      :      :      @      :
-     |       :      :      :      :       :      :      :      :      @      :
+     |       ::::::::      :      :       :      :      :      :      @      :
      |       :      :      :      :       :      :      :      :      @      :
    0 +----------------------------------------------------------------------->MB
      0                                                                   100.0
@@ -46,7 +46,7 @@ Number of snapshots: 11
   8     83,886,144       83,886,144       83,886,080            64            0
   9     94,371,912       94,371,912       94,371,840            72            0
 100.00% (94,371,840B) (heap allocation functions) malloc/new/new[], --alloc-fns, etc.
-->100.00% (94,371,840B) 0x........: main (big-alloc.c:13)
+->100.00% (94,371,840B) 0x........: main (big-alloc.c:12)
   
 --------------------------------------------------------------------------------
   n        time(B)         total(B)   useful-heap(B) extra-heap(B)    stacks(B)

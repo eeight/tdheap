@@ -1,27 +1,10 @@
 
-# For AM_FLAG_M3264_PRI
-include $(top_srcdir)/Makefile.flags.am
+include $(top_srcdir)/Makefile.tool-tests.am
 
-#SUBDIRS = .
-#if VGP_X86_LINUX
-#SUBDIRS += x86
-#endif
-#if VGP_AMD64_LINUX
-#SUBDIRS += amd64
-#endif
-#if VGP_PPC32_LINUX
-#SUBDIRS += ppc32
-#endif
-#if VGP_PPC64_LINUX
-#SUBDIRS += ppc64
-#endif
-
-#DIST_SUBDIRS = ${VG_ARCH_ALL} .
-
-noinst_SCRIPTS = filter_stderr filter_add filter_suppgen \
+dist_noinst_SCRIPTS = filter_stderr filter_add filter_suppgen \
 	sh_script
 
-EXTRA_DIST = $(noinst_SCRIPTS) \
+EXTRA_DIST = \
 	add.vgtest-disabled add.stderr.exp \
 	and.vgtest-disabled and.stderr.exp \
 	arith.vgtest-disabled arith.stderr.exp \
@@ -30,9 +13,8 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	bad_percentify.stdout.exp bad_percentify.stderr.exp-glibc28-amd64 \
 	base.vgtest \
 	base.stderr.exp-glibc25-amd64 base.stderr.exp-glibc25-x86 \
-	ccc.vgtest \
-	ccc.stderr.exp-glibc25-x86 ccc.stderr.exp-glibc25-amd64 \
-	ccc.stderr.exp-glibc27-x86 ccc.stderr.exp-glibc28-amd64 \
+	ccc.vgtest ccc.stderr.exp-glibc25-amd64 \
+	    ccc.stderr.exp-glibc27-x86 ccc.stderr.exp-glibc28-amd64 \
 	cmp.vgtest-disabled cmp.stderr.exp \
 	globalerr.vgtest globalerr.stdout.exp \
 	globalerr.stderr.exp-glibc28-amd64 \
@@ -41,6 +23,7 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	hackedbz2.stderr.exp-glibc28-amd64 \
 	hp_bounds.vgtest hp_bounds.stderr.exp \
 	hp_dangle.vgtest hp_dangle.stderr.exp \
+	hsg.vgtest hsg.stdout.exp hsg.stderr.exp \
 	idiv.vgtest-disabled idiv.stderr.exp \
 	imul.vgtest-disabled imul.stderr.exp \
 	justify.vgtest justify.stderr.exp \
@@ -54,6 +37,8 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	partial_good.vgtest \
 	partial_good.stderr.exp-glibc25-x86 \
 	partial_good.stderr.exp-glibc25-amd64 \
+	preen_invars.vgtest preen_invars.stdout.exp \
+	preen_invars.stderr.exp-glibc28-amd64 \
 	pth_create.vgtest pth_create.stderr.exp \
 	pth_specific.vgtest pth_specific.stderr.exp \
 	realloc.vgtest \
@@ -75,58 +60,74 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	zero.vgtest zero.stderr.exp
 
 check_PROGRAMS = \
-	add and arith bad_percentify base ccc cmp fp \
+	add and arith bad_percentify base cmp fp \
 	globalerr hackedbz2 \
-	hp_bounds hp_dangle idiv imul \
-	justify mm not neg or partial pth_create pth_specific realloc \
+	hp_bounds hp_dangle hsg idiv imul \
+	justify mm not neg or partial \
+	preen_invars preen_invars_so.so \
+	pth_create pth_specific realloc \
 	stackerr \
 	strcpy strlen sub supp syscall tricky unaligned xor zero
 
-AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/include \
-		-I$(top_srcdir)/coregrind -I$(top_builddir)/include \
-		-I@VEX_DIR@/pub
-AM_CFLAGS   = $(WERROR) -Winline -Wall -Wshadow -g $(AM_FLAG_M3264_PRI)
-AM_CXXFLAGS = $(AM_CFLAGS)
+# DDD: not sure if these ones should work on Darwin or not... if not, should
+# be moved into x86-linux/.
+if ! VGCONF_OS_IS_DARWIN
+   check_PROGRAMS += \
+	ccc
+endif
+
+
+AM_CFLAGS   += $(AM_FLAG_M3264_PRI)
+AM_CXXFLAGS += $(AM_FLAG_M3264_PRI)
 
 # To make it a bit more realistic, build hackedbz2.c with at 
 # least some optimisation.
-hackedbz2_CFLAGS	= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -O -g
+hackedbz2_CFLAGS	= $(AM_CFLAGS) -O -Wno-inline
 
 # C ones
-add_SOURCES		= add.c
-and_SOURCES		= and.c
-arith_SOURCES		= arith.c
-bad_percentify_SOURCES	= bad_percentify.c
-base_SOURCES		= base.c
-cmp_SOURCES		= cmp.c
-fp_SOURCES		= fp.c
-globalerr_SOURCE	= globalerr.c
-hackedbz2_SOURCES	= hackedbz2.c
-hp_bounds_SOURCES	= hp_bounds.c
-hp_dangle_SOURCES	= hp_dangle.c
-idiv_SOURCES		= idiv.c
-imul_SOURCES		= imul.c
-justify_SOURCES		= justify.c
-mm_SOURCES		= mm.c
-neg_SOURCES		= neg.c
-not_SOURCES		= not.c
-or_SOURCES		= or.c
-partial_SOURCES		= partial.c
-pth_create_SOURCES	= pth_create.c
 pth_create_LDADD	= -lpthread
-pth_specific_SOURCES	= pth_specific.c
 pth_specific_LDADD	= -lpthread
-realloc_SOURCES		= realloc.c
-stackerr_SOURCES	= stackerr.c
-strcpy_SOURCES		= strcpy.c
-strlen_SOURCES		= strlen.c
-sub_SOURCES		= sub.c
-supp_SOURCES		= supp.c
-syscall_SOURCES		= syscall.c
-tricky_SOURCES		= tricky.c
-unaligned_SOURCES	= unaligned.c
-xor_SOURCES		= xor.c
-zero_SOURCES		= zero.c
 
 # C++ ones
 ccc_SOURCES		= ccc.cpp
+
+# Build shared object for preen_invars
+preen_invars_DEPENDENCIES      = preen_invars_so.so
+if VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5 
+ preen_invars_LDADD            = -ldl
+ preen_invars_LDFLAGS          = $(AM_FLAG_M3264_PRI)
+else
+if VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5
+ preen_invars_LDADD            = -ldl
+ preen_invars_LDFLAGS          = $(AM_FLAG_M3264_PRI) -Wl,-G -Wl,-bnogc
+else
+if VGCONF_OS_IS_DARWIN
+ preen_invars_LDADD            = -ldl
+ preen_invars_LDFLAGS          = $(AM_FLAG_M3264_PRI)
+else
+ preen_invars_LDADD            = -ldl
+ preen_invars_LDFLAGS          = $(AM_FLAG_M3264_PRI) \
+				-Wl,-rpath,$(top_builddir)/memcheck/tests
+endif
+endif
+endif
+
+preen_invars_so_so_SOURCES      = preen_invars_so.c	# For automake-1.7.
+preen_invars_so_so_CFLAGS       = $(AM_CFLAGS) -fpic
+if VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5
+ preen_invars_so_so_LDFLAGS     = -fpic $(AM_FLAG_M3264_PRI) -shared
+else
+if VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5
+ preen_invars_so_so_LDFLAGS     = -fpic $(AM_FLAG_M3264_PRI) -shared \
+					-Wl,-G -Wl,-bnogc
+else
+if VGCONF_OS_IS_DARWIN
+ preen_invars_so_so_LDFLAGS     = -fpic $(AM_FLAG_M3264_PRI) -dynamic \
+					-dynamiclib -all_load
+else
+ preen_invars_so_so_LDFLAGS     = -fpic $(AM_FLAG_M3264_PRI) -shared \
+					-Wl,-soname -Wl,preen_invars_so.so
+endif
+endif
+endif
+

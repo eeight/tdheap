@@ -1,8 +1,8 @@
+/* -*- mode: C; c-basic-offset: 3; -*- */
 /*
-  This file is part of drd, a data race detector.
+  This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2008 Bart Van Assche
-  bart.vanassche@gmail.com
+  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -36,21 +36,17 @@
 struct cond_info;
 
 
-/* Global variables. */
-
-extern Bool s_drd_report_signal_unlocked;
-
-
 /* Function declarations. */
 
-void cond_set_trace(const Bool trace_cond);
-void cond_pre_init(const Addr cond);
-void cond_post_destroy(const Addr cond);
-int cond_pre_wait(const Addr cond, const Addr mutex);
-int cond_post_wait(const Addr cond);
-void cond_pre_signal(const Addr cond);
-void cond_pre_broadcast(const Addr cond);
-void cond_thread_delete(const DrdThreadId tid);
+void DRD_(cond_set_report_signal_unlocked)(const Bool r);
+void DRD_(cond_set_trace)(const Bool trace_cond);
+struct cond_info* DRD_(cond_get)(const Addr cond);
+void DRD_(cond_pre_init)(const Addr cond);
+void DRD_(cond_post_destroy)(const Addr cond);
+int DRD_(cond_pre_wait)(const Addr cond, const Addr mutex);
+int DRD_(cond_post_wait)(const Addr cond);
+void DRD_(cond_pre_signal)(const Addr cond);
+void DRD_(cond_pre_broadcast)(const Addr cond);
 
 
 #endif /* __DRD_COND_H */

@@ -1,0 +1,62 @@
+.\" ** You probably do not want to edit this file directly **
+.\" It was generated using the DocBook XSL Stylesheets (version 1.69.1).
+.\" Instead of manually editing it, you probably should edit the DocBook XML
+.\" source for it and then use the DocBook XSL Stylesheets to regenerate it.
+.TH "CALLGRIND ANNOTATE" "1" "08/19/2009" "Release 3.5.0" "Release 3.5.0"
+.\" disable hyphenation
+.nh
+.\" disable justification (adjust text to left margin only)
+.ad l
+.SH "NAME"
+callgrind_annotate \- post\-processing tool for the Callgrind
+.SH "SYNOPSIS"
+.HP 19
+\fBcallgrind_annotate\fR [\fIoptions\fR] [\fIcallgrind\-out\-file\fR\ [\fIsource\-files\fR...]]
+.SH "DESCRIPTION"
+.PP
+\fBcallgrind_annotate\fR
+takes an output file produced by the Valgrind tool Callgrind and prints the information in an easy\-to\-read form.
+.SH "OPTIONS"
+.TP
+\fB\-h \-\-help\fR
+Show summary of options.
+.TP
+\fB\-\-version\fR
+Show version of callgrind_annotate.
+.TP
+\fB\-\-show=A,B,C [default: all]\fR
+Only show figures for events A,B,C.
+.TP
+\fB\-\-sort=A,B,C\fR
+Sort columns by events A,B,C [event column order].
+.TP
+\fB\-\-threshold=<0\-\-100> [default: 99%] \fR
+Percentage of counts (of primary sort event) we are interested in.
+.TP
+\fB\-\-auto=<yes|no> [default: no] \fR
+Annotate all source files containing functions that helped reach the event count threshold.
+.TP
+\fB\-\-context=N [default: 8] \fR
+Print N lines of context before and after annotated lines.
+.TP
+\fB\-\-inclusive=<yes|no> [default: no] \fR
+Add subroutine costs to functions calls.
+.TP
+\fB\-\-tree=<none|caller|calling|both> [default: none] \fR
+Print for each function their callers, the called functions or both.
+.TP
+\fB\-I, \-\-include=<dir> \fR
+Add
+\fBdir\fR
+to the list of directories to search for source files.
+.SH "SEE ALSO"
+.PP
+valgrind(1),
+\fI$INSTALL/share/doc/valgrind/html/index.html\fR
+or
+\fIhttp://www.valgrind.org/docs/manual/index.html\fR.
+.SH "AUTHOR"
+.PP
+Josef Weidendorfer <Josef.Weidendorfer@gmx.de>.
+.PP
+This manual page was written by Philipp Frauenfelder <pfrauenf@debian.org>.

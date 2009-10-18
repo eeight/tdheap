@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -29,6 +29,8 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
+#if defined(VGO_linux)
+
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_debuglog.h"
@@ -47,6 +49,7 @@
 #include "pub_core_syscall.h"
 #include "pub_core_tooliface.h"       /* VG_TRACK */
 #include "pub_core_threadstate.h"     /* ThreadArchState */
+#include "priv_initimg_pathscan.h"
 #include "pub_core_initimg.h"         /* self */
 
 /* --- !!! --- EXTERNAL HEADERS start --- !!! --- */
@@ -55,104 +58,6 @@
 /* This is for ELF types etc, and also the AT_ constants. */
 #include <elf.h>
 /* --- !!! --- EXTERNAL HEADERS end --- !!! --- */
-
-
-/*====================================================================*/
-/*=== Find executable                                              ===*/
-/*====================================================================*/
-
-/* Scan a colon-separated list, and call a function on each element.
-   The string must be mutable, because we insert a temporary '\0', but
-   the string will end up unmodified.  (*func) should return True if it
-   doesn't need to see any more.
-
-   This routine will return True if (*func) returns True and False if
-   it reaches the end of the list without that happening.
-*/
-static Bool scan_colsep(char *colsep, Bool (*func)(const char *))
-{
-   char *cp, *entry;
-   int end;
-
-   if (colsep == NULL ||
-       *colsep == '\0')
-      return False;
-
-   entry = cp = colsep;
-
-   do {
-      end = (*cp == '\0');
-
-      if (*cp == ':' || *cp == '\0') {
-	 char save = *cp;
-
-	 *cp = '\0';
-	 if ((*func)(entry)) {
-            *cp = save;
-	    return True;
-         }
-	 *cp = save;
-	 entry = cp+1;
-      }
-      cp++;
-   } while(!end);
-
-   return False;
-}
-
-/* Need a static copy because can't use dynamic mem allocation yet */
-static HChar executable_name_in [VKI_PATH_MAX];
-static HChar executable_name_out[VKI_PATH_MAX];
-
-static Bool match_executable(const char *entry) 
-{
-   HChar buf[VG_(strlen)(entry) + VG_(strlen)(executable_name_in) + 3];
-
-   /* empty PATH element means '.' */
-   if (*entry == '\0')
-      entry = ".";
-
-   VG_(snprintf)(buf, sizeof(buf), "%s/%s", entry, executable_name_in);
-
-   // Don't match directories
-   if (VG_(is_dir)(buf))
-      return False;
-
-   // If we match an executable, we choose that immediately.  If we find a
-   // matching non-executable we remember it but keep looking for an
-   // matching executable later in the path.
-   if (VG_(access)(buf, True/*r*/, False/*w*/, True/*x*/) == 0) {
-      VG_(strncpy)( executable_name_out, buf, VKI_PATH_MAX-1 );
-      executable_name_out[VKI_PATH_MAX-1] = 0;
-      return True;      // Stop looking
-   } else if (VG_(access)(buf, True/*r*/, False/*w*/, False/*x*/) == 0 
-           && VG_STREQ(executable_name_out, "")) 
-   {
-      VG_(strncpy)( executable_name_out, buf, VKI_PATH_MAX-1 );
-      executable_name_out[VKI_PATH_MAX-1] = 0;
-      return False;     // Keep looking
-   } else { 
-      return False;     // Keep looking
-   }
-}
-
-// Returns NULL if it wasn't found.
-static HChar* find_executable ( HChar* exec )
-{
-   vg_assert(NULL != exec);
-   if (VG_(strchr)(exec, '/')) {
-      // Has a '/' - use the name as is
-      VG_(strncpy)( executable_name_out, exec, VKI_PATH_MAX-1 );
-   } else {
-      // No '/' - we need to search the path
-      HChar* path;
-      VG_(strncpy)( executable_name_in,  exec, VKI_PATH_MAX-1 );
-      VG_(memset) ( executable_name_out, 0,    VKI_PATH_MAX );
-      path = VG_(getenv)("PATH");
-      scan_colsep(path, match_executable);
-   }
-   return VG_STREQ(executable_name_out, "") ? NULL : executable_name_out;
-}
 
 
 /*====================================================================*/
@@ -170,7 +75,7 @@ static void load_client ( /*OUT*/ExeInfo* info,
    SysRes res;
 
    vg_assert( VG_(args_the_exename) != NULL);
-   exe_name = find_executable( VG_(args_the_exename) );
+   exe_name = ML_(find_executable)( VG_(args_the_exename) );
 
    if (!exe_name) {
       VG_(printf)("valgrind: %s: command not found\n", VG_(args_the_exename));
@@ -179,14 +84,18 @@ static void load_client ( /*OUT*/ExeInfo* info,
 
    VG_(memset)(info, 0, sizeof(*info));
    ret = VG_(do_exec)(exe_name, info);
+   if (ret < 0) {
+      VG_(printf)("valgrind: could not execute '%s'\n", exe_name);
+      VG_(exit)(1);
+   }
 
    // The client was successfully loaded!  Continue.
 
    /* Get hold of a file descriptor which refers to the client
       executable.  This is needed for attaching to GDB. */
    res = VG_(open)(exe_name, VKI_O_RDONLY, VKI_S_IRUSR);
-   if (!res.isError)
-      VG_(cl_exec_fd) = res.res;
+   if (!sr_isError(res))
+      VG_(cl_exec_fd) = sr_Res(res);
 
    /* Copy necessary bits of 'info' that were filled in */
    *client_ip  = info->init_ip;
@@ -202,8 +111,8 @@ static void load_client ( /*OUT*/ExeInfo* info,
 /* Prepare the client's environment.  This is basically a copy of our
    environment, except:
 
-     LD_PRELOAD=$VALGRIND_LIB/PLATFORM/vgpreload_core.so:
-                ($VALGRIND_LIB/PLATFORM/vgpreload_TOOL.so:)?
+     LD_PRELOAD=$VALGRIND_LIB/vgpreload_core-PLATFORM.so:
+                ($VALGRIND_LIB/vgpreload_TOOL-PLATFORM.so:)?
                 $LD_PRELOAD
 
    If this is missing, then it is added.
@@ -240,20 +149,22 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
    Int preload_string_len    = preload_core_path_len + preload_tool_path_len;
    HChar* preload_string     = VG_(malloc)("initimg-linux.sce.1",
                                            preload_string_len);
+   vg_assert(origenv);
+   vg_assert(toolname);
    vg_assert(preload_string);
 
-   /* Determine if there's a vgpreload_<tool>.so file, and setup
+   /* Determine if there's a vgpreload_<tool>_<platform>.so file, and setup
       preload_string. */
    preload_tool_path = VG_(malloc)("initimg-linux.sce.2", preload_tool_path_len);
    vg_assert(preload_tool_path);
    VG_(snprintf)(preload_tool_path, preload_tool_path_len,
-                 "%s/%s/vgpreload_%s.so", VG_(libdir), VG_PLATFORM, toolname);
+                 "%s/vgpreload_%s-%s.so", VG_(libdir), toolname, VG_PLATFORM);
    if (VG_(access)(preload_tool_path, True/*r*/, False/*w*/, False/*x*/) == 0) {
-      VG_(snprintf)(preload_string, preload_string_len, "%s/%s/%s.so:%s", 
-                    VG_(libdir), VG_PLATFORM, preload_core, preload_tool_path);
+      VG_(snprintf)(preload_string, preload_string_len, "%s/%s-%s.so:%s", 
+                    VG_(libdir), preload_core, VG_PLATFORM, preload_tool_path);
    } else {
-      VG_(snprintf)(preload_string, preload_string_len, "%s/%s/%s.so", 
-                    VG_(libdir), VG_PLATFORM, preload_core);
+      VG_(snprintf)(preload_string, preload_string_len, "%s/%s-%s.so", 
+                    VG_(libdir), preload_core, VG_PLATFORM);
    }
    VG_(free)(preload_tool_path);
 
@@ -339,6 +250,10 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
 #define AT_UCACHEBSIZE		21
 #endif /* AT_UCACHEBSIZE */
 
+#ifndef AT_RANDOM
+#define AT_RANDOM		25
+#endif /* AT_RANDOM */
+
 #ifndef AT_SYSINFO
 #define AT_SYSINFO		32
 #endif /* AT_SYSINFO */
@@ -412,6 +327,38 @@ static char *copy_str(char **tab, const char *str)
 
    ---------------------------------------------------------------- */
 
+struct auxv
+{
+   Word a_type;
+   union {
+      void *a_ptr;
+      Word a_val;
+   } u;
+};
+
+static
+struct auxv *find_auxv(UWord* sp)
+{
+   sp++;                // skip argc (Nb: is word-sized, not int-sized!)
+
+   while (*sp != 0)     // skip argv
+      sp++;
+   sp++;
+
+   while (*sp != 0)     // skip env
+      sp++;
+   sp++;
+   
+#if defined(VGA_ppc32) || defined(VGA_ppc64)
+# if defined AT_IGNOREPPC
+   while (*sp == AT_IGNOREPPC)        // skip AT_IGNOREPPC entries
+      sp += 2;
+# endif
+#endif
+
+   return (struct auxv *)sp;
+}
+
 static 
 Addr setup_client_stack( void*  init_sp,
                          char** orig_envp, 
@@ -425,9 +372,9 @@ Addr setup_client_stack( void*  init_sp,
    char *strtab;		/* string table */
    char *stringbase;
    Addr *ptr;
-   struct ume_auxv *auxv;
-   const struct ume_auxv *orig_auxv;
-   const struct ume_auxv *cauxv;
+   struct auxv *auxv;
+   const struct auxv *orig_auxv;
+   const struct auxv *cauxv;
    unsigned stringsize;		/* total size of strings in bytes */
    unsigned auxsize;		/* total size of auxv in bytes */
    Int argc;			/* total argc */
@@ -442,7 +389,7 @@ Addr setup_client_stack( void*  init_sp,
    vg_assert( VG_(args_for_client) );
 
    /* use our own auxv as a prototype */
-   orig_auxv = VG_(find_auxv)(init_sp);
+   orig_auxv = find_auxv(init_sp);
 
    /* ==================== compute sizes ==================== */
 
@@ -485,6 +432,8 @@ Addr setup_client_stack( void*  init_sp,
    for (cauxv = orig_auxv; cauxv->a_type != AT_NULL; cauxv++) {
       if (cauxv->a_type == AT_PLATFORM)
 	 stringsize += VG_(strlen)(cauxv->u.a_ptr) + 1;
+      else if (cauxv->a_type == AT_RANDOM)
+	 stringsize += 16;
       auxsize += sizeof(*cauxv);
    }
 
@@ -587,7 +536,7 @@ Addr setup_client_stack( void*  init_sp,
 	         VKI_PROT_READ|VKI_PROT_WRITE|VKI_PROT_EXEC
 	      );
      }
-     if ((!ok) || res.isError) {
+     if ((!ok) || sr_isError(res)) {
         /* Allocation of the stack failed.  We have to stop. */
         VG_(printf)("valgrind: "
                     "I failed to allocate space for the application's stack.\n");
@@ -598,7 +547,7 @@ Addr setup_client_stack( void*  init_sp,
      }
 
      vg_assert(ok);
-     vg_assert(!res.isError); 
+     vg_assert(!sr_isError(res)); 
    }
 
    /* ==================== create client stack ==================== */
@@ -636,7 +585,7 @@ Addr setup_client_stack( void*  init_sp,
    *ptr++ = 0;
 
    /* --- auxv --- */
-   auxv = (struct ume_auxv *)ptr;
+   auxv = (struct auxv *)ptr;
    *client_auxv = (UInt *)auxv;
 
 #  if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
@@ -745,6 +694,15 @@ Addr setup_client_stack( void*  init_sp,
             auxv->a_type = AT_IGNORE;
             break;
 
+         case AT_RANDOM:
+            /* points to 16 random bytes - we need to ensure this is
+               propagated to the client as glibc will assume it is
+               present if it is built for kernel 2.6.29 or later */
+            auxv->u.a_ptr = strtab;
+            VG_(memcpy)(strtab, orig_auxv->u.a_ptr, 16);
+            strtab += 16;
+            break;
+
          default:
             /* stomp out anything we don't know about */
             VG_(debugLog)(2, "initimg",
@@ -828,8 +786,8 @@ static void setup_client_dataseg ( SizeT max_size )
              anon_size, 
              VKI_PROT_READ|VKI_PROT_WRITE|VKI_PROT_EXEC
           );
-   vg_assert(!sres.isError);
-   vg_assert(sres.res == anon_start);
+   vg_assert(!sr_isError(sres));
+   vg_assert(sr_Res(sres) == anon_start);
 }
 
 
@@ -955,7 +913,7 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
       all other registers zeroed. */
 
 #  if defined(VGP_x86_linux)
-   vg_assert(0 == sizeof(VexGuestX86State) % 8);
+   vg_assert(0 == sizeof(VexGuestX86State) % 16);
 
    /* Zero out the initial state, and set up the simulated FPU in a
       sane way. */
@@ -976,7 +934,7 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    asm volatile("movw %%ss, %0" : : "m" (arch->vex.guest_SS));
 
 #  elif defined(VGP_amd64_linux)
-   vg_assert(0 == sizeof(VexGuestAMD64State) % 8);
+   vg_assert(0 == sizeof(VexGuestAMD64State) % 16);
 
    /* Zero out the initial state, and set up the simulated FPU in a
       sane way. */
@@ -991,7 +949,7 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    arch->vex.guest_RIP = iifii.initial_client_IP;
 
 #  elif defined(VGP_ppc32_linux)
-   vg_assert(0 == sizeof(VexGuestPPC32State) % 8);
+   vg_assert(0 == sizeof(VexGuestPPC32State) % 16);
 
    /* Zero out the initial state, and set up the simulated FPU in a
       sane way. */
@@ -1030,7 +988,8 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
              sizeof(VexGuestArchState));
 }
 
+#endif // defined(VGO_linux)
 
 /*--------------------------------------------------------------------*/
-/*---                                              initimg-linux.c ---*/
+/*---                                                              ---*/
 /*--------------------------------------------------------------------*/

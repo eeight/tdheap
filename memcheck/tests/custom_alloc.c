@@ -1,5 +1,5 @@
 #include <unistd.h>
-#include <sys/mman.h>
+#include "tests/sys_mman.h"
 #include <assert.h>
 #include <stdlib.h>
 
@@ -14,7 +14,7 @@
 void* get_superblock(void)
 {
    void* p = mmap( 0, SUPERBLOCK_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC,
-                   MAP_PRIVATE|MAP_ANON, -1, 0 );
+                   MAP_PRIVATE|MAP_ANONYMOUS, -1, 0 );
 
    assert(p != ((void*)(-1)));
 
@@ -70,8 +70,8 @@ void make_leak(void)
 
 int main(void)
 {
-   int* array;
-   int* array3;
+   int *array, *array3;
+   int x;
 
    array = custom_alloc(sizeof(int) * 10);
    array[8]  = 8;
@@ -80,17 +80,24 @@ int main(void)
 
    custom_free(array);  // ok
 
-   custom_free(NULL);   // invalid free (ok without MALLOCLIKE)
+   custom_free((void*)0x1);  // invalid free
 
    array3 = malloc(sizeof(int) * 10);
    custom_free(array3); // mismatched free (ok without MALLOCLIKE)
 
    make_leak();
-   return array[0];     // use after free (ok without MALLOCLIKE/MAKE_MEM_NOACCESS)
+   x = array[0];        // use after free (ok without MALLOCLIKE/MAKE_MEM_NOACCESS)
                         // (nb: initialised because is_zeroed==1 above)
                         // unfortunately not identified as being in a free'd
                         // block because the freeing of the block and shadow
                         // chunk isn't postponed.
+
+   // Bug 137073: passing 0 to MALLOCLIKE_BLOCK was causing an assertion
+   // failure.  Test for this (and likewise for FREELIKE_BLOCK).
+   VALGRIND_MALLOCLIKE_BLOCK(0,0,0,0);
+   VALGRIND_FREELIKE_BLOCK(0,0);
    
+   return x;
+
    // leak from make_leak()
 }

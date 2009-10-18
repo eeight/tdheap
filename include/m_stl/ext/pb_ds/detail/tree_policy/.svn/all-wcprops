@@ -1,0 +1,29 @@
+K 25
+svn:wc:ra_dav:version-url
+V 73
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/tree_policy
+END
+order_statistics_imp.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/tree_policy/order_statistics_imp.hpp
+END
+node_metadata_selector.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/tree_policy/node_metadata_selector.hpp
+END
+null_node_update_imp.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/tree_policy/null_node_update_imp.hpp
+END
+sample_tree_node_update.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/tree_policy/sample_tree_node_update.hpp
+END

@@ -1,0 +1,203 @@
+K 25
+svn:wc:ra_dav:version-url
+V 48
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext
+END
+vstring_util.h
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/vstring_util.h
+END
+rb_tree
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/rb_tree
+END
+vstring.h
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/vstring.h
+END
+algorithm
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/algorithm
+END
+enc_filebuf.h
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/enc_filebuf.h
+END
+throw_allocator.h
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/throw_allocator.h
+END
+slist
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/slist
+END
+pool_allocator.h
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pool_allocator.h
+END
+bitmap_allocator.h
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/bitmap_allocator.h
+END
+numeric
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/numeric
+END
+stdio_filebuf.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/stdio_filebuf.h
+END
+memory
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/memory
+END
+rc_string_base.h
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/rc_string_base.h
+END
+ropeimpl.h
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/ropeimpl.h
+END
+numeric_traits.h
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/numeric_traits.h
+END
+new_allocator.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/new_allocator.h
+END
+vstring_fwd.h
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/vstring_fwd.h
+END
+atomicity.h
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/atomicity.h
+END
+iterator
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/iterator
+END
+pod_char_traits.h
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pod_char_traits.h
+END
+concurrence.h
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/concurrence.h
+END
+type_traits.h
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/type_traits.h
+END
+malloc_allocator.h
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/malloc_allocator.h
+END
+codecvt_specializations.h
+K 25
+svn:wc:ra_dav:version-url
+V 74
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/codecvt_specializations.h
+END
+stdio_sync_filebuf.h
+K 25
+svn:wc:ra_dav:version-url
+V 69
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/stdio_sync_filebuf.h
+END
+functional
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/functional
+END
+typelist.h
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/typelist.h
+END
+vstring.tcc
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/vstring.tcc
+END
+array_allocator.h
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/array_allocator.h
+END
+rope
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/rope
+END
+mt_allocator.h
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/mt_allocator.h
+END
+sso_string_base.h
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/sso_string_base.h
+END
+debug_allocator.h
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/debug_allocator.h
+END

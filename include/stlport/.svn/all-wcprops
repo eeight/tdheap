@@ -1,0 +1,557 @@
+K 25
+svn:wc:ra_dav:version-url
+V 46
+/svn/!svn/ver/643/trunk/cpp_vg/include/stlport
+END
+ios.h
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/ios.h
+END
+iostream
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/iostream
+END
+cstdio
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/cstdio
+END
+cstdarg
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/cstdarg
+END
+limits.h
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/limits.h
+END
+iomanip
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/iomanip
+END
+wctype.h
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/wctype.h
+END
+numeric
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/numeric
+END
+utility
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/utility
+END
+type_traits
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/type_traits
+END
+cwchar
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/cwchar
+END
+memory
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/memory
+END
+cstddef
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/cstddef
+END
+map
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/map
+END
+math.h
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/math.h
+END
+iomanip.h
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/iomanip.h
+END
+typeinfo.h
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/typeinfo.h
+END
+cstdlib
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/cstdlib
+END
+unordered_map
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/unordered_map
+END
+stdiostream.h
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stdiostream.h
+END
+time.h
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/time.h
+END
+locale.h
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/locale.h
+END
+assert.h
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/assert.h
+END
+cctype
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/cctype
+END
+setjmp.h
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/setjmp.h
+END
+iterator
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/iterator
+END
+bitset
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/bitset
+END
+set
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/set
+END
+iosfwd
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/iosfwd
+END
+cmath
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/cmath
+END
+pthread_alloc
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/pthread_alloc
+END
+limits
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/limits
+END
+functional
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/functional
+END
+unordered_set
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/unordered_set
+END
+mem.h
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/mem.h
+END
+istream
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/istream
+END
+csetjmp
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/csetjmp
+END
+stack
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stack
+END
+rope
+K 25
+svn:wc:ra_dav:version-url
+V 51
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/rope
+END
+string
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/string
+END
+complex
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/complex
+END
+cfloat
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/cfloat
+END
+ostream
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/ostream
+END
+sstream
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/sstream
+END
+new.h
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/new.h
+END
+iso646.h
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/iso646.h
+END
+csignal
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/csignal
+END
+valarray
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/valarray
+END
+algorithm
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/algorithm
+END
+fstream.h
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/fstream.h
+END
+istream.h
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/istream.h
+END
+float.h
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/float.h
+END
+string.h
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/string.h
+END
+typeinfo
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/typeinfo
+END
+ciso646
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/ciso646
+END
+slist
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/slist
+END
+exception
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/exception
+END
+locale
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/locale
+END
+stddef.h
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stddef.h
+END
+ostream.h
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/ostream.h
+END
+vector
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/vector
+END
+deque
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/deque
+END
+stdexcept
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stdexcept
+END
+climits
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/climits
+END
+stdlib.h
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stdlib.h
+END
+stdio.h
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stdio.h
+END
+cstring
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/cstring
+END
+iostream.h
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/iostream.h
+END
+list
+K 25
+svn:wc:ra_dav:version-url
+V 51
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/list
+END
+pthread.h
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/pthread.h
+END
+cwctype
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/cwctype
+END
+hash_map
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/hash_map
+END
+rlocks.h
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/rlocks.h
+END
+exception.h
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/exception.h
+END
+queue
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/queue
+END
+strstream
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/strstream
+END
+cerrno
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/cerrno
+END
+streambuf
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/streambuf
+END
+new
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/new
+END
+wchar.h
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/wchar.h
+END
+ios
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/ios
+END
+hash_set
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/hash_set
+END
+ctime
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/ctime
+END
+fstream
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/fstream
+END
+clocale
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/clocale
+END
+signal.h
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/signal.h
+END
+cassert
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/cassert
+END
+ctype.h
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/ctype.h
+END
+strstream.h
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/strstream.h
+END
+stdarg.h
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stdarg.h
+END
+errno.h
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/errno.h
+END
+streambuf.h
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/streambuf.h
+END

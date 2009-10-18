@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Nicholas Nethercote
+   Copyright (C) 2000-2009 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -34,6 +34,12 @@
 /* Back up a thread so as to restart a system call. */
 extern
 void ML_(fixup_guest_state_to_restart_syscall) ( ThreadArchState* arch );
+
+#if defined(VGO_darwin)
+/* Longjmp to scheduler after client calls workq_ops(WQOPS_THREAD_RETURN)*/
+extern
+void ML_(wqthread_continue_NORETURN)(ThreadId tid);
+#endif
 
 #endif   // __PRIV_SYSWRAP_MAIN_H
 

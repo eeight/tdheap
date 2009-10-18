@@ -10,14 +10,14 @@ Invalid read of size 4
    at 0x........: main (ccc.cpp:21)
  Address 0x........ is 4 bytes before the accessing pointer's
  legitimate range, a block of size 4 alloc'd
-   at 0x........: operator new(unsigned) (vg_replace_malloc.c:...)
+   at 0x........: ...operator new... (vg_replace_malloc.c:...)
    by 0x........: main (ccc.cpp:9)
 
 Invalid read of size 4
    at 0x........: main (ccc.cpp:22)
  Address 0x........ is 4 bytes before the accessing pointer's
  legitimate range, a block of size 40 alloc'd
-   at 0x........: operator new[](unsigned) (vg_replace_malloc.c:...)
+   at 0x........: ...operator new[]... (vg_replace_malloc.c:...)
    by 0x........: main (ccc.cpp:10)
 
 Invalid read of size 4
@@ -41,5 +41,6 @@ Invalid read of size 4
    at 0x........: memalign (vg_replace_malloc.c:...)
    by 0x........: posix_memalign (vg_replace_malloc.c:...)
    by 0x........: main (ccc.cpp:14)
+
 
 ERROR SUMMARY: 6 errors from 6 contexts (suppressed: 0 from 0)

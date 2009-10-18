@@ -9,7 +9,7 @@
    This file is part of Ptrcheck, a Valgrind tool for checking pointer
    use in programs.
 
-   Copyright (C) 2008-2008 OpenWorks Ltd
+   Copyright (C) 2008-2009 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -37,11 +37,11 @@
 
 #include "pub_tool_basics.h"
 #include "pub_tool_libcassert.h"
+#include "pub_tool_libcprint.h"
 #include "pub_tool_execontext.h"
 #include "pub_tool_tooliface.h"
 #include "pub_tool_options.h"
 
-//#include "h_list.h"      // Seg
 #include "sg_main.h"
 #include "pc_common.h"
 #include "h_main.h"
@@ -125,17 +125,42 @@ static void pc_post_clo_init ( void )
 {
    h_post_clo_init();
    sg_post_clo_init();
+#  if defined(VGA_x86) || defined(VGA_amd64)
+   /* nothing */
+#  elif defined(VGA_ppc32) || defined(VGA_ppc64)
+   if (VG_(clo_verbosity) >= 1 && sg_clo_enable_sg_checks) {
+      VG_(message)(Vg_UserMsg, 
+         "WARNING: exp-ptrcheck on ppc32/ppc64 platforms: "
+         "stack and global array\n");
+      VG_(message)(Vg_UserMsg, 
+         "WARNING: checking is not currently supported.  "
+         "Only heap checking is\n");
+      VG_(message)(Vg_UserMsg, 
+         "WARNING: supported.  Disabling s/g checks "
+         "(like --enable-sg-checks=no).\n");
+   }
+   sg_clo_enable_sg_checks = False;
+#  else
+#    error "Unsupported architecture"
+#  endif
 }
 
 static void pc_pre_clo_init(void)
 {
+#if defined(VGO_darwin)
+   // This makes the (all-failing) regtests run much faster.
+   VG_(printf)("Ptrcheck doesn't work on Darwin yet, sorry.\n");
+   VG_(exit)(1);
+#endif
+
    VG_(details_name)            ("exp-ptrcheck");
    VG_(details_version)         (NULL);
    VG_(details_description)     ("a heap, stack & global array "
                                  "overrun detector");
    VG_(details_copyright_author)(
-      "Copyright (C) 2003-2008, and GNU GPL'd, by OpenWorks Ltd et al.");
+      "Copyright (C) 2003-2009, and GNU GPL'd, by OpenWorks Ltd et al.");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
+   VG_(details_avg_translation_sizeB) ( 496 );
 
    VG_(basic_tool_funcs)        (pc_post_clo_init,
                                  h_instrument,
@@ -150,12 +175,14 @@ static void pc_pre_clo_init(void)
                                   h_replace___builtin_delete,
                                   h_replace___builtin_vec_delete,
                                   h_replace_realloc,
+                                  h_replace_malloc_usable_size,
                                   0 /* no need for client heap redzones */ );
 
    VG_(needs_var_info)          ();
 
    VG_(needs_core_errors)       ();
    VG_(needs_tool_errors)       (pc_eq_Error,
+                                 pc_before_pp_Error,
                                  pc_pp_Error,
                                  True,/*show TIDs for errors*/
                                  pc_update_Error_extra,
@@ -163,7 +190,9 @@ static void pc_pre_clo_init(void)
                                  pc_read_extra_suppression_info,
                                  pc_error_matches_suppression,
                                  pc_get_error_name,
-                                 pc_print_extra_suppression_info);
+                                 pc_get_extra_suppression_info);
+
+   VG_(needs_xml_output)        ();
 
    VG_(needs_syscall_wrapper)( h_pre_syscall,
                                h_post_syscall );

@@ -8,7 +8,7 @@
    This file is part of Helgrind, a Valgrind tool for detecting errors
    in threaded programs.
 
-   Copyright (C) 2007-2008 OpenWorks LLP
+   Copyright (C) 2007-2009 OpenWorks LLP
        info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -48,6 +48,7 @@ typedef  UInt              WordSet;   /* opaque, small int index */
 
 /* Allocate and initialise a WordSetU */
 WordSetU* HG_(newWordSetU) ( void* (*alloc_nofail)( HChar*, SizeT ),
+                             HChar* cc,
                              void  (*dealloc)(void*),
                              Word  cacheSize );
 

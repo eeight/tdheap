@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -149,18 +149,18 @@ void VG_(print_ExeContext_stats) ( void )
 {
    init_ExeContext_storage();
    VG_(message)(Vg_DebugMsg, 
-      "   exectx: %'lu lists, %'llu contexts (avg %'llu per list)",
+      "   exectx: %'lu lists, %'llu contexts (avg %'llu per list)\n",
       ec_htab_size, ec_totstored, ec_totstored / (ULong)ec_htab_size
    );
    VG_(message)(Vg_DebugMsg, 
-      "   exectx: %'llu searches, %'llu full compares (%'llu per 1000)",
+      "   exectx: %'llu searches, %'llu full compares (%'llu per 1000)\n",
       ec_searchreqs, ec_searchcmps, 
       ec_searchreqs == 0 
          ? 0ULL 
          : ( (ec_searchcmps * 1000ULL) / ec_searchreqs ) 
    );
    VG_(message)(Vg_DebugMsg, 
-      "   exectx: %'llu cmp2, %'llu cmp4, %'llu cmpAll",
+      "   exectx: %'llu cmp2, %'llu cmp4, %'llu cmpAll\n",
       ec_cmp2s, ec_cmp4s, ec_cmpAlls 
    );
 }
@@ -173,7 +173,7 @@ void VG_(pp_ExeContext) ( ExeContext* ec )
 }
 
 
-/* Compare two ExeContexts, comparing all callers. */
+/* Compare two ExeContexts.  Number of callers considered depends on res. */
 Bool VG_(eq_ExeContext) ( VgRes res, ExeContext* e1, ExeContext* e2 )
 {
    Int i;
@@ -319,7 +319,7 @@ static ExeContext* record_ExeContext_wrk ( ThreadId tid, Word first_ip_delta,
                                    first_ip_delta );
    }
 
-   return record_ExeContext_wrk2 ( &ips[0], n_ips );
+   return record_ExeContext_wrk2 ( ips, n_ips );
 }
 
 /* Do the second part of getting a stack trace: ips[0 .. n_ips-1]
@@ -467,6 +467,11 @@ ExeContext* VG_(get_ExeContext_from_ECU)( UInt ecu )
       }
    }
    return NULL;
+}
+
+ExeContext* VG_(make_ExeContext_from_StackTrace)( Addr* ips, UInt n_ips )
+{
+   return record_ExeContext_wrk2(ips, n_ips);
 }
 
 /*--------------------------------------------------------------------*/

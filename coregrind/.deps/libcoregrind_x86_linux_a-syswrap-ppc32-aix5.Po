@@ -1,0 +1,2 @@
+libcoregrind_x86_linux_a-syswrap-ppc32-aix5.o:  \
+ m_syswrap/syswrap-ppc32-aix5.c

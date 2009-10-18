@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2008 OpenWorks LLP
+   Copyright (C) 2006-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -32,6 +32,8 @@
    used to endorse or promote products derived from this software
    without prior written permission.
 */
+
+#if defined(VGP_ppc64_aix5)
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
@@ -787,6 +789,8 @@ SyscallTableEntry* ML_(get_ppc64_aix5_syscall_entry) ( UInt sysno )
    vg_assert(i >= 0 && i < tab_size);
    return &aix5_ppc64_syscall_table[i].wrappers;
 }
+
+#endif // defined(VGP_ppc64_aix5)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Nicholas Nethercote
+   Copyright (C) 2000-2009 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -27,6 +27,8 @@
 
    The GNU General Public License is contained in the file COPYING.
 */
+
+#if defined(VGP_x86_linux)
 
 /* TODO/FIXME jrs 20050207: assignments to the syscall return result
    in interrupted_syscall() need to be reviewed.  They don't seem
@@ -276,7 +278,8 @@ static SysRes do_clone ( ThreadId ptid,
 	 VG_(printf)("tid %d: guessed client stack range %#lx-%#lx\n",
 		     ctid, seg->start, VG_PGROUNDUP(esp));
    } else {
-      VG_(message)(Vg_UserMsg, "!? New thread %d starts with ESP(%#lx) unmapped\n",
+      VG_(message)(Vg_UserMsg,
+                   "!? New thread %d starts with ESP(%#lx) unmapped\n",
 		   ctid, esp);
       ctst->client_stack_szB  = 0;
    }
@@ -299,7 +302,7 @@ static SysRes do_clone ( ThreadId ptid,
 		     ptst->arch.vex.guest_ESP,
 		     ctst->arch.vex.guest_FS, ctst->arch.vex.guest_GS);
       res = sys_set_thread_area(ctid, tlsinfo);
-      if (res.isError)
+      if (sr_isError(res))
 	 goto out;
    }
 
@@ -318,7 +321,7 @@ static SysRes do_clone ( ThreadId ptid,
    VG_(sigprocmask)(VKI_SIG_SETMASK, &savedmask, NULL);
 
   out:
-   if (res.isError) {
+   if (sr_isError(res)) {
       /* clone failed */
       VG_(cleanup_thread)(&ctst->arch);
       ctst->status = VgTs_Empty;
@@ -647,8 +650,11 @@ static SysRes sys_set_thread_area ( ThreadId tid, vki_modify_ldt_t* info )
    idx = info->entry_number;
 
    if (idx == -1) {
-      /* Find and use the first free entry. */
-      for (idx = 0; idx < VEX_GUEST_X86_GDT_NENT; idx++) {
+      /* Find and use the first free entry.  Don't allocate entry
+         zero, because the hardware will never do that, and apparently
+         doing so confuses some code (perhaps stuff running on
+         Wine). */
+      for (idx = 1; idx < VEX_GUEST_X86_GDT_NENT; idx++) {
          if (gdt[idx].LdtEnt.Words.word1 == 0 
              && gdt[idx].LdtEnt.Words.word2 == 0)
             break;
@@ -656,7 +662,8 @@ static SysRes sys_set_thread_area ( ThreadId tid, vki_modify_ldt_t* info )
 
       if (idx == VEX_GUEST_X86_GDT_NENT)
          return VG_(mk_SysRes_Error)( VKI_ESRCH );
-   } else if (idx < 0 || idx >= VEX_GUEST_X86_GDT_NENT) {
+   } else if (idx < 0 || idx == 0 || idx >= VEX_GUEST_X86_GDT_NENT) {
+      /* Similarly, reject attempts to use GDT[0]. */
       return VG_(mk_SysRes_Error)( VKI_EINVAL );
    }
 
@@ -828,38 +835,47 @@ PRE(old_select)
 PRE(sys_clone)
 {
    UInt cloneflags;
+   Bool badarg = False;
 
    PRINT("sys_clone ( %lx, %#lx, %#lx, %#lx, %#lx )",ARG1,ARG2,ARG3,ARG4,ARG5);
-   PRE_REG_READ5(int, "clone",
+   PRE_REG_READ2(int, "clone",
                  unsigned long, flags,
-                 void *, child_stack,
-                 int *, parent_tidptr,
-                 vki_modify_ldt_t *, tlsinfo,
-                 int *, child_tidptr);
+                 void *, child_stack);
 
    if (ARG1 & VKI_CLONE_PARENT_SETTID) {
+      if (VG_(tdict).track_pre_reg_read) {
+         PRA3("clone", int *, parent_tidptr);
+      }
       PRE_MEM_WRITE("clone(parent_tidptr)", ARG3, sizeof(Int));
       if (!VG_(am_is_valid_for_client)(ARG3, sizeof(Int), 
                                              VKI_PROT_WRITE)) {
-         SET_STATUS_Failure( VKI_EFAULT );
-         return;
-      }
-   }
-   if (ARG1 & (VKI_CLONE_CHILD_SETTID | VKI_CLONE_CHILD_CLEARTID)) {
-      PRE_MEM_WRITE("clone(child_tidptr)", ARG5, sizeof(Int));
-      if (!VG_(am_is_valid_for_client)(ARG5, sizeof(Int), 
-                                             VKI_PROT_WRITE)) {
-         SET_STATUS_Failure( VKI_EFAULT );
-         return;
+         badarg = True;
       }
    }
    if (ARG1 & VKI_CLONE_SETTLS) {
-      PRE_MEM_READ("clone(tls_user_desc)", ARG4, sizeof(vki_modify_ldt_t));
+      if (VG_(tdict).track_pre_reg_read) {
+         PRA4("clone", vki_modify_ldt_t *, tlsinfo);
+      }
+      PRE_MEM_READ("clone(tlsinfo)", ARG4, sizeof(vki_modify_ldt_t));
       if (!VG_(am_is_valid_for_client)(ARG4, sizeof(vki_modify_ldt_t), 
                                              VKI_PROT_READ)) {
-         SET_STATUS_Failure( VKI_EFAULT );
-         return;
+         badarg = True;
       }
+   }
+   if (ARG1 & (VKI_CLONE_CHILD_SETTID | VKI_CLONE_CHILD_CLEARTID)) {
+      if (VG_(tdict).track_pre_reg_read) {
+         PRA5("clone", int *, child_tidptr);
+      }
+      PRE_MEM_WRITE("clone(child_tidptr)", ARG5, sizeof(Int));
+      if (!VG_(am_is_valid_for_client)(ARG5, sizeof(Int), 
+                                             VKI_PROT_WRITE)) {
+         badarg = True;
+      }
+   }
+
+   if (badarg) {
+      SET_STATUS_Failure( VKI_EFAULT );
+      return;
    }
 
    cloneflags = ARG1;
@@ -924,13 +940,13 @@ PRE(sys_clone)
    default:
    reject:
       /* should we just ENOSYS? */
-      VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, "Unsupported clone() flags: 0x%lx", ARG1);
-      VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, "The only supported clone() uses are:");
-      VG_(message)(Vg_UserMsg, " - via a threads library (LinuxThreads or NPTL)");
-      VG_(message)(Vg_UserMsg, " - via the implementation of fork or vfork");
-      VG_(message)(Vg_UserMsg, " - for the Quadrics Elan3 user-space driver");
+      VG_(message)(Vg_UserMsg, "\n");
+      VG_(message)(Vg_UserMsg, "Unsupported clone() flags: 0x%lx\n", ARG1);
+      VG_(message)(Vg_UserMsg, "\n");
+      VG_(message)(Vg_UserMsg, "The only supported clone() uses are:\n");
+      VG_(message)(Vg_UserMsg, " - via a threads library (LinuxThreads or NPTL)\n");
+      VG_(message)(Vg_UserMsg, " - via the implementation of fork or vfork\n");
+      VG_(message)(Vg_UserMsg, " - for the Quadrics Elan3 user-space driver\n");
       VG_(unimplemented)
          ("Valgrind does not support general clone().");
    }
@@ -1229,7 +1245,7 @@ PRE(sys_ipc)
       ML_(generic_PRE_sys_shmctl)( tid, ARG2, ARG3, ARG5 );
       break;
    default:
-      VG_(message)(Vg_DebugMsg, "FATAL: unhandled syscall(ipc) %ld", ARG1 );
+      VG_(message)(Vg_DebugMsg, "FATAL: unhandled syscall(ipc) %ld\n", ARG1 );
       VG_(core_panic)("... bye!\n");
       break; /*NOTREACHED*/
    }   
@@ -1294,7 +1310,7 @@ POST(sys_ipc)
       break;
    default:
       VG_(message)(Vg_DebugMsg,
-		   "FATAL: unhandled syscall(ipc) %ld",
+		   "FATAL: unhandled syscall(ipc) %ld\n",
 		   ARG1 );
       VG_(core_panic)("... bye!\n");
       break; /*NOTREACHED*/
@@ -1512,8 +1528,8 @@ PRE(sys_socketcall)
       /* int getsockopt(int s, int level, int optname, 
                         void *optval, socklen_t *optlen); */
       PRE_MEM_READ( "socketcall.getsockopt(args)", ARG2, 5*sizeof(Addr) );
-      ML_(generic_PRE_sys_getsockopt)( tid, ARG2_0, ARG2_1, ARG2_2, 
-                                       ARG2_3, ARG2_4 );
+      ML_(linux_PRE_sys_getsockopt)( tid, ARG2_0, ARG2_1, ARG2_2, 
+                                     ARG2_3, ARG2_4 );
       break;
 
    case VKI_SYS_GETSOCKNAME:
@@ -1556,7 +1572,7 @@ PRE(sys_socketcall)
    }
 
    default:
-      VG_(message)(Vg_DebugMsg,"Warning: unhandled socketcall 0x%lx",ARG1);
+      VG_(message)(Vg_DebugMsg,"Warning: unhandled socketcall 0x%lx\n",ARG1);
       SET_STATUS_Failure( VKI_EINVAL );
       break;
    }
@@ -1633,9 +1649,9 @@ POST(sys_socketcall)
       break;
 
    case VKI_SYS_GETSOCKOPT:
-      ML_(generic_POST_sys_getsockopt)( tid, VG_(mk_SysRes_Success)(RES),
-                                             ARG2_0, ARG2_1, 
-                                             ARG2_2, ARG2_3, ARG2_4 );
+      ML_(linux_POST_sys_getsockopt)( tid, VG_(mk_SysRes_Success)(RES),
+                                      ARG2_0, ARG2_1, 
+                                      ARG2_2, ARG2_3, ARG2_4 );
       break;
 
    case VKI_SYS_GETSOCKNAME:
@@ -1659,7 +1675,7 @@ POST(sys_socketcall)
      break;
 
    default:
-      VG_(message)(Vg_DebugMsg,"FATAL: unhandled socketcall 0x%lx",ARG1);
+      VG_(message)(Vg_DebugMsg,"FATAL: unhandled socketcall 0x%lx\n",ARG1);
       VG_(core_panic)("... bye!\n");
       break; /*NOTREACHED*/
    }
@@ -1680,8 +1696,8 @@ void convert_sigset_to_rt(const vki_old_sigset_t *oldset, vki_sigset_t *set)
 }
 PRE(sys_sigaction)
 {
-   struct vki_sigaction new, old;
-   struct vki_sigaction *newp, *oldp;
+   vki_sigaction_toK_t   new, *newp;
+   vki_sigaction_fromK_t old, *oldp;
 
    PRINT("sys_sigaction ( %ld, %#lx, %#lx )", ARG1,ARG2,ARG3);
    PRE_REG_READ3(int, "sigaction",
@@ -1711,9 +1727,8 @@ PRE(sys_sigaction)
 
    if (ARG2 != 0) {
       struct vki_old_sigaction *oldnew = (struct vki_old_sigaction *)ARG2;
-
       new.ksa_handler = oldnew->ksa_handler;
-      new.sa_flags = oldnew->sa_flags;
+      new.sa_flags    = oldnew->sa_flags;
       new.sa_restorer = oldnew->sa_restorer;
       convert_sigset_to_rt(&oldnew->sa_mask, &new.sa_mask);
       newp = &new;
@@ -1723,9 +1738,8 @@ PRE(sys_sigaction)
 
    if (ARG3 != 0 && SUCCESS && RES == 0) {
       struct vki_old_sigaction *oldold = (struct vki_old_sigaction *)ARG3;
-
       oldold->ksa_handler = oldp->ksa_handler;
-      oldold->sa_flags = oldp->sa_flags;
+      oldold->sa_flags    = oldp->sa_flags;
       oldold->sa_restorer = oldp->sa_restorer;
       oldold->sa_mask = oldp->sa_mask.sig[0];
    }
@@ -1868,8 +1882,8 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINX_(__NR_umount,            sys_oldumount),      // 22
    LINX_(__NR_setuid,            sys_setuid16),       // 23 ## P
    LINX_(__NR_getuid,            sys_getuid16),       // 24 ## P
-//zz 
-//zz    //   (__NR_stime,             sys_stime),          // 25 * (SVr4,SVID,X/OPEN)
+
+   LINX_(__NR_stime,             sys_stime),          // 25 * (SVr4,SVID,X/OPEN)
    PLAXY(__NR_ptrace,            sys_ptrace),         // 26
    GENX_(__NR_alarm,             sys_alarm),          // 27
 //zz    //   (__NR_oldfstat,          sys_fstat),          // 28 * L -- obsolete
@@ -1903,9 +1917,9 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    GENX_(__NR_acct,              sys_acct),           // 51
    LINX_(__NR_umount2,           sys_umount),         // 52
    GENX_(__NR_lock,              sys_ni_syscall),     // 53
-   GENXY(__NR_ioctl,             sys_ioctl),          // 54
+   LINXY(__NR_ioctl,             sys_ioctl),          // 54
 
-   GENXY(__NR_fcntl,             sys_fcntl),          // 55
+   LINXY(__NR_fcntl,             sys_fcntl),          // 55
    GENX_(__NR_mpx,               sys_ni_syscall),     // 56
    GENX_(__NR_setpgid,           sys_setpgid),        // 57
    GENX_(__NR_ulimit,            sys_ni_syscall),     // 58
@@ -2057,8 +2071,8 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINXY(__NR_rt_sigqueueinfo,   sys_rt_sigqueueinfo),// 178
    LINX_(__NR_rt_sigsuspend,     sys_rt_sigsuspend),  // 179
 
-   GENXY(__NR_pread64,           sys_pread64_on32bitplat),  // 180
-   GENX_(__NR_pwrite64,          sys_pwrite64_on32bitplat), // 181
+   GENXY(__NR_pread64,           sys_pread64),        // 180
+   GENX_(__NR_pwrite64,          sys_pwrite64),       // 181
    LINX_(__NR_chown,             sys_chown16),        // 182
    GENXY(__NR_getcwd,            sys_getcwd),         // 183
    LINXY(__NR_capget,            sys_capget),         // 184
@@ -2107,7 +2121,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    GENX_(__NR_madvise,           sys_madvise),        // 219
 
    GENXY(__NR_getdents64,        sys_getdents64),     // 220
-   GENXY(__NR_fcntl64,           sys_fcntl64),        // 221
+   LINXY(__NR_fcntl64,           sys_fcntl64),        // 221
    GENX_(222,                    sys_ni_syscall),     // 222
    PLAXY(223,                    sys_syscall223),     // 223 // sys_bproc?
    LINX_(__NR_gettid,            sys_gettid),         // 224
@@ -2145,7 +2159,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINX_(__NR_fadvise64,         sys_fadvise64),      // 250 */(Linux?)
    GENX_(251,                    sys_ni_syscall),     // 251
    LINX_(__NR_exit_group,        sys_exit_group),     // 252
-   GENXY(__NR_lookup_dcookie,    sys_lookup_dcookie), // 253
+   LINXY(__NR_lookup_dcookie,    sys_lookup_dcookie), // 253
    LINXY(__NR_epoll_create,      sys_epoll_create),   // 254
 
    LINX_(__NR_epoll_ctl,         sys_epoll_ctl),         // 255
@@ -2188,9 +2202,9 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINX_(__NR_add_key,           sys_add_key),        // 286
    LINX_(__NR_request_key,       sys_request_key),    // 287
    LINXY(__NR_keyctl,            sys_keyctl),         // 288
-//   LINX_(__NR_ioprio_set,        sys_ioprio_set),     // 289
+   LINX_(__NR_ioprio_set,        sys_ioprio_set),     // 289
 
-//   LINX_(__NR_ioprio_get,        sys_ioprio_get),     // 290
+   LINX_(__NR_ioprio_get,        sys_ioprio_get),     // 290
    LINX_(__NR_inotify_init,	 sys_inotify_init),   // 291
    LINX_(__NR_inotify_add_watch, sys_inotify_add_watch), // 292
    LINX_(__NR_inotify_rm_watch,	 sys_inotify_rm_watch), // 293
@@ -2230,13 +2244,23 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINXY(__NR_signalfd,          sys_signalfd),         // 321
    LINXY(__NR_timerfd_create,    sys_timerfd_create),   // 322
    LINX_(__NR_eventfd,           sys_eventfd),          // 323
-//   LINX_(__NR_fallocate,        sys_ni_syscall),        // 324
+   //LINX_(__NR_fallocate,         sys_fallocate),        // 324
+
    LINXY(__NR_timerfd_settime,   sys_timerfd_settime),  // 325
    LINXY(__NR_timerfd_gettime,   sys_timerfd_gettime),  // 326
+   LINXY(__NR_signalfd4,         sys_signalfd4),        // 327
+   LINX_(__NR_eventfd2,          sys_eventfd2),         // 328
+   LINXY(__NR_epoll_create1,     sys_epoll_create1),     // 329
+
+   //   (__NR_dup3,              sys_ni_syscall)        // 330
+   LINXY(__NR_pipe2,             sys_pipe2)             // 331
+   //   (__NR_inotify_init1,     sys_ni_syscall)        // 332
 };
 
 const UInt ML_(syscall_table_size) = 
             sizeof(ML_(syscall_table)) / sizeof(ML_(syscall_table)[0]);
+
+#endif // defined(VGP_x86_linux)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

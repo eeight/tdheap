@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -37,10 +37,19 @@
 #include "pub_core_syscall.h"
 #include "pub_core_libcsignal.h"    /* self */
 
+/* IMPORTANT: on Darwin it is essential to use the _nocancel versions
+   of syscalls rather than the vanilla version, if a _nocancel version
+   is available.  See docs/internals/Darwin-notes.txt for the reason
+   why. */
+
 /* sigemptyset, sigfullset, sigaddset and sigdelset return 0 on
    success and -1 on error.  */
 /* I believe the indexing scheme in ->sig[] is also correct for
    32- and 64-bit AIX (verified 27 July 06). */
+/* In the sigset routines below, be aware that _VKI_NSIG_BPW can be
+   either 32 or 64, and hence the sig[] words can either be 32- or
+   64-bits.  And which they are it doesn't necessarily follow from the
+   host word size. */
 
 Int VG_(sigfillset)( vki_sigset_t* set )
 {
@@ -48,7 +57,7 @@ Int VG_(sigfillset)( vki_sigset_t* set )
    if (set == NULL)
       return -1;
    for (i = 0; i < _VKI_NSIG_WORDS; i++)
-      set->sig[i] = ~(UWord)0x0;
+      set->sig[i] = ~0;
    return 0;
 }
 
@@ -58,7 +67,7 @@ Int VG_(sigemptyset)( vki_sigset_t* set )
    if (set == NULL)
       return -1;
    for (i = 0; i < _VKI_NSIG_WORDS; i++)
-      set->sig[i] = 0x0;
+      set->sig[i] = 0;
    return 0;
 }
 
@@ -67,7 +76,7 @@ Bool VG_(isemptysigset)( const vki_sigset_t* set )
    Int i;
    vg_assert(set != NULL);
    for (i = 0; i < _VKI_NSIG_WORDS; i++)
-      if (set->sig[i] != 0x0) return False;
+      if (set->sig[i] != 0) return False;
    return True;
 }
 
@@ -76,7 +85,7 @@ Bool VG_(isfullsigset)( const vki_sigset_t* set )
    Int i;
    vg_assert(set != NULL);
    for (i = 0; i < _VKI_NSIG_WORDS; i++)
-      if (set->sig[i] != ~(UWord)0x0) return False;
+      if (set->sig[i] != ~0) return False;
    return True;
 }
 
@@ -97,7 +106,7 @@ Int VG_(sigaddset)( vki_sigset_t* set, Int signum )
    if (signum < 1 || signum > _VKI_NSIG)
       return -1;
    signum--;
-   set->sig[signum / _VKI_NSIG_BPW] |= (1UL << (signum % _VKI_NSIG_BPW));
+   set->sig[signum / _VKI_NSIG_BPW] |= (1ULL << (signum % _VKI_NSIG_BPW));
    return 0;
 }
 
@@ -108,7 +117,7 @@ Int VG_(sigdelset)( vki_sigset_t* set, Int signum )
    if (signum < 1 || signum > _VKI_NSIG)
       return -1;
    signum--;
-   set->sig[signum / _VKI_NSIG_BPW] &= ~(1UL << (signum % _VKI_NSIG_BPW));
+   set->sig[signum / _VKI_NSIG_BPW] &= ~(1ULL << (signum % _VKI_NSIG_BPW));
    return 0;
 }
 
@@ -143,45 +152,186 @@ void VG_(sigdelset_from_set)( vki_sigset_t* dst, vki_sigset_t* src )
       dst->sig[i] &= ~(src->sig[i]);
 }
 
+/* dst = dst `intersect` src. */
+void VG_(sigintersectset)( vki_sigset_t* dst, vki_sigset_t* src )
+{
+   Int i;
+   vg_assert(dst != NULL && src != NULL);
+   for (i = 0; i < _VKI_NSIG_WORDS; i++)
+      dst->sig[i] &= src->sig[i];
+}
+
+/* dst = ~src */
+void VG_(sigcomplementset)( vki_sigset_t* dst, vki_sigset_t* src )
+{
+   Int i;
+   vg_assert(dst != NULL && src != NULL);
+   for (i = 0; i < _VKI_NSIG_WORDS; i++)
+      dst->sig[i] = ~ src->sig[i];
+}
+
 
 /* The functions sigaction, sigprocmask, sigpending and sigsuspend
    return 0 on success and -1 on error.  
 */
 Int VG_(sigprocmask)( Int how, const vki_sigset_t* set, vki_sigset_t* oldset)
 {
+#  if defined(VGO_linux) || defined(VGO_aix5)
+#  if defined(__NR_rt_sigprocmask)
    SysRes res = VG_(do_syscall4)(__NR_rt_sigprocmask, 
                                  how, (UWord)set, (UWord)oldset, 
                                  _VKI_NSIG_WORDS * sizeof(UWord));
-   return res.isError ? -1 : 0;
+#  else
+   SysRes res = VG_(do_syscall3)(__NR_sigprocmask, 
+                                 how, (UWord)set, (UWord)oldset);
+#  endif
+
+#  elif defined(VGO_darwin)
+   /* On Darwin, __NR_sigprocmask appears to affect the entire
+      process, not just this thread.  Hence need to use
+      __NR___pthread_sigmask instead. */
+   SysRes res =  VG_(do_syscall3)(__NR___pthread_sigmask, 
+                                  how, (UWord)set, (UWord)oldset);
+#  else
+#    error "Unknown OS"
+#  endif
+   return sr_isError(res) ? -1 : 0;
 }
 
 
-Int VG_(sigaction) ( Int signum, const struct vki_sigaction* act,  
-                     struct vki_sigaction* oldact)
+#if defined(VGO_darwin)
+/* A helper function for sigaction on Darwin. */
+static 
+void darwin_signal_demux(void* a1, UWord a2, UWord a3, void* a4, void* a5) {
+   VG_(debugLog)(2, "libcsignal",
+                    "PRE  demux sig, a2 = %lu, signo = %lu\n", a2, a3);
+   if (a2 == 1)
+      ((void(*)(int))a1) (a3);
+   else
+      ((void(*)(int,void*,void*))a1) (a3,a4,a5);
+   VG_(debugLog)(2, "libcsignal",
+                    "POST demux sig, a2 = %lu, signo = %lu\n", a2, a3);
+   VG_(do_syscall2)(__NR_sigreturn, (UWord)a5, 0x1E);
+   /* NOTREACHED */
+   __asm__ __volatile__("ud2");
+}
+#endif
+
+Int VG_(sigaction) ( Int signum, 
+                     const vki_sigaction_toK_t* act,  
+                     vki_sigaction_fromK_t* oldact)
 {
+#  if defined(VGO_linux) || defined(VGO_aix5)
+   /* Normal case: vki_sigaction_toK_t and vki_sigaction_fromK_t are
+      identical types. */
    SysRes res = VG_(do_syscall4)(__NR_rt_sigaction,
                                  signum, (UWord)act, (UWord)oldact, 
                                  _VKI_NSIG_WORDS * sizeof(UWord));
-   return res.isError ? -1 : 0;
+   return sr_isError(res) ? -1 : 0;
+
+#  elif defined(VGO_darwin)
+   /* If we're passing a new action to the kernel, make a copy of the
+      new action, install our own sa_tramp field in it, and ignore
+      whatever we were provided with.  This is OK because all the
+      sigaction requests come from m_signals, and are not directly
+      what the client program requested, so there is no chance that we
+      will inadvertantly ignore the sa_tramp field requested by the
+      client.  (In fact m_signals does ignore it when building signal
+      frames for the client, but that's a completely different
+      matter).
+
+      If we're receiving an old action from the kernel, be very
+      paranoid and make sure the kernel doesn't trash bits of memory
+      that we don't expect it to. */
+   SysRes res;
+
+   vki_sigaction_toK_t actCopy;
+   struct {
+     ULong before[2];
+     vki_sigaction_fromK_t oa;
+     ULong after[2];
+   }
+   oldactCopy;
+
+   vki_sigaction_toK_t*   real_act;
+   vki_sigaction_fromK_t* real_oldact;
+
+   real_act    = act    ? &actCopy       : NULL;
+   real_oldact = oldact ? &oldactCopy.oa : NULL;
+   VG_(memset)(&oldactCopy, 0x55, sizeof(oldactCopy));
+   if (real_act) {
+      *real_act = *act;
+      real_act->sa_tramp = (void*)&darwin_signal_demux;
+   }
+   res = VG_(do_syscall3)(__NR_sigaction, 
+                          signum, (UWord)real_act, (UWord)real_oldact);
+   if (real_oldact) {
+      vg_assert(oldactCopy.before[0] == 0x5555555555555555ULL);
+      vg_assert(oldactCopy.before[1] == 0x5555555555555555ULL);
+      vg_assert(oldactCopy.after[0]  == 0x5555555555555555ULL);
+      vg_assert(oldactCopy.after[1]  == 0x5555555555555555ULL);
+      *oldact = *real_oldact;
+   }
+   return sr_isError(res) ? -1 : 0;
+
+#  else
+#    error "Unsupported OS"
+#  endif
+}
+
+
+/* See explanation in pub_core_libcsignal.h. */
+void 
+VG_(convert_sigaction_fromK_to_toK)( vki_sigaction_fromK_t* fromK,
+                                     /*OUT*/vki_sigaction_toK_t* toK )
+{
+#  if defined(VGO_linux) || defined(VGO_aix5)
+   *toK = *fromK;
+#  elif defined(VGO_darwin)
+   toK->ksa_handler = fromK->ksa_handler;
+   toK->sa_tramp    = NULL; /* the cause of all the difficulty */
+   toK->sa_mask     = fromK->sa_mask;
+   toK->sa_flags    = fromK->sa_flags;
+#  else
+#    error "Unsupported OS"
+#  endif
 }
 
 
 Int VG_(kill)( Int pid, Int signo )
 {
+#  if defined(VGO_linux) || defined(VGO_aix5)
    SysRes res = VG_(do_syscall2)(__NR_kill, pid, signo);
-   return res.isError ? -1 : 0;
+#  elif defined(VGO_darwin)
+   SysRes res = VG_(do_syscall3)(__NR_kill,
+                                 pid, signo, 1/*posix-compliant*/);
+#  else
+#    error "Unsupported OS"
+#  endif
+   return sr_isError(res) ? -1 : 0;
 }
 
-
-Int VG_(tkill)( ThreadId tid, Int signo )
+Int VG_(tkill)( Int lwpid, Int signo )
 {
+#  if defined(__NR_tkill)
    SysRes res = VG_(mk_SysRes_Error)(VKI_ENOSYS);
-   res = VG_(do_syscall2)(__NR_tkill, tid, signo);
-   if (res.isError && res.err == VKI_ENOSYS)
-      res = VG_(do_syscall2)(__NR_kill, tid, signo);
-   return res.isError ? -1 : 0;
+   res = VG_(do_syscall2)(__NR_tkill, lwpid, signo);
+   if (sr_isError(res) && sr_Err(res) == VKI_ENOSYS)
+      res = VG_(do_syscall2)(__NR_kill, lwpid, signo);
+   return sr_isError(res) ? -1 : 0;
+
+#  elif defined(VGO_darwin)
+   // Note that the __pthread_kill syscall takes a Mach thread, not a pthread.
+   SysRes res;
+   res = VG_(do_syscall2)(__NR___pthread_kill, lwpid, signo);
+   return sr_isError(res) ? -1 : 0;
+
+#  else
+#    error "Unsupported plat"
+#  endif
 }
 
+/* ---------------------- sigtimedwait_zero ----------------------- */
 
 /* A cut-down version of POSIX sigtimedwait: poll for pending signals
    mentioned in the sigset_t, and if any are present, select one
@@ -199,6 +349,8 @@ Int VG_(tkill)( ThreadId tid, Int signo )
    obscure ways.  I suspect it's only thread-safe because V forces
    single-threadedness. */
 
+/* ---------- sigtimedwait_zero: Linux ----------- */
+
 #if defined(VGO_linux)
 Int VG_(sigtimedwait_zero)( const vki_sigset_t *set, 
                             vki_siginfo_t *info )
@@ -206,8 +358,10 @@ Int VG_(sigtimedwait_zero)( const vki_sigset_t *set,
    static const struct vki_timespec zero = { 0, 0 };
    SysRes res = VG_(do_syscall4)(__NR_rt_sigtimedwait, (UWord)set, (UWord)info, 
                                  (UWord)&zero, sizeof(*set));
-   return res.isError ? -1 : res.res;
+   return sr_isError(res) ? -1 : sr_Res(res);
 }
+
+/* ---------- sigtimedwait_zero: AIX5 ----------- */
 
 #elif defined(VGO_aix5)
 /* The general idea is:
@@ -246,16 +400,14 @@ Int VG_(sigtimedwait_zero)( const vki_sigset_t *set,
 
   /* don't try for signals not in 'set' */
   /* pending = pending `intersect` set */
-  for (i = 0; i < _VKI_NSIG_WORDS; i++)
-     pending.sig[i] &= set->sig[i];
+  VG_(sigintersectset)(&pending, set);
 
   /* don't try for signals not blocked at the moment */
   ir = VG_(sigprocmask)(VKI_SIG_SETMASK, NULL, &blocked);
   vg_assert(ir == 0);
 
   /* pending = pending `intersect` blocked */
-  for (i = 0; i < _VKI_NSIG_WORDS; i++)
-     pending.sig[i] &= blocked.sig[i];
+  VG_(sigintersectset)(&pending, blocked);
 
   /* decide which signal we're going to snarf */
   for (i = 1; i < _VKI_NSIG; i++)
@@ -300,8 +452,113 @@ Int VG_(sigtimedwait_zero)( const vki_sigset_t *set,
   return i;
 }
 
+/* ---------- sigtimedwait_zero: Darwin ----------- */
+
+#elif defined(VGO_darwin)
+
+//static void show_set ( HChar* str, const vki_sigset_t* set ) {
+//   Int i;
+//   VG_(printf)("%s { ", str);
+//   for (i = 1; i <= _VKI_NSIG; i++) {
+//     if (VG_(sigismember)(set, i))
+//         VG_(printf)("%u ", i);
+//   }
+//   VG_(printf)("}\n");
+//}
+
+static void sigtimedwait_zero_handler ( Int sig ) 
+{
+   /* XXX this is wrong -- get rid of these.  We could
+      get _any_ signal here */
+   vg_assert(sig != VKI_SIGILL);
+   vg_assert(sig != VKI_SIGSEGV);
+   vg_assert(sig != VKI_SIGBUS);
+   vg_assert(sig != VKI_SIGTRAP);
+   /* do nothing */ 
+}
+
+Int VG_(sigtimedwait_zero)( const vki_sigset_t *set, 
+                            vki_siginfo_t *info )
+{
+  const Bool debug = False;
+  Int    i, ir;
+  SysRes sr;
+  vki_sigset_t pending, blocked, allbutone;
+  vki_sigaction_toK_t   sa, saved_sa2;
+  vki_sigaction_fromK_t saved_sa;
+
+  //show_set("STWZ: looking for", set);
+
+  /* Find out what's pending: Darwin sigpending */
+  sr = VG_(do_syscall1)(__NR_sigpending, (UWord)&pending);
+  vg_assert(!sr_isError(sr));
+
+  /* don't try for signals not in 'set' */
+  /* pending = pending `intersect` set */
+  VG_(sigintersectset)(&pending, (vki_sigset_t*)set);
+
+  /* don't try for signals not blocked at the moment */
+  ir = VG_(sigprocmask)(VKI_SIG_SETMASK, NULL, &blocked);
+  vg_assert(ir == 0);
+
+  /* pending = pending `intersect` blocked */
+  VG_(sigintersectset)(&pending, &blocked);
+
+  /* decide which signal we're going to snarf */
+  for (i = 1; i < _VKI_NSIG; i++)
+     if (VG_(sigismember)(&pending,i))
+        break;
+
+  if (i == _VKI_NSIG)
+     return 0;
+
+  if (debug)
+     VG_(debugLog)(0, "libcsignal",
+                      "sigtimedwait_zero: snarfing signal %d\n", i );
+
+  /* fetch signal i.
+     pre: i is blocked and pending
+     pre: we are the only thread running 
+  */
+  /* Set up alternative signal handler */
+  VG_(sigfillset)(&sa.sa_mask);
+  sa.ksa_handler = &sigtimedwait_zero_handler;
+  sa.sa_flags    = 0;
+  ir = VG_(sigaction)(i, &sa, &saved_sa);
+  vg_assert(ir == 0);
+
+  /* Switch signal masks and wait for the signal.  This should happen
+     immediately, since we've already established it is pending and
+     blocked. */
+  VG_(sigfillset)(&allbutone);
+  VG_(sigdelset)(&allbutone, i);
+  /* Note: pass the sig mask by value here, not reference (!) */
+  vg_assert(_VKI_NSIG_WORDS == 1);
+  sr = VG_(do_syscall3)(__NR_sigsuspend_nocancel,
+                        (UWord)allbutone.sig[0], 0,0);
+  if (debug)
+     VG_(debugLog)(0, "libcsignal",
+                      "sigtimedwait_zero: sigsuspend got "
+                      "res: %s %#lx\n", 
+                      sr_isError(sr) ? "FAIL" : "SUCCESS",
+                      sr_isError(sr) ? sr_Err(sr) : sr_Res(sr));
+  vg_assert(sr_isError(sr));
+  vg_assert(sr_Err(sr) == VKI_EINTR);
+
+  /* Restore signal's handler to whatever it was before */
+  VG_(convert_sigaction_fromK_to_toK)( &saved_sa, &saved_sa2 );
+  ir = VG_(sigaction)(i, &saved_sa2, NULL);
+  vg_assert(ir == 0);
+
+  /* This is bogus - we could get more info from the sighandler. */
+  VG_(memset)( info, 0, sizeof(*info) );
+  info->si_signo = i;
+
+  return i;
+}
+
 #else
-#  error Unknown OS
+#  error "Unknown OS"
 #endif
 
 /*--------------------------------------------------------------------*/

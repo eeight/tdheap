@@ -1,0 +1,71 @@
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/debug
+END
+_hashtable.h
+K 25
+svn:wc:ra_dav:version-url
+V 69
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/debug/_hashtable.h
+END
+_list.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/debug/_list.h
+END
+_string_sum_methods.h
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/debug/_string_sum_methods.h
+END
+_slist.h
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/debug/_slist.h
+END
+_tree.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/debug/_tree.h
+END
+_debug.c
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/debug/_debug.c
+END
+_vector.h
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/debug/_vector.h
+END
+_deque.h
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/debug/_deque.h
+END
+_debug.h
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/debug/_debug.h
+END
+_string.h
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/debug/_string.h
+END
+_iterator.h
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/debug/_iterator.h
+END

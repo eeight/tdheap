@@ -9,7 +9,7 @@
    This file is part of Ptrcheck, a Valgrind tool for checking pointer
    use in programs.
 
-   Copyright (C) 2008-2008 OpenWorks Ltd
+   Copyright (C) 2008-2009 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -54,7 +54,7 @@
 
 
 static
-void preen_Invars ( Addr a, SizeT len, Bool isHeap ); /*fwds*/
+void preen_global_Invars ( Addr a, SizeT len ); /*fwds*/
 
 
 //////////////////////////////////////////////////////////////
@@ -220,23 +220,19 @@ static Word StackBlocks__cmp ( XArray* fb1s, XArray* fb2s )
    return 0;
 }
 
-static void pp_StackBlock ( StackBlock* sb )
-{
-   VG_(printf)("StackBlock{ off %ld szB %lu spRel:%c isVec:%c \"%s\" }",
-               sb->base, sb->szB, sb->spRel ? 'Y' : 'N',
-               sb->isVec ? 'Y' : 'N', &sb->name[0] );
-}
-
 static void pp_StackBlocks ( XArray* sbs )
 {
    Word i, n = VG_(sizeXA)( sbs );
-   VG_(printf)("<<< STACKBLOCKS\n" );
+   VG_(message)(Vg_DebugMsg, "<<< STACKBLOCKS\n" );
    for (i = 0; i < n; i++) {
-      VG_(printf)("   ");
-      pp_StackBlock( (StackBlock*)VG_(indexXA)( sbs, i ) );
-      VG_(printf)("\n");
+      StackBlock* sb = (StackBlock*)VG_(indexXA)( sbs, i );
+      VG_(message)(Vg_DebugMsg,
+         "   StackBlock{ off %ld szB %lu spRel:%c isVec:%c \"%s\" }\n",
+         sb->base, sb->szB, sb->spRel ? 'Y' : 'N',
+         sb->isVec ? 'Y' : 'N', &sb->name[0] 
+      );
    }
-   VG_(printf)(">>> STACKBLOCKS\n" );
+   VG_(message)(Vg_DebugMsg, ">>> STACKBLOCKS\n" );
 }
 
 
@@ -332,14 +328,33 @@ static XArray* /* of StackBlock */
      }
    }
 
-   /* A rather poor sanity check on the results. */
+   /* If there are any blocks which overlap and have the same
+      fpRel-ness, junk the whole descriptor; it's obviously bogus.
+      Icc11 certainly generates bogus info from time to time.
+
+      This check is pretty weak; really we ought to have a stronger
+      sanity check. */
    { Word i, n = VG_(sizeXA)( orig );
+     static Int moans = 3;
      for (i = 0; i < n-1; i++) {
        StackBlock* sb1 = (StackBlock*)VG_(indexXA)( orig, i );
        StackBlock* sb2 = (StackBlock*)VG_(indexXA)( orig, i+1 );
-       if (sb1->base == sb2->base)
-          pp_StackBlocks(orig);
-       tl_assert(sb1->base != sb2->base);
+       if (sb1->spRel == sb2->spRel
+           && (sb1->base >= sb2->base
+               || sb1->base + sb1->szB > sb2->base)) {
+          if (moans > 0 && !VG_(clo_xml)) {
+             moans--;
+             VG_(message)(Vg_UserMsg, "Warning: bogus DWARF3 info: "
+                                      "overlapping stack blocks\n");
+             if (VG_(clo_verbosity) >= 2)
+                pp_StackBlocks(orig);
+             if (moans == 0)
+                VG_(message)(Vg_UserMsg, "Further instances of this "
+                                         "message will not be shown\n" );
+          }
+          VG_(dropTailXA)( orig, VG_(sizeXA)( orig ));
+          break;
+       }
      }
    }
 
@@ -522,8 +537,9 @@ static void add_blocks_to_StackTree (
 
    tl_assert(sitree);
    if (debug) {
-      VG_(printf)("\n");
+      VG_(printf)("\ndepth = %lu\n", depth);
       pp_StackTree( sitree, "add_blocks_to_StackTree-pre" );
+      pp_StackBlocks(descrs);
    }
 
    for (i = 0; i < nDescrs; i++) {
@@ -673,6 +689,7 @@ static void add_block_to_GlobalTree (
    Bool already_present;
    GlobalTreeNode *nyu, *nd;
    UWord keyW, valW;
+   static Int moans = 3;
 
    tl_assert(descr->szB > 0);
    nyu = sg_malloc( "di.sg_main.abtG.1", sizeof(GlobalTreeNode) );
@@ -717,13 +734,25 @@ static void add_block_to_GlobalTree (
    already_present = VG_(addToFM)( gitree, (UWord)nyu, 0 );
    /* The interval can't already be there; else we have
       overlapping global blocks. */
-   if (already_present) {
-      GlobalTree__pp( gitree, "add_block_to_GlobalTree: non-exact duplicate" );
-      VG_(printf)("Overlapping block: ");
-      GlobalTreeNode__pp(nyu);
-      VG_(printf)("\n");
+   /* Unfortunately (25 Jan 09) at least icc11 has been seen to
+      generate overlapping block descriptions in the Dwarf3; clearly
+      bogus. */
+   if (already_present && moans > 0 && !VG_(clo_xml)) {
+      moans--;
+      VG_(message)(Vg_UserMsg, "Warning: bogus DWARF3 info: "
+                               "overlapping global blocks\n");
+      if (VG_(clo_verbosity) >= 2) {
+         GlobalTree__pp( gitree,
+                         "add_block_to_GlobalTree: non-exact duplicate" );
+         VG_(printf)("Overlapping block: ");
+         GlobalTreeNode__pp(nyu);
+         VG_(printf)("\n");
+      }
+      if (moans == 0)
+         VG_(message)(Vg_UserMsg, "Further instances of this "
+                                  "message will not be shown\n" );
    }
-   tl_assert(!already_present);
+   /* tl_assert(!already_present); */
 }
 
 static Bool del_GlobalTree_range ( /*MOD*/WordFM* gitree,
@@ -1067,10 +1096,10 @@ void sg_die_mem_munmap ( Addr a, SizeT len )
 
    /* Ok, the range contained some blocks.  Therefore we'll need to
       visit all the Invars in all the thread shadow stacks, and
-      convert all Inv_Global{S,V} entries that intersect [a,a+len) to
+      convert all Inv_Global entries that intersect [a,a+len) to
       Inv_Unknown. */
    tl_assert(len > 0);
-   preen_Invars( a, len, False/*!isHeap*/ );
+   preen_global_Invars( a, len );
    invalidate_all_QCaches();
 }
 
@@ -1161,73 +1190,70 @@ typedef
    instead. */
 
 __attribute__((noinline))
-static void preen_Invar ( Invar* inv, Addr a, SizeT len, Bool isHeap )
+static void preen_global_Invar ( Invar* inv, Addr a, SizeT len )
 {
    stats__Invars_preened++;
    tl_assert(len > 0);
    tl_assert(inv);
    switch (inv->tag) {
-#if 0
-      case Inv_Heap:
-         tl_assert(inv->Inv.Heap.len > 0);
-         if (isHeap && rangesOverlap(a, len, inv->Inv.Heap.start,
-                                             inv->Inv.Heap.len)) {
+      case Inv_Global:
+         tl_assert(inv->Inv.Global.nd);
+         tl_assert(inv->Inv.Global.nd->szB > 0);
+         if (0) VG_(printf)("preen_Invar Global %#lx %lu\n",
+                            inv->Inv.Global.nd->addr,
+                            inv->Inv.Global.nd->szB);
+         if (0 == cmp_nonempty_intervals(a, len, inv->Inv.Global.nd->addr,
+                                                 inv->Inv.Global.nd->szB)) {
             inv->tag = Inv_Unknown;
             stats__Invars_changed++;
          }
          break;
-      case Inv_GlobalS:
-      case Inv_GlobalV:
-         tl_assert(inv->Inv.Global.len > 0);
-         if ((!isHeap)
-             && rangesOverlap(a, len, inv->Inv.Global.start,
-                                      inv->Inv.Global.len)) {
-            inv->tag = Inv_Unknown;
-            stats__Invars_changed++;
-         }
-         break;
-      case Inv_StackS:
-      case Inv_StackV:
+      case Inv_Stack0:
+      case Inv_StackN:
       case Inv_Unknown:
          break;
-#endif
-      default: tl_assert(0);
+      default:
+         tl_assert(0);
    }
 }
 
 __attribute__((noinline))
-static void preen_Invars ( Addr a, SizeT len, Bool isHeap )
+static void preen_global_Invars ( Addr a, SizeT len )
 {
-  tl_assert(0);
-#if 0
    Int         i;
-   Word        ixFrames, nFrames;
    UWord       u;
-   XArray*     stack; /* XArray* of StackFrame */
    StackFrame* frame;
    tl_assert(len > 0);
-   tl_assert(0);
    for (i = 0; i < VG_N_THREADS; i++) {
-tl_assert(0);
-      stack = shadowStacks[i];
-      if (!stack)
-         continue;
-      nFrames = VG_(sizeXA)( stack );
-      for (ixFrames = 0; ixFrames < nFrames; ixFrames++) {
+      frame = shadowStacks[i];
+      if (!frame)
+         continue; /* no frames for this thread */
+      /* start from the innermost frame */
+      while (frame->inner)
+         frame = frame->inner;
+      tl_assert(frame->outer);
+      /* work through the frames from innermost to outermost.  The
+         order isn't important; we just need to ensure we visit each
+         frame once (including those which are not actually active,
+         more 'inner' than the 'innermost active frame', viz, just
+         hanging around waiting to be used, when the current innermost
+         active frame makes more calls.  See comments on definition of
+         struct _StackFrame. */
+      for (; frame; frame = frame->outer) {
          UWord xx = 0; /* sanity check only; count of used htab entries */
-         frame = VG_(indexXA)( stack, ixFrames );
-         tl_assert(frame->htab);
+         if (!frame->htab)
+            continue; /* frame not in use.  See shadowStack_unwind(). */
          for (u = 0; u < frame->htab_size; u++) {
             IInstance* ii = &frame->htab[u];
             if (ii->insn_addr == 0)
                continue; /* not in use */
-            preen_Invar( &ii->invar, a, len, isHeap );
+            if (0) { pp_Invar(&ii->invar); VG_(printf)(" x\n"); }
+            preen_global_Invar( &ii->invar, a, len );
             xx++;           
          }
          tl_assert(xx == frame->htab_used);
       }
    }
-#endif
 }
 
 
@@ -1564,12 +1590,16 @@ static void classify_address ( /*OUT*/Invar* inv,
            if (0) VG_(printf)("Tree sizes %ld %ld\n",
                               VG_(sizeFM)(siTrees[tid]), VG_(sizeFM)(giTree));
            sOK = VG_(findBoundsFM)( siTrees[tid], 
-                                    (UWord*)&sLB, (UWord*)&sUB,
-                                    (UWord)&sNegInf, (UWord)&sPosInf,
+                                    (UWord*)&sLB,    NULL/*unused*/,
+                                    (UWord*)&sUB,    NULL/*unused*/,
+                                    (UWord)&sNegInf, 0/*unused*/,
+                                    (UWord)&sPosInf, 0/*unused*/,
                                     (UWord)&sKey );
            gOK = VG_(findBoundsFM)( giTree,
-                                    (UWord*)&gLB, (UWord*)&gUB,
-                                    (UWord)&gNegInf, (UWord)&gPosInf,
+                                    (UWord*)&gLB,    NULL/*unused*/,
+                                    (UWord*)&gUB,    NULL/*unused*/,
+                                    (UWord)&gNegInf, 0/*unused*/,
+                                    (UWord)&gPosInf, 0/*unused*/,
                                     (UWord)&gKey );
            if (!(sOK && gOK)) {
               /* If this happens, then [ea,ea+szB) partially overlaps
@@ -1800,7 +1830,7 @@ void shadowStack_new_frame ( ThreadId tid,
          if (0 && (sb || gb))
             VG_(message)(Vg_DebugMsg, 
                          "exp-sgcheck: new max tree sizes: "
-                         "StackTree %ld, GlobalTree %ld",
+                         "StackTree %ld, GlobalTree %ld\n",
                          stats__max_sitree_size, stats__max_gitree_size );
       }
    } else {
@@ -1982,12 +2012,16 @@ struct _SGEnv {
       we basically can't really handle properly; and so we ignore all
       but the first ref. */
    Bool firstRef;
+   /* READONLY */
+   IRTemp (*newIRTemp_cb)(IRType,void*);
+   void* newIRTemp_opaque;
 };
 
 
 /* --- Helper fns for instrumentation --- */
 
-static IRTemp gen_Get_SP ( IRSB*           bbOut,
+static IRTemp gen_Get_SP ( struct _SGEnv*  sge,
+                           IRSB*           bbOut,
                            VexGuestLayout* layout,
                            Int             hWordTy_szB )
 {
@@ -1999,12 +2033,13 @@ static IRTemp gen_Get_SP ( IRSB*           bbOut,
    tl_assert(hWordTy_szB == layout->sizeof_SP);
    sp_type = layout->sizeof_SP == 8 ? Ity_I64 : Ity_I32;
    sp_expr = IRExpr_Get( layout->offset_SP, sp_type );
-   sp_temp = newIRTemp( bbOut->tyenv, sp_type );
+   sp_temp = sge->newIRTemp_cb( sp_type, sge->newIRTemp_opaque );
    addStmtToIRSB( bbOut, IRStmt_WrTmp( sp_temp, sp_expr ) );
    return sp_temp;
 }
 
-static IRTemp gen_Get_FP ( IRSB*           bbOut,
+static IRTemp gen_Get_FP ( struct _SGEnv*  sge,
+                           IRSB*           bbOut,
                            VexGuestLayout* layout,
                            Int             hWordTy_szB )
 {
@@ -2016,12 +2051,13 @@ static IRTemp gen_Get_FP ( IRSB*           bbOut,
    tl_assert(hWordTy_szB == layout->sizeof_SP);
    fp_type = layout->sizeof_FP == 8 ? Ity_I64 : Ity_I32;
    fp_expr = IRExpr_Get( layout->offset_FP, fp_type );
-   fp_temp = newIRTemp( bbOut->tyenv, fp_type );
+   fp_temp = sge->newIRTemp_cb( fp_type, sge->newIRTemp_opaque );
    addStmtToIRSB( bbOut, IRStmt_WrTmp( fp_temp, fp_expr ) );
    return fp_temp;
 }
 
-static void instrument_mem_access ( IRSB*   bbOut, 
+static void instrument_mem_access ( struct _SGEnv* sge,
+                                    IRSB*   bbOut, 
                                     IRExpr* addr,
                                     Int     szB,
                                     Bool    isStore,
@@ -2058,8 +2094,8 @@ static void instrument_mem_access ( IRSB*   bbOut,
    /* Generate a call to "helperc__mem_access", passing:
          addr current_SP current_FP szB curr_IP frameBlocks
    */
-   { IRTemp t_SP = gen_Get_SP( bbOut, layout, hWordTy_szB );
-     IRTemp t_FP = gen_Get_FP( bbOut, layout, hWordTy_szB );
+   { IRTemp t_SP = gen_Get_SP( sge, bbOut, layout, hWordTy_szB );
+     IRTemp t_FP = gen_Get_FP( sge, bbOut, layout, hWordTy_szB );
      IRExpr** args
         = mkIRExprVec_6( addr,
                          IRExpr_RdTmp(t_SP),
@@ -2070,7 +2106,7 @@ static void instrument_mem_access ( IRSB*   bbOut,
      IRDirty* di
         = unsafeIRDirty_0_N( 3/*regparms*/, 
                              "helperc__mem_access", 
-                             VG_(fnptr_to_fnentry)( &helperc__mem_access ),
+                            VG_(fnptr_to_fnentry)( &helperc__mem_access ),
                              args );
 
      addStmtToIRSB( bbOut, IRStmt_Dirty(di) );
@@ -2080,14 +2116,17 @@ static void instrument_mem_access ( IRSB*   bbOut,
 
 /* --- Instrumentation main (4 fns) --- */
 
-struct _SGEnv *  sg_instrument_init ( void )
+struct _SGEnv * sg_instrument_init ( IRTemp (*newIRTemp_cb)(IRType,void*),
+                                     void* newIRTemp_opaque )
 {
    struct _SGEnv * env = sg_malloc("di.sg_main.sii.1",
                                    sizeof(struct _SGEnv));
    tl_assert(env);
-   env->curr_IP       = 0;
-   env->curr_IP_known = False;
-   env->firstRef      = True;
+   env->curr_IP          = 0;
+   env->curr_IP_known    = False;
+   env->firstRef         = True;
+   env->newIRTemp_cb     = newIRTemp_cb;
+   env->newIRTemp_opaque = newIRTemp_opaque;
    return env;
 }
 
@@ -2105,6 +2144,9 @@ void sg_instrument_IRStmt ( /*MOD*/struct _SGEnv * env,
                             VexGuestLayout* layout,
                             IRType gWordTy, IRType hWordTy )
 {
+   if (!sg_clo_enable_sg_checks)
+      return;
+
    tl_assert(st);
    tl_assert(isFlatIRStmt(st));
    switch (st->tag) {
@@ -2131,7 +2173,7 @@ void sg_instrument_IRStmt ( /*MOD*/struct _SGEnv * env,
          tl_assert(env->curr_IP_known);
          if (env->firstRef) {
             instrument_mem_access( 
-               sbOut, 
+               env, sbOut, 
                st->Ist.Store.addr, 
                sizeofIRType(typeOfIRExpr(sbOut->tyenv, st->Ist.Store.data)),
                True/*isStore*/,
@@ -2148,7 +2190,7 @@ void sg_instrument_IRStmt ( /*MOD*/struct _SGEnv * env,
             tl_assert(env->curr_IP_known);
             if (env->firstRef) {
                instrument_mem_access(
-                  sbOut,
+                  env, sbOut,
                   data->Iex.Load.addr,
                   sizeofIRType(data->Iex.Load.ty),
                   False/*!isStore*/,
@@ -2174,13 +2216,13 @@ void sg_instrument_IRStmt ( /*MOD*/struct _SGEnv * env,
                dataSize = d->mSize;
                if (d->mFx == Ifx_Read || d->mFx == Ifx_Modify) {
                   instrument_mem_access( 
-                     sbOut, d->mAddr, dataSize, False/*!isStore*/,
+                     env, sbOut, d->mAddr, dataSize, False/*!isStore*/,
                      sizeofIRType(hWordTy), env->curr_IP, layout
                   );
                }
                if (d->mFx == Ifx_Write || d->mFx == Ifx_Modify) {
                   instrument_mem_access( 
-                     sbOut, d->mAddr, dataSize, True/*isStore*/,
+                     env, sbOut, d->mAddr, dataSize, True/*isStore*/,
                      sizeofIRType(hWordTy), env->curr_IP, layout
                   );
                }
@@ -2189,6 +2231,33 @@ void sg_instrument_IRStmt ( /*MOD*/struct _SGEnv * env,
          } else {
             tl_assert(d->mAddr == NULL);
             tl_assert(d->mSize == 0);
+         }
+         break;
+      }
+
+      case Ist_CAS: {
+         /* We treat it as a read and a write of the location.  I
+            think that is the same behaviour as it was before IRCAS
+            was introduced, since prior to that point, the Vex front
+            ends would translate a lock-prefixed instruction into a
+            (normal) read followed by a (normal) write. */
+         if (env->firstRef) {
+            Int    dataSize;
+            IRCAS* cas = st->Ist.CAS.details;
+            tl_assert(cas->addr != NULL);
+            tl_assert(cas->dataLo != NULL);
+            dataSize = sizeofIRType(typeOfIRExpr(sbOut->tyenv, cas->dataLo));
+            if (cas->dataHi != NULL)
+               dataSize *= 2; /* since it's a doubleword-CAS */
+            instrument_mem_access(
+               env, sbOut, cas->addr, dataSize, False/*!isStore*/,
+               sizeofIRType(hWordTy), env->curr_IP, layout
+            );
+            instrument_mem_access(
+               env, sbOut, cas->addr, dataSize, True/*isStore*/,
+               sizeofIRType(hWordTy), env->curr_IP, layout
+            );
+            env->firstRef = False;
          }
          break;
       }
@@ -2210,6 +2279,9 @@ void sg_instrument_final_jump ( /*MOD*/struct _SGEnv * env,
                                 VexGuestLayout* layout,
                                 IRType gWordTy, IRType hWordTy )
 {
+   if (!sg_clo_enable_sg_checks)
+      return;
+
    if (jumpkind == Ijk_Call) {
       // Assumes x86 or amd64
       IRTemp   sp_post_call_insn, fp_post_call_insn;
@@ -2217,9 +2289,9 @@ void sg_instrument_final_jump ( /*MOD*/struct _SGEnv * env,
       IRExpr** args;
       IRDirty* di;
       sp_post_call_insn
-         = gen_Get_SP( sbOut, layout, sizeofIRType(hWordTy) );
+         = gen_Get_SP( env, sbOut, layout, sizeofIRType(hWordTy) );
       fp_post_call_insn
-         = gen_Get_FP( sbOut, layout, sizeofIRType(hWordTy) );
+         = gen_Get_FP( env, sbOut, layout, sizeofIRType(hWordTy) );
       tl_assert(env->curr_IP_known);
       frameBlocks = get_StackBlocks_for_IP( env->curr_IP );
       tl_assert(frameBlocks);
@@ -2380,34 +2452,34 @@ void sg_pre_thread_first_insn ( ThreadId tid ) {
 
 void sg_fini(Int exitcode)
 {
-   if (VG_(clo_verbosity) >= 2) {
+   if (VG_(clo_stats)) {
       VG_(message)(Vg_DebugMsg,
-         " sg_:  %'llu total accesses, of which:", stats__total_accesses);
+         " sg_:  %'llu total accesses, of which:\n", stats__total_accesses);
       VG_(message)(Vg_DebugMsg,
-         " sg_:     stack0: %'12llu classify",
+         " sg_:     stack0: %'12llu classify\n",
          stats__classify_Stack0);
       VG_(message)(Vg_DebugMsg,
-         " sg_:     stackN: %'12llu classify",
+         " sg_:     stackN: %'12llu classify\n",
          stats__classify_StackN);
       VG_(message)(Vg_DebugMsg,
-         " sg_:     global: %'12llu classify",
+         " sg_:     global: %'12llu classify\n",
          stats__classify_Global);
       VG_(message)(Vg_DebugMsg,
-         " sg_:    unknown: %'12llu classify",
+         " sg_:    unknown: %'12llu classify\n",
          stats__classify_Unknown);
       VG_(message)(Vg_DebugMsg,
-         " sg_:  %'llu Invars preened, of which %'llu changed",
+         " sg_:  %'llu Invars preened, of which %'llu changed\n",
          stats__Invars_preened, stats__Invars_changed);
       VG_(message)(Vg_DebugMsg,
-         " sg_:   t_i_b_MT: %'12llu", stats__t_i_b_empty);
+         " sg_:   t_i_b_MT: %'12llu\n", stats__t_i_b_empty);
       VG_(message)(Vg_DebugMsg, 
-         " sg_:     qcache: %'llu searches, %'llu probes, %'llu misses",
+         " sg_:     qcache: %'llu searches, %'llu probes, %'llu misses\n",
          stats__qcache_queries, stats__qcache_probes, stats__qcache_misses);
       VG_(message)(Vg_DebugMsg, 
-         " sg_:  htab-fast: %'llu hits",
+         " sg_:  htab-fast: %'llu hits\n",
          stats__htab_fast);
       VG_(message)(Vg_DebugMsg, 
-         " sg_:  htab-slow: %'llu searches, %'llu probes, %'llu resizes",
+         " sg_:  htab-slow: %'llu searches, %'llu probes, %'llu resizes\n",
          stats__htab_searches, stats__htab_probes, stats__htab_resizes);
    }
 }

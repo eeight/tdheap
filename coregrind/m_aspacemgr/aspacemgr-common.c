@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2008 OpenWorks LLP
+   Copyright (C) 2006-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -50,6 +50,7 @@
 // Simple assert and assert-like fns, which avoid dependence on
 // m_libcassert, and hence on the entire debug-info reader swamp
 
+__attribute__ ((noreturn))
 void ML_(am_exit)( Int status )
 {
 #  if defined(VGO_linux)
@@ -94,8 +95,8 @@ void ML_(am_assert_fail)( const HChar* expr,
 Int ML_(am_getpid)( void )
 {
    SysRes sres = VG_(do_syscall0)(__NR_getpid);
-   aspacem_assert(!sres.isError);
-   return sres.res;
+   aspacem_assert(!sr_isError(sres));
+   return sr_Res(sres);
 }
 
 
@@ -146,7 +147,7 @@ UInt ML_(am_sprintf) ( HChar* buf, const HChar *format, ... )
 
 /* Note: this is VG_, not ML_. */
 SysRes VG_(am_do_mmap_NO_NOTIFY)( Addr start, SizeT length, UInt prot, 
-                                  UInt flags, UInt fd, Off64T offset)
+                                  UInt flags, Int fd, Off64T offset)
 {
    SysRes res;
    aspacem_assert(VG_IS_PAGE_ALIGNED(offset));
@@ -159,6 +160,18 @@ SysRes VG_(am_do_mmap_NO_NOTIFY)( Addr start, SizeT length, UInt prot,
         || defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
    res = VG_(do_syscall6)(__NR_mmap, (UWord)start, length, 
                          prot, flags, fd, offset);
+#  elif defined(VGP_x86_darwin)
+   if (fd == 0  &&  (flags & VKI_MAP_ANONYMOUS)) {
+       fd = -1;  // MAP_ANON with fd==0 is EINVAL
+   }
+   res = VG_(do_syscall7)(__NR_mmap, (UWord)start, length,
+                          prot, flags, fd, offset & 0xffffffff, offset >> 32);
+#  elif defined(VGP_amd64_darwin)
+   if (fd == 0  &&  (flags & VKI_MAP_ANONYMOUS)) {
+       fd = -1;  // MAP_ANON with fd==0 is EINVAL
+   }
+   res = VG_(do_syscall6)(__NR_mmap, (UWord)start, length,
+                          prot, flags, (UInt)fd, offset);
 #  else
 #    error Unknown platform
 #  endif
@@ -175,6 +188,9 @@ SysRes ML_(am_do_munmap_NO_NOTIFY)(Addr start, SizeT length)
 {
    return VG_(do_syscall2)(__NR_munmap, (UWord)start, length );
 }
+
+#if HAVE_MREMAP
+/* The following are used only to implement mremap(). */
 
 SysRes ML_(am_do_extend_mapping_NO_NOTIFY)( 
           Addr  old_addr, 
@@ -226,6 +242,8 @@ SysRes ML_(am_do_relocate_nooverlap_mapping_NO_NOTIFY)(
 #  endif
 }
 
+#endif
+
 /* --- Pertaining to files --- */
 
 SysRes ML_(am_open) ( const Char* pathname, Int flags, Int mode )
@@ -237,7 +255,7 @@ SysRes ML_(am_open) ( const Char* pathname, Int flags, Int mode )
 Int ML_(am_read) ( Int fd, void* buf, Int count)
 {
    SysRes res = VG_(do_syscall3)(__NR_read, fd, (UWord)buf, count);
-   return res.isError ? -1 : res.res;
+   return sr_isError(res) ? -1 : sr_Res(res);
 }
 
 void ML_(am_close) ( Int fd )
@@ -249,7 +267,19 @@ Int ML_(am_readlink)(HChar* path, HChar* buf, UInt bufsiz)
 {
    SysRes res;
    res = VG_(do_syscall3)(__NR_readlink, (UWord)path, (UWord)buf, bufsiz);
-   return res.isError ? -1 : res.res;
+   return sr_isError(res) ? -1 : sr_Res(res);
+}
+
+Int ML_(am_fcntl) ( Int fd, Int cmd, Addr arg )
+{
+#  if defined(VGO_linux) || defined(VGO_aix5)
+   SysRes res = VG_(do_syscall3)(__NR_fcntl, fd, cmd, arg);
+#  elif defined(VGO_darwin)
+   SysRes res = VG_(do_syscall3)(__NR_fcntl_nocancel, fd, cmd, arg);
+#  else
+#  error "Unknown OS"
+#  endif
+   return sr_isError(res) ? -1 : sr_Res(res);
 }
 
 /* Get the dev, inode and mode info for a file descriptor, if
@@ -266,7 +296,7 @@ Bool ML_(am_get_fd_d_i_m)( Int fd,
       binaries on amd64 systems where fstat seems to be broken. */
    struct vki_stat64 buf64;
    res = VG_(do_syscall2)(__NR_fstat64, fd, (UWord)&buf64);
-   if (!res.isError) {
+   if (!sr_isError(res)) {
       *dev  = (ULong)buf64.st_dev;
       *ino  = (ULong)buf64.st_ino;
       *mode = (UInt) buf64.st_mode;
@@ -274,7 +304,7 @@ Bool ML_(am_get_fd_d_i_m)( Int fd,
    }
 #  endif
    res = VG_(do_syscall2)(__NR_fstat, fd, (UWord)&buf);
-   if (!res.isError) {
+   if (!sr_isError(res)) {
       *dev  = (ULong)buf.st_dev;
       *ino  = (ULong)buf.st_ino;
       *mode = (UInt) buf.st_mode;
@@ -282,6 +312,40 @@ Bool ML_(am_get_fd_d_i_m)( Int fd,
    }
    return False;
 }
+
+Bool ML_(am_resolve_filename) ( Int fd, /*OUT*/HChar* buf, Int nbuf )
+{
+#if defined(VGO_linux)
+   Int i;
+   HChar tmp[64];
+   for (i = 0; i < nbuf; i++) buf[i] = 0;
+   ML_(am_sprintf)(tmp, "/proc/self/fd/%d", fd);
+   if (ML_(am_readlink)(tmp, buf, nbuf) > 0 && buf[0] == '/')
+      return True;
+   else
+      return False;
+
+#elif defined(VGO_aix5)
+   I_die_here; /* maybe just return False? */
+   return False;
+
+#elif defined(VGO_darwin)
+   HChar tmp[VKI_MAXPATHLEN+1];
+   if (0 == ML_(am_fcntl)(fd, VKI_F_GETPATH, (UWord)tmp)) {
+      if (nbuf > 0) {
+         VG_(strncpy)( buf, tmp, nbuf < sizeof(tmp) ? nbuf : sizeof(tmp) );
+         buf[nbuf-1] = 0;
+      }
+      if (tmp[0] == '/') return True;
+   }
+   return False;
+
+#  else
+#     error Unknown OS
+#  endif
+}
+
+
 
 
 /*-----------------------------------------------------------------*/
@@ -309,10 +373,10 @@ VgStack* VG_(am_alloc_VgStack)( /*OUT*/Addr* initial_sp )
          + VG_STACK_ACTIVE_SZB + VG_STACK_GUARD_SZB;
 
    sres = VG_(am_mmap_anon_float_valgrind)( szB );
-   if (sres.isError)
+   if (sr_isError(sres))
       return NULL;
 
-   stack = (VgStack*)sres.res;
+   stack = (VgStack*)(AddrH)sr_Res(sres);
 
    aspacem_assert(VG_IS_PAGE_ALIGNED(szB));
    aspacem_assert(VG_IS_PAGE_ALIGNED(stack));
@@ -322,7 +386,7 @@ VgStack* VG_(am_alloc_VgStack)( /*OUT*/Addr* initial_sp )
              (Addr) &stack[0], 
              VG_STACK_GUARD_SZB, VKI_PROT_NONE 
           );
-   if (sres.isError) goto protect_failed;
+   if (sr_isError(sres)) goto protect_failed;
    VG_(am_notify_mprotect)( 
       (Addr) &stack->bytes[0], 
       VG_STACK_GUARD_SZB, VKI_PROT_NONE 
@@ -332,7 +396,7 @@ VgStack* VG_(am_alloc_VgStack)( /*OUT*/Addr* initial_sp )
              (Addr) &stack->bytes[VG_STACK_GUARD_SZB + VG_STACK_ACTIVE_SZB], 
              VG_STACK_GUARD_SZB, VKI_PROT_NONE 
           );
-   if (sres.isError) goto protect_failed;
+   if (sr_isError(sres)) goto protect_failed;
    VG_(am_notify_mprotect)( 
       (Addr) &stack->bytes[VG_STACK_GUARD_SZB + VG_STACK_ACTIVE_SZB],
       VG_STACK_GUARD_SZB, VKI_PROT_NONE 
@@ -347,7 +411,7 @@ VgStack* VG_(am_alloc_VgStack)( /*OUT*/Addr* initial_sp )
 
    *initial_sp = (Addr)&stack->bytes[VG_STACK_GUARD_SZB + VG_STACK_ACTIVE_SZB];
    *initial_sp -= 8;
-   *initial_sp &= ~((Addr)0xF);
+   *initial_sp &= ~((Addr)0x1F); /* 32-align it */
 
    VG_(debugLog)( 1,"aspacem","allocated thread stack at 0x%llx size %d\n",
                   (ULong)(Addr)stack, szB);

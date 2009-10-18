@@ -1,6 +1,4 @@
-/** Test whether detached threads are handled properly.
- *  Copyright (c) 2006-2008 by Bart Van Assche (bart.vanassche@gmail.com).
- */
+/* Test whether detached threads are handled properly. */
 
 
 #include <assert.h>
@@ -92,6 +90,8 @@ int main(int argc, char** argv)
   write(STDOUT_FILENO, "\n", 1);
 
   pthread_mutex_destroy(&s_mutex);
+
+  sleep(1);
 
   return 0;
 }

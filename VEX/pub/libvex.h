@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2009 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -78,25 +78,28 @@ typedef
    but not SSE1).  LibVEX_Translate will check for nonsensical
    combinations. */
 
-/* x86: baseline capability is Pentium-1 (FPU, MMX, but no SSE) */
+/* x86: baseline capability is Pentium-1 (FPU, MMX, but no SSE), with
+   cmpxchg8b. */
 #define VEX_HWCAPS_X86_SSE1   (1<<1)  /* SSE1 support (Pentium III) */
 #define VEX_HWCAPS_X86_SSE2   (1<<2)  /* SSE2 support (Pentium 4) */
 #define VEX_HWCAPS_X86_SSE3   (1<<3)  /* SSE3 support (>= Prescott) */
 
-/* amd64: baseline capability is SSE2 */
+/* amd64: baseline capability is SSE2, with cmpxchg8b but not
+   cmpxchg16b. */
 #define VEX_HWCAPS_AMD64_SSE3 (1<<4)  /* SSE3 support */
+#define VEX_HWCAPS_AMD64_CX16 (1<<5)  /* cmpxchg16b support */
 
 /* ppc32: baseline capability is integer only */
-#define VEX_HWCAPS_PPC32_F    (1<<5)  /* basic (non-optional) FP */
-#define VEX_HWCAPS_PPC32_V    (1<<6)  /* Altivec (VMX) */
-#define VEX_HWCAPS_PPC32_FX   (1<<7)  /* FP extns (fsqrt, fsqrts) */
-#define VEX_HWCAPS_PPC32_GX   (1<<8)  /* Graphics extns
+#define VEX_HWCAPS_PPC32_F    (1<<6)  /* basic (non-optional) FP */
+#define VEX_HWCAPS_PPC32_V    (1<<7)  /* Altivec (VMX) */
+#define VEX_HWCAPS_PPC32_FX   (1<<8)  /* FP extns (fsqrt, fsqrts) */
+#define VEX_HWCAPS_PPC32_GX   (1<<9)  /* Graphics extns
                                          (fres,frsqrte,fsel,stfiwx) */
 
 /* ppc64: baseline capability is integer and basic FP insns */
-#define VEX_HWCAPS_PPC64_V    (1<<9)  /* Altivec (VMX) */
-#define VEX_HWCAPS_PPC64_FX   (1<<10) /* FP extns (fsqrt, fsqrts) */
-#define VEX_HWCAPS_PPC64_GX   (1<<11) /* Graphics extns
+#define VEX_HWCAPS_PPC64_V    (1<<10) /* Altivec (VMX) */
+#define VEX_HWCAPS_PPC64_FX   (1<<11) /* FP extns (fsqrt, fsqrts) */
+#define VEX_HWCAPS_PPC64_GX   (1<<12) /* Graphics extns
                                          (fres,frsqrte,fsel,stfiwx) */
 
 /* arm: baseline capability is ARMv4 */
@@ -141,6 +144,16 @@ void LibVEX_default_VexArchInfo ( /*OUT*/VexArchInfo* vai );
       guest is amd64-linux                ==> 128
       guest is other                      ==> inapplicable
 
+   guest_amd64_assume_fs_is_zero
+      guest is amd64-linux                ==> True
+      guest is amd64-darwin               ==> False
+      guest is other                      ==> inapplicable
+
+   guest_amd64_assume_gs_is_0x60
+      guest is amd64-darwin               ==> True
+      guest is amd64-linux                ==> False
+      guest is other                      ==> inapplicable
+
    guest_ppc_zap_RZ_at_blr
       guest is ppc64-linux                ==> True
       guest is ppc32-linux                ==> False
@@ -178,6 +191,16 @@ typedef
       /* PPC and AMD64 GUESTS only: how many bytes below the 
          stack pointer are validly addressible? */
       Int guest_stack_redzone_size;
+
+      /* AMD64 GUESTS only: should we translate %fs-prefixed
+         instructions using the assumption that %fs always contains
+         zero? */
+      Bool guest_amd64_assume_fs_is_zero;
+
+      /* AMD64 GUESTS only: should we translate %gs-prefixed
+         instructions using the assumption that %gs always contains
+         0x60? */
+      Bool guest_amd64_assume_gs_is_0x60;
 
       /* PPC GUESTS only: should we zap the stack red zone at a 'blr'
          (function return) ? */
@@ -253,15 +276,6 @@ void LibVEX_default_VexControl ( /*OUT*/ VexControl* vcon );
 
 
 /*-------------------------------------------------------*/
-/*--- Version information                             ---*/
-/*-------------------------------------------------------*/
-
-/* Returns the Vex SVN version, as a statically allocated string. */
-
-extern const HChar* LibVEX_Version ( void );
-
-
-/*-------------------------------------------------------*/
 /*--- Storage management control                      ---*/
 /*-------------------------------------------------------*/
 
@@ -309,7 +323,7 @@ extern void LibVEX_ShowAllocStats ( void );
 
 /* The max number of guest state chunks which we can describe as
    always defined (for the benefit of Memcheck). */
-#define VEXGLO_N_ALWAYSDEFD  22
+#define VEXGLO_N_ALWAYSDEFD  24
 
 typedef
    struct {
@@ -352,7 +366,7 @@ typedef
    16-aligned size and be 16-aligned, and placed back-to-back.
 */
 
-#define LibVEX_N_SPILL_BYTES 2048
+#define LibVEX_N_SPILL_BYTES 4096
 
 
 /*-------------------------------------------------------*/

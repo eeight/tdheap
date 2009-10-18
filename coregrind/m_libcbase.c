@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -50,12 +50,6 @@ Bool VG_(isdigit) ( Char c )
    Converting strings to numbers
    ------------------------------------------------------------------ */
 
-static Bool is_oct_digit(Char c, Long* digit)
-{
-   if (c >= '0' && c <= '7') { *digit = (Long)(c - '0'); return True; }
-   return False;
-}
-
 static Bool is_dec_digit(Char c, Long* digit)
 {
    if (c >= '0' && c <= '9') { *digit = (Long)(c - '0'); return True; }
@@ -70,40 +64,11 @@ static Bool is_hex_digit(Char c, Long* digit)
    return False;
 }
 
-static Bool is_base36_digit(Char c, Long* digit)
-{
-   if (c >= '0' && c <= '9') { *digit = (Long)(c - '0');        return True; }
-   if (c >= 'A' && c <= 'Z') { *digit = (Long)((c - 'A') + 10); return True; }
-   if (c >= 'a' && c <= 'z') { *digit = (Long)((c - 'a') + 10); return True; }
-   return False;
-}
-
-Long VG_(strtoll8) ( Char* str, Char** endptr )
-{
-   Bool neg = False;
-   Long n = 0, digit = 0;
-
-   // Skip leading whitespace.
-   while (VG_(isspace)(*str)) str++;
-
-   // Allow a leading '-' or '+'.
-   if (*str == '-') { str++; neg = True; }
-   else if (*str == '+') { str++; }
-
-   while (is_oct_digit(*str, &digit)) {
-      n = 8*n + digit;
-      str++;
-   }
-
-   if (neg) n = -n;
-   if (endptr) *endptr = str;    // Record first failing character.
-   return n;
-}
-
 Long VG_(strtoll10) ( Char* str, Char** endptr )
 {
-   Bool neg = False;
+   Bool neg = False, converted = False;
    Long n = 0, digit = 0;
+   Char* str0 = str;
 
    // Skip leading whitespace.
    while (VG_(isspace)(*str)) str++;
@@ -113,19 +78,22 @@ Long VG_(strtoll10) ( Char* str, Char** endptr )
    else if (*str == '+') { str++; }
 
    while (is_dec_digit(*str, &digit)) {
+      converted = True;          // Ok, we've actually converted a digit.
       n = 10*n + digit;
       str++;
    }
 
-   if (neg) n = -n;
+   if (!converted) str = str0;   // If nothing converted, endptr points to
+   if (neg) n = -n;              //   the start of the string.
    if (endptr) *endptr = str;    // Record first failing character.
    return n;
 }
 
 Long VG_(strtoll16) ( Char* str, Char** endptr )
 {
-   Bool neg = False;
+   Bool neg = False, converted = False;
    Long n = 0, digit = 0;
+   Char* str0 = str;
 
    // Skip leading whitespace.
    while (VG_(isspace)(*str)) str++;
@@ -143,33 +111,13 @@ Long VG_(strtoll16) ( Char* str, Char** endptr )
    }
 
    while (is_hex_digit(*str, &digit)) {
+      converted = True;          // Ok, we've actually converted a digit.
       n = 16*n + digit;
       str++;
    }
 
-   if (neg) n = -n;
-   if (endptr) *endptr = str;    // Record first failing character.
-   return n;
-}
-
-Long VG_(strtoll36) ( Char* str, Char** endptr )
-{
-   Bool neg = False;
-   Long n = 0, digit = 0;
-
-   // Skip leading whitespace.
-   while (VG_(isspace)(*str)) str++;
-
-   // Allow a leading '-' or '+'.
-   if (*str == '-') { str++; neg = True; }
-   else if (*str == '+') { str++; }
-
-   while (is_base36_digit(*str, &digit)) {
-      n = 36*n + digit;
-      str++;
-   }
-
-   if (neg) n = -n;
+   if (!converted) str = str0;   // If nothing converted, endptr points to
+   if (neg) n = -n;              //   the start of the string.
    if (endptr) *endptr = str;    // Record first failing character.
    return n;
 }
@@ -207,28 +155,22 @@ double VG_(strtod) ( Char* str, Char** endptr )
    return n;
 }
 
-Long VG_(atoll) ( Char* str )
+Char VG_(tolower) ( Char c )
 {
-   return VG_(strtoll10)(str, NULL);
-}
-
-Long VG_(atoll16) ( Char* str )
-{
-   return VG_(strtoll16)(str, NULL);
-}
-
-Long VG_(atoll36) ( Char* str )
-{
-   return VG_(strtoll36)(str, NULL);
+   if ( c >= 'A'  &&  c <= 'Z' ) {
+      return c - 'A' + 'a';
+   } else {
+      return c;
+   }
 }
 
 /* ---------------------------------------------------------------------
    String functions
    ------------------------------------------------------------------ */
 
-Int VG_(strlen) ( const Char* str )
+SizeT VG_(strlen) ( const Char* str )
 {
-   Int i = 0;
+   SizeT i = 0;
    while (str[i] != 0) i++;
    return i;
 }
@@ -251,11 +193,11 @@ Char* VG_(strncat) ( Char* dest, const Char* src, SizeT n )
    return dest_orig;
 }
 
-Char* VG_(strpbrk) ( const Char* s, const Char* accept )
+Char* VG_(strpbrk) ( const Char* s, const Char* accpt )
 {
    const Char* a;
    while (*s) {
-      a = accept;
+      a = accpt;
       while (*a)
          if (*a++ == *s)
             return (Char *) s;
@@ -276,7 +218,7 @@ Char* VG_(strcpy) ( Char* dest, const Char* src )
    zero termination. */
 void VG_(strncpy_safely) ( Char* dest, const Char* src, SizeT ndest )
 {
-   Int i = 0;
+   SizeT i = 0;
    while (True) {
       dest[i] = 0;
       if (src[i] == 0) return;
@@ -288,7 +230,7 @@ void VG_(strncpy_safely) ( Char* dest, const Char* src, SizeT ndest )
 
 Char* VG_(strncpy) ( Char* dest, const Char* src, SizeT ndest )
 {
-   Int i = 0;
+   SizeT i = 0;
    while (True) {
       if (i >= ndest) return dest;     /* reached limit */
       dest[i] = src[i];
@@ -314,20 +256,17 @@ Int VG_(strcmp) ( const Char* s1, const Char* s2 )
    }
 }
 
-static Bool isterm ( Char c )
-{
-   return ( VG_(isspace)(c) || 0 == c );
-}
-
-Int VG_(strcmp_ws) ( const Char* s1, const Char* s2 )
+Int VG_(strcasecmp) ( const Char* s1, const Char* s2 )
 {
    while (True) {
-      if (isterm(*s1) && isterm(*s2)) return 0;
-      if (isterm(*s1)) return -1;
-      if (isterm(*s2)) return 1;
+      UChar c1 = (UChar)VG_(tolower)(*s1);
+      UChar c2 = (UChar)VG_(tolower)(*s2);
+      if (c1 == 0 && c2 == 0) return 0;
+      if (c1 == 0) return -1;
+      if (c2 == 0) return 1;
 
-      if (*(UChar*)s1 < *(UChar*)s2) return -1;
-      if (*(UChar*)s1 > *(UChar*)s2) return 1;
+      if (c1 < c2) return -1;
+      if (c1 > c2) return 1;
 
       s1++; s2++;
    }
@@ -335,7 +274,7 @@ Int VG_(strcmp_ws) ( const Char* s1, const Char* s2 )
 
 Int VG_(strncmp) ( const Char* s1, const Char* s2, SizeT nmax )
 {
-   Int n = 0;
+   SizeT n = 0;
    while (True) {
       if (n >= nmax) return 0;
       if (*s1 == 0 && *s2 == 0) return 0;
@@ -349,23 +288,42 @@ Int VG_(strncmp) ( const Char* s1, const Char* s2, SizeT nmax )
    }
 }
 
-Int VG_(strncmp_ws) ( const Char* s1, const Char* s2, SizeT nmax )
+Int VG_(strncasecmp) ( const Char* s1, const Char* s2, SizeT nmax )
 {
    Int n = 0;
    while (True) {
+      UChar c1;
+      UChar c2;
       if (n >= nmax) return 0;
-      if (isterm(*s1) && isterm(*s2)) return 0;
-      if (isterm(*s1)) return -1;
-      if (isterm(*s2)) return 1;
+      c1 = (UChar)VG_(tolower)(*s1);
+      c2 = (UChar)VG_(tolower)(*s2);
+      if (c1 == 0 && c2 == 0) return 0;
+      if (c1 == 0) return -1;
+      if (c2 == 0) return 1;
 
-      if (*(UChar*)s1 < *(UChar*)s2) return -1;
-      if (*(UChar*)s1 > *(UChar*)s2) return 1;
+      if (c1 < c2) return -1;
+      if (c1 > c2) return 1;
 
       s1++; s2++; n++;
    }
 }
 
 Char* VG_(strstr) ( const Char* haystack, Char* needle )
+{
+   SizeT n; 
+   if (haystack == NULL)
+      return NULL;
+   n = VG_(strlen)(needle);
+   while (True) {
+      if (haystack[0] == 0) 
+         return NULL;
+      if (VG_(strncmp)(haystack, needle, n) == 0) 
+         return (Char*)haystack;
+      haystack++;
+   }
+}
+
+Char* VG_(strcasestr) ( const Char* haystack, Char* needle )
 {
    Int n; 
    if (haystack == NULL)
@@ -374,7 +332,7 @@ Char* VG_(strstr) ( const Char* haystack, Char* needle )
    while (True) {
       if (haystack[0] == 0) 
          return NULL;
-      if (VG_(strncmp)(haystack, needle, n) == 0) 
+      if (VG_(strncasecmp)(haystack, needle, n) == 0) 
          return (Char*)haystack;
       haystack++;
    }
@@ -398,65 +356,32 @@ Char* VG_(strrchr) ( const Char* s, Char c )
    return NULL;
 }
 
-/* ---------------------------------------------------------------------
-   A simple string matching routine, purloined from Hugs98.
-      '*'    matches any sequence of zero or more characters
-      '?'    matches any single character exactly 
-      '\c'   matches the character c only (ignoring special chars)
-      c      matches the character c only
-   ------------------------------------------------------------------ */
-
-/* Keep track of recursion depth. */
-static Int recDepth;
-
-// Nb: vg_assert disabled because we can't use it from this module...
-static Bool string_match_wrk ( const Char* pat, const Char* str )
+SizeT VG_(strspn) ( const Char* s, const Char* accpt )
 {
-   //vg_assert(recDepth >= 0 && recDepth < 500);
-   recDepth++;
-   for (;;) {
-      switch (*pat) {
-      case '\0':recDepth--;
-                return (*str=='\0');
-      case '*': do {
-                   if (string_match_wrk(pat+1,str)) {
-                      recDepth--;
-                      return True;
-                   }
-                } while (*str++);
-                recDepth--;
-                return False;
-      case '?': if (*str++=='\0') {
-                   recDepth--;
-                   return False;
-                }
-                pat++;
-                break;
-      case '\\':if (*++pat == '\0') {
-                   recDepth--;
-                   return False; /* spurious trailing \ in pattern */
-                }
-                /* falls through to ... */
-      default : if (*pat++ != *str++) {
-                   recDepth--;
-                   return False;
-                }
-                break;
-      }
+   const Char *p, *a;
+   SizeT count = 0;
+   for (p = s; *p != '\0'; ++p) {
+      for (a = accpt; *a != '\0'; ++a)
+         if (*p == *a)
+            break;
+      if (*a == '\0')
+         return count;
+      else
+         ++count;
    }
+   return count;
 }
 
-Bool VG_(string_match) ( const Char* pat, const Char* str )
+SizeT VG_(strcspn) ( const Char* s, const char* reject )
 {
-   Bool b;
-   recDepth = 0;
-   b = string_match_wrk ( pat, str );
-   //vg_assert(recDepth == 0);
-   /*
-   VG_(printf)("%s   %s   %s\n",
-	       b?"TRUE ":"FALSE", pat, str);
-   */
-   return b;
+   SizeT count = 0;
+   while (*s != '\0') {
+      if (VG_(strchr) (reject, *s++) == NULL)
+         ++count;
+      else
+         return count;
+   }
+   return count;
 }
 
 
@@ -512,8 +437,10 @@ void* VG_(memmove)(void *dest, const void *src, SizeT sz)
       }
    }
    else if (dest > src) {
-      for (i = sz - 1; i >= 0; i--) {
-         ((UChar*)dest)[i] = ((UChar*)src)[i];
+      UChar *d = (UChar*)dest + sz - 1;
+      UChar *s = (UChar*)src + sz - 1;
+      for (; d >= (UChar*)dest; d--, s--) {
+         *d = *s;
       }
    }
    return dest;

@@ -1,0 +1,287 @@
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/svn/!svn/ver/631/trunk/cpp_vg/include/stlport/stl/config
+END
+_watcom.h
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_watcom.h
+END
+_linux.h
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_linux.h
+END
+_dm.h
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_dm.h
+END
+_prolog.h
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_prolog.h
+END
+user_config.h
+K 25
+svn:wc:ra_dav:version-url
+V 71
+/svn/!svn/ver/631/trunk/cpp_vg/include/stlport/stl/config/user_config.h
+END
+_apcc.h
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_apcc.h
+END
+_ibm.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_ibm.h
+END
+_msvc.h
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_msvc.h
+END
+_intel.h
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_intel.h
+END
+_mlc.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_mlc.h
+END
+_evc.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_evc.h
+END
+features.h
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/features.h
+END
+_epilog.h
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_epilog.h
+END
+_dec_vms.h
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_dec_vms.h
+END
+_feedback.h
+K 25
+svn:wc:ra_dav:version-url
+V 69
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_feedback.h
+END
+_hpux.h
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_hpux.h
+END
+_auto_link.h
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_auto_link.h
+END
+_as400.h
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_as400.h
+END
+stl_mycomp.h
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/stl_mycomp.h
+END
+_detect_dll_or_lib.h
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_detect_dll_or_lib.h
+END
+_windows.h
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_windows.h
+END
+_openbsd.h
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_openbsd.h
+END
+_macosx.h
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_macosx.h
+END
+_dec.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_dec.h
+END
+_sunprocc.h
+K 25
+svn:wc:ra_dav:version-url
+V 69
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_sunprocc.h
+END
+_gcc.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_gcc.h
+END
+_como.h
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_como.h
+END
+_icc.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_icc.h
+END
+_cray.h
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_cray.h
+END
+_mac.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_mac.h
+END
+_cygwin.h
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_cygwin.h
+END
+_apple.h
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_apple.h
+END
+_kai.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_kai.h
+END
+_mwerks.h
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_mwerks.h
+END
+stl_confix.h
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/stl_confix.h
+END
+_freebsd.h
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_freebsd.h
+END
+_solaris.h
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_solaris.h
+END
+_hpacc.h
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_hpacc.h
+END
+host.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/host.h
+END
+_aix.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_aix.h
+END
+_native_headers.h
+K 25
+svn:wc:ra_dav:version-url
+V 75
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_native_headers.h
+END
+_warnings_off.h
+K 25
+svn:wc:ra_dav:version-url
+V 73
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_warnings_off.h
+END
+_sgi.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_sgi.h
+END
+_bc.h
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_bc.h
+END
+compat.h
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/compat.h
+END
+_system.h
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_system.h
+END
+_fujitsu.h
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/config/_fujitsu.h
+END

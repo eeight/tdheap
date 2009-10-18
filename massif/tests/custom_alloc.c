@@ -1,5 +1,5 @@
 #include <unistd.h>
-#include <sys/mman.h>
+#include "tests/sys_mman.h"
 #include <assert.h>
 #include <stdlib.h>
 
@@ -14,7 +14,7 @@
 void* get_superblock(void)
 {
    void* p = mmap( 0, SUPERBLOCK_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC,
-                   MAP_PRIVATE|MAP_ANON, -1, 0 );
+                   MAP_PRIVATE|MAP_ANONYMOUS, -1, 0 );
 
    assert(p != ((void*)(-1)));
 
@@ -57,16 +57,16 @@ static void custom_free(void* p)
 
 int main(void)
 {
-   int* a = custom_alloc(100);
+   int* a = custom_alloc(400);   // All sizes are divisible by 16 -- no slop.
    custom_free(a);
 
-   a = custom_alloc(200);
+   a = custom_alloc(800);
    custom_free(a);
 
-   a = malloc(100);
+   a = malloc(400);
    free(a);
 
-   a = malloc(200);
+   a = malloc(800);
    free(a);
 
    return 0;

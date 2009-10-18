@@ -1,7 +1,9 @@
 
-noinst_SCRIPTS = filter_stderr
+include $(top_srcdir)/Makefile.tool-tests.am
 
-EXTRA_DIST = $(noinst_SCRIPTS) \
+dist_noinst_SCRIPTS = filter_stderr
+
+EXTRA_DIST = \
 	jm-int.stderr.exp jm-int.stdout.exp jm-int.vgtest \
 	jm-fp.stderr.exp  jm-fp.stdout.exp  jm-fp.vgtest \
 	jm-vmx.stderr.exp jm-vmx.stdout.exp jm-vmx.vgtest \
@@ -14,8 +16,8 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 check_PROGRAMS = \
 	jm-insns lsw round std_reg_imm twi_tdi tw_td
 
-AM_CFLAGS   = $(WERROR) -Winline -Wall -Wshadow -g -I$(top_srcdir)/include \
-		@FLAG_M64@
-AM_CXXFLAGS = $(AM_CFLAGS) @FLAG_M64@
+AM_CFLAGS    += @FLAG_M64@
+AM_CXXFLAGS  += @FLAG_M64@
+AM_CCASFLAGS += @FLAG_M64@
 
-jm_insns_CFLAGS = -Winline -Wall -O -g -mregnames -maltivec @FLAG_M64@
+jm_insns_CFLAGS = $(AM_CFLAGS) -Winline -Wall -O -g -mregnames -maltivec @FLAG_M64@

@@ -1,0 +1,23 @@
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/precompiled
+END
+extc++.h
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/precompiled/extc++.h
+END
+stdtr1c++.h
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/precompiled/stdtr1c++.h
+END
+stdc++.h
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/precompiled/stdc++.h
+END

@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2009 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -152,8 +152,23 @@ typedef
          replace-style ones. */
       ULong guest_NRADDR;
 
+      /* Used for Darwin syscall dispatching. */
+      ULong guest_SC_CLASS;
+
+      /* HACK to make tls on darwin work.  %gs only ever seems to
+         hold 0x60, and so guest_GS_0x60 holds the 64-bit offset
+         associated with a %gs value of 0x60.  (A direct analogue
+         of the %fs-zero hack for amd64-linux). */
+      ULong guest_GS_0x60;
+
+      /* Needed for Darwin (but mandated for all guest architectures):
+         RIP at the last syscall insn (int 0x80/81/82, sysenter,
+         syscall).  Used when backing up to restart a syscall that has
+         been interrupted by a signal. */
+      ULong guest_IP_AT_SYSCALL;
+
       /* Padding to make it have an 16-aligned size */
-      ULong padding;
+      /* ULong padding; */
    }
    VexGuestAMD64State;
 
@@ -175,6 +190,13 @@ void LibVEX_GuestAMD64_initialise ( /*OUT*/VexGuestAMD64State* vex_state );
    corresponding native %rflags value. */
 extern 
 ULong LibVEX_GuestAMD64_get_rflags ( /*IN*/VexGuestAMD64State* vex_state );
+
+/* Set the carry flag in the given state to 'new_carry_flag', which
+   should be zero or one. */
+extern
+void
+LibVEX_GuestAMD64_put_rflag_c ( ULong new_carry_flag,
+                                /*MOD*/VexGuestAMD64State* vex_state );
 
 
 #if 0

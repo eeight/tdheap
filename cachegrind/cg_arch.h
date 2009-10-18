@@ -7,7 +7,7 @@
    This file is part of Cachegrind, a Valgrind tool for cache
    profiling programs.
 
-   Copyright (C) 2002-2008 Nicholas Nethercote
+   Copyright (C) 2002-2009 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -33,9 +33,9 @@
 
 // For cache simulation
 typedef struct {
-    int size;       // bytes
-    int assoc;
-    int line_size;  // bytes
+   int size;       // bytes
+   int assoc;
+   int line_size;  // bytes
 } cache_t;
 
 // Gives the configuration of I1, D1 and L2 caches.  They get overridden

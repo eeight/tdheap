@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Nicholas Nethercote
+   Copyright (C) 2000-2009 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -27,6 +27,8 @@
 
    The GNU General Public License is contained in the file COPYING.
 */
+
+#if defined(VGP_amd64_linux)
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
@@ -265,7 +267,8 @@ static SysRes do_clone ( ThreadId ptid,
 	 VG_(printf)("tid %d: guessed client stack range %#lx-%#lx\n",
 		     ctid, seg->start, VG_PGROUNDUP(rsp));
    } else {
-      VG_(message)(Vg_UserMsg, "!? New thread %d starts with RSP(%#lx) unmapped\n",
+      VG_(message)(Vg_UserMsg,
+                   "!? New thread %d starts with RSP(%#lx) unmapped\n",
 		   ctid, rsp);
       ctst->client_stack_szB  = 0;
    }
@@ -297,7 +300,7 @@ static SysRes do_clone ( ThreadId ptid,
    VG_(sigprocmask)(VKI_SIG_SETMASK, &savedmask, NULL);
 
   out:
-   if (res.isError) {
+   if (sr_isError(res)) {
       /* clone failed */
       VG_(cleanup_thread)(&ctst->arch);
       ctst->status = VgTs_Empty;
@@ -438,11 +441,16 @@ PRE(sys_clone)
 
    default:
       /* should we just ENOSYS? */
-      VG_(message)(Vg_UserMsg, "Unsupported clone() flags: 0x%lx", ARG1);
-      VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, "The only supported clone() uses are:");
-      VG_(message)(Vg_UserMsg, " - via a threads library (LinuxThreads or NPTL)");
-      VG_(message)(Vg_UserMsg, " - via the implementation of fork or vfork");
+      VG_(message)(Vg_UserMsg,
+                   "Unsupported clone() flags: 0x%lx\n", ARG1);
+      VG_(message)(Vg_UserMsg,
+                   "\n");
+      VG_(message)(Vg_UserMsg,
+                   "The only supported clone() uses are:\n");
+      VG_(message)(Vg_UserMsg,
+                   " - via a threads library (LinuxThreads or NPTL)\n");
+      VG_(message)(Vg_UserMsg,
+                   " - via the implementation of fork or vfork\n");
       VG_(unimplemented)
          ("Valgrind does not support general clone().");
    }
@@ -641,13 +649,13 @@ PRE(sys_getsockopt)
    PRE_REG_READ5(long, "getsockopt",
                  int, s, int, level, int, optname,
                  void *, optval, int, *optlen);
-   ML_(generic_PRE_sys_getsockopt)(tid, ARG1,ARG2,ARG3,ARG4,ARG5);
+   ML_(linux_PRE_sys_getsockopt)(tid, ARG1,ARG2,ARG3,ARG4,ARG5);
 }
 POST(sys_getsockopt)
 {
    vg_assert(SUCCESS);
-   ML_(generic_POST_sys_getsockopt)(tid, VG_(mk_SysRes_Success)(RES),
-                                         ARG1,ARG2,ARG3,ARG4,ARG5);
+   ML_(linux_POST_sys_getsockopt)(tid, VG_(mk_SysRes_Success)(RES),
+                                       ARG1,ARG2,ARG3,ARG4,ARG5);
 }
 
 PRE(sys_connect)
@@ -906,7 +914,7 @@ PRE(wrap_sys_shmat)
    if (arg2tmp == 0)
       SET_STATUS_Failure( VKI_EINVAL );
    else
-      ARG2 = arg2tmp;
+      ARG2 = arg2tmp;  // used in POST
 }
 POST(wrap_sys_shmat)
 {
@@ -948,8 +956,8 @@ PRE(sys_mmap)
 {
    SysRes r;
 
-   PRINT("sys_mmap ( %#lx, %llu, %ld, %ld, %ld, %ld )",
-         ARG1, (ULong)ARG2, ARG3, ARG4, ARG5, ARG6 );
+   PRINT("sys_mmap ( %#lx, %llu, %ld, %ld, %d, %ld )",
+         ARG1, (ULong)ARG2, ARG3, ARG4, (Int)ARG5, ARG6 );
    PRE_REG_READ6(long, "mmap",
                  unsigned long, start, unsigned long, length,
                  unsigned long, prot,  unsigned long, flags,
@@ -1034,9 +1042,9 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINXY(__NR_rt_sigprocmask,    sys_rt_sigprocmask), // 14 
 
    PLAX_(__NR_rt_sigreturn,      sys_rt_sigreturn),   // 15 
-   GENXY(__NR_ioctl,             sys_ioctl),          // 16 
-   GENXY(__NR_pread64,           sys_pread64_on64bitplat),  // 17 
-   GENX_(__NR_pwrite64,          sys_pwrite64_on64bitplat), // 18 
+   LINXY(__NR_ioctl,             sys_ioctl),          // 16 
+   GENXY(__NR_pread64,           sys_pread64),        // 17 
+   GENX_(__NR_pwrite64,          sys_pwrite64),       // 18 
    GENXY(__NR_readv,             sys_readv),          // 19 
 
    GENX_(__NR_writev,            sys_writev),         // 20 
@@ -1047,7 +1055,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 
    GENX_(__NR_mremap,            sys_mremap),         // 25 
    GENX_(__NR_msync,             sys_msync),          // 26 
-   //   (__NR_mincore,           sys_mincore),        // 27 
+   GENX_(__NR_mincore,           sys_mincore),        // 27 
    GENX_(__NR_madvise,           sys_madvise),        // 28 
    PLAX_(__NR_shmget,            sys_shmget),         // 29 
 
@@ -1101,7 +1109,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 
    PLAXY(__NR_msgrcv,            sys_msgrcv),         // 70 
    PLAXY(__NR_msgctl,            sys_msgctl),         // 71 
-   GENXY(__NR_fcntl,             sys_fcntl),          // 72 
+   LINXY(__NR_fcntl,             sys_fcntl),          // 72 
    GENX_(__NR_flock,             sys_flock),          // 73 
    GENX_(__NR_fsync,             sys_fsync),          // 74 
 
@@ -1229,7 +1237,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINX_(__NR_delete_module,     sys_delete_module),  // 176 
    //   (__NR_get_kernel_syms,   sys_ni_syscall),     // 177 
    //   (__NR_query_module,      sys_ni_syscall),     // 178 
-   //LINX_(__NR_quotactl,          sys_quotactl),       // 179 
+   LINX_(__NR_quotactl,          sys_quotactl),       // 179 
 
    //   (__NR_nfsservctl,        sys_nfsservctl),     // 180 
    //   (__NR_getpmsg,           sys_ni_syscall),     // 181
@@ -1269,7 +1277,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 
    LINXY(__NR_io_cancel,         sys_io_cancel),      // 210 
    //   (__NR_get_thread_area,   sys_ni_syscall),     // 211 
-   //   (__NR_lookup_dcookie,    sys_lookup_dcookie), // 212 
+   LINXY(__NR_lookup_dcookie,    sys_lookup_dcookie), // 212 
    LINXY(__NR_epoll_create,      sys_epoll_create),   // 213 
    //   (__NR_epoll_ctl_old,     sys_ni_syscall),     // 214 
 
@@ -1317,7 +1325,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 
    LINXY(__NR_keyctl,            sys_keyctl),         // 250
    LINX_(__NR_ioprio_set,        sys_ioprio_set),     // 251
-//   LINX_(__NR_ioprio_get,        sys_ioprio_get),     // 252
+   LINX_(__NR_ioprio_get,        sys_ioprio_get),     // 252
    LINX_(__NR_inotify_init,	 sys_inotify_init),   // 253
    LINX_(__NR_inotify_add_watch, sys_inotify_add_watch), // 254
 
@@ -1350,18 +1358,30 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINX_(__NR_sync_file_range,   sys_sync_file_range),  // 277
 //   LINX_(__NR_vmsplice,          sys_ni_syscall),       // 278
 //   LINX_(__NR_move_pages,        sys_ni_syscall),       // 279
+
    LINX_(__NR_utimensat,         sys_utimensat),        // 280
    LINXY(__NR_epoll_pwait,       sys_epoll_pwait),      // 281
    LINXY(__NR_signalfd,          sys_signalfd),         // 282
    LINXY(__NR_timerfd_create,    sys_timerfd_create),   // 283
    LINX_(__NR_eventfd,           sys_eventfd),          // 284
-//   LINX_(__NR_fallocate,        sys_ni_syscall),        // 285
+
+   LINX_(__NR_fallocate,         sys_fallocate),        // 285
    LINXY(__NR_timerfd_settime,   sys_timerfd_settime),  // 286
    LINXY(__NR_timerfd_gettime,   sys_timerfd_gettime),  // 287
+   //   (__NR_paccept,           sys_ni_syscall)        // 288
+   LINXY(__NR_signalfd4,         sys_signalfd4),        // 289
+
+   LINX_(__NR_eventfd2,          sys_eventfd2),         // 290
+   LINXY(__NR_epoll_create1,     sys_epoll_create1),    // 291
+   //   (__NR_dup3,              sys_ni_syscall)        // 292
+   LINXY(__NR_pipe2,             sys_pipe2)             // 293
+   //   (__NR_inotify_init1,     sys_ni_syscall)        // 294
 };
 
 const UInt ML_(syscall_table_size) = 
             sizeof(ML_(syscall_table)) / sizeof(ML_(syscall_table)[0]);
+
+#endif // defined(VGP_amd64_linux)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

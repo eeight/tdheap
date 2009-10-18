@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -112,9 +112,9 @@ static const char *find_client(const char *clientname)
 static const char *select_platform(const char *clientname)
 {
    int fd;
-   unsigned char *header;
+   uint8_t header[4096];
+   ssize_t n_bytes;
    const char *platform = NULL;
-   long pagesize = sysconf(_SC_PAGESIZE);
 
    if (strchr(clientname, '/') == NULL)
       clientname = find_client(clientname);
@@ -123,60 +123,72 @@ static const char *select_platform(const char *clientname)
       return NULL;
    //   barf("open(%s): %s", clientname, strerror(errno));
 
-   if ((header = mmap(NULL, pagesize, PROT_READ|PROT_WRITE, MAP_PRIVATE, fd, 0)) == MAP_FAILED)
-      return NULL;
-   //   barf("mmap(%s): %s", clientname, strerror(errno));
-
+   n_bytes = read(fd, header, sizeof(header));
    close(fd);
+   if (n_bytes < 2) {
+      return NULL;
+   }
 
    if (header[0] == '#' && header[1] == '!') {
+      int i = 2;
       char *interp = (char *)header + 2;
-      char *interpend;
 
-      while (*interp == ' ' || *interp == '\t')
-         interp++;
+      // Skip whitespace.
+      while (1) {
+         if (i == n_bytes) return NULL;
+         if (' ' != header[i] && '\t' != header[i]) break;
+         i++;
+      }
 
-      for (interpend = interp; !isspace(*interpend); interpend++)
-         ;
-
-      *interpend = '\0';
+      // Get the interpreter name.
+      interp = &header[i];
+      while (1) {
+         if (i == n_bytes) break;
+         if (isspace(header[i])) break;
+         i++;
+      }
+      if (i == n_bytes) return NULL;
+      header[i] = '\0';
 
       platform = select_platform(interp);
-   } else if (memcmp(header, ELFMAG, SELFMAG) == 0) {
 
-      if (header[EI_CLASS] == ELFCLASS32) {
+   } else if (n_bytes >= SELFMAG && memcmp(header, ELFMAG, SELFMAG) == 0) {
+
+      if (n_bytes >= sizeof(Elf32_Ehdr) && header[EI_CLASS] == ELFCLASS32) {
          const Elf32_Ehdr *ehdr = (Elf32_Ehdr *)header;
 
          if (header[EI_DATA] == ELFDATA2LSB) {
             if (ehdr->e_machine == EM_386 &&
-                ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV) {
+                (ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV ||
+                 ehdr->e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
                platform = "x86-linux";
             }
          }
          else if (header[EI_DATA] == ELFDATA2MSB) {
             if (ehdr->e_machine == EM_PPC &&
-                ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV) {
+                (ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV ||
+                 ehdr->e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
                platform = "ppc32-linux";
             }
          }
-      } else if (header[EI_CLASS] == ELFCLASS64) {
+      } else if (n_bytes >= sizeof(Elf64_Ehdr) && header[EI_CLASS] == ELFCLASS64) {
          const Elf64_Ehdr *ehdr = (Elf64_Ehdr *)header;
 
          if (header[EI_DATA] == ELFDATA2LSB) {
             if (ehdr->e_machine == EM_X86_64 &&
-                ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV) {
+                (ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV ||
+                 ehdr->e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
                platform = "amd64-linux";
             }
          } else if (header[EI_DATA] == ELFDATA2MSB) {
             if (ehdr->e_machine == EM_PPC64 &&
-                ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV) {
+                (ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV ||
+                 ehdr->e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
                platform = "ppc64-linux";
             }
          }
       }
    }
-
-   munmap(header, pagesize);
 
    return platform;
 }
@@ -239,14 +251,11 @@ int main(int argc, char** argv, char** envp)
       target, because on most ppc64-linux setups, the basic /bin,
       /usr/bin, etc, stuff is built in 32-bit mode, not 64-bit
       mode. */
-   if (0==strcmp(VG_PLATFORM,"x86-linux"))
-      default_platform = "x86-linux";
-   else if (0==strcmp(VG_PLATFORM,"amd64-linux"))
-      default_platform = "amd64-linux";
-   else if (0==strcmp(VG_PLATFORM,"ppc32-linux"))
-      default_platform = "ppc32-linux";
-   else if (0==strcmp(VG_PLATFORM,"ppc64-linux"))
-      default_platform = "ppc32-linux";
+   if ((0==strcmp(VG_PLATFORM,"x86-linux"))   ||
+       (0==strcmp(VG_PLATFORM,"amd64-linux")) ||
+       (0==strcmp(VG_PLATFORM,"ppc32-linux")) ||
+       (0==strcmp(VG_PLATFORM,"ppc64-linux")))
+      default_platform = VG_PLATFORM;
    else
       barf("Unknown VG_PLATFORM '%s'", VG_PLATFORM);
 
@@ -268,7 +277,7 @@ int main(int argc, char** argv, char** envp)
    
    /* Figure out the name of this executable (viz, the launcher), so
       we can tell stage2.  stage2 will use the name for recursive
-      invokations of valgrind on child processes. */
+      invocations of valgrind on child processes. */
    memset(launcher_name, 0, PATH_MAX+1);
    r = readlink("/proc/self/exe", launcher_name, PATH_MAX);
    if (r == -1) {
@@ -308,11 +317,11 @@ int main(int argc, char** argv, char** envp)
    if (cp != NULL)
       valgrind_lib = cp;
 
-   /* Build the stage2 invokation, and execve it.  Bye! */
+   /* Build the stage2 invocation, and execve it.  Bye! */
    toolfile = malloc(strlen(valgrind_lib) + strlen(toolname) + strlen(platform) + 3);
    if (toolfile == NULL)
       barf("malloc of toolfile failed.");
-   sprintf(toolfile, "%s/%s/%s", valgrind_lib, platform, toolname);
+   sprintf(toolfile, "%s/%s-%s", valgrind_lib, toolname, platform);
 
    VG_(debugLog)(1, "launcher", "launching %s\n", toolfile);
 

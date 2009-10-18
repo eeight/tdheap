@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2008, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2009, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -57,7 +57,7 @@ bb_hash* CLG_(get_bb_hash)()
  * - BB base as object file offset
  */
 static __inline__
-UInt bb_hash_idx(obj_node* obj, OffT offset, UInt size)
+UInt bb_hash_idx(obj_node* obj, PtrdiffT offset, UInt size)
 {
   return (((Addr)obj) + offset) % size;
 }
@@ -118,11 +118,11 @@ void resize_bb_table(void)
  * Not initialized:
  * - instr_len, cost_count, instr[]
  */
-static BB* new_bb(obj_node* obj, OffT offset,
+static BB* new_bb(obj_node* obj, PtrdiffT offset,
 		  UInt instr_count, UInt cjmp_count, Bool cjmp_inverted)
 {
-   BB* new;
-   UInt new_idx, size;
+   BB* bb;
+   UInt idx, size;
 
    /* check fill degree of bb hash table and resize if needed (>80%) */
    bbs.entries++;
@@ -131,29 +131,29 @@ static BB* new_bb(obj_node* obj, OffT offset,
 
    size = sizeof(BB) + instr_count * sizeof(InstrInfo)
                      + (cjmp_count+1) * sizeof(CJmpInfo);
-   new = (BB*) CLG_MALLOC("cl.bb.nb.1", size);
-   VG_(memset)(new, 0, size);
+   bb = (BB*) CLG_MALLOC("cl.bb.nb.1", size);
+   VG_(memset)(bb, 0, size);
 
-   new->obj        = obj;
-   new->offset     = offset;
+   bb->obj        = obj;
+   bb->offset     = offset;
    
-   new->instr_count = instr_count;
-   new->cjmp_count  = cjmp_count;
-   new->cjmp_inverted = cjmp_inverted;
-   new->jmp         = (CJmpInfo*) &(new->instr[instr_count]);
-   new->instr_len   = 0;
-   new->cost_count  = 0;
-   new->sect_kind   = VG_(seginfo_sect_kind)(NULL, 0, offset + obj->offset);
-   new->fn          = 0;
-   new->line        = 0;
-   new->is_entry    = 0;
-   new->bbcc_list   = 0;
-   new->last_bbcc   = 0;
+   bb->instr_count = instr_count;
+   bb->cjmp_count  = cjmp_count;
+   bb->cjmp_inverted = cjmp_inverted;
+   bb->jmp         = (CJmpInfo*) &(bb->instr[instr_count]);
+   bb->instr_len   = 0;
+   bb->cost_count  = 0;
+   bb->sect_kind   = VG_(DebugInfo_sect_kind)(NULL, 0, offset + obj->offset);
+   bb->fn          = 0;
+   bb->line        = 0;
+   bb->is_entry    = 0;
+   bb->bbcc_list   = 0;
+   bb->last_bbcc   = 0;
 
    /* insert into BB hash table */
-   new_idx = bb_hash_idx(obj, offset, bbs.size);
-   new->next = bbs.table[new_idx];
-   bbs.table[new_idx] = new;
+   idx = bb_hash_idx(obj, offset, bbs.size);
+   bb->next = bbs.table[idx];
+   bbs.table[idx] = bb;
 
    CLG_(stat).distinct_bbs++;
 
@@ -163,20 +163,20 @@ static BB* new_bb(obj_node* obj, OffT offset,
 		 instr_count, cjmp_count,
 		 cjmp_inverted ? "yes":"no",
 		 CLG_(stat).distinct_bbs);
-      CLG_(print_bb)(0, new);
+      CLG_(print_bb)(0, bb);
       VG_(printf)("\n");
    }
 #endif
 
-   CLG_(get_fn_node)(new);
+   CLG_(get_fn_node)(bb);
 
-   return new;
+   return bb;
 }
 
 
 /* get the BB structure for a BB start address */
 static __inline__
-BB* lookup_bb(obj_node* obj, OffT offset)
+BB* lookup_bb(obj_node* obj, PtrdiffT offset)
 {
     BB* bb;
     Int idx;
@@ -199,23 +199,23 @@ obj_node* obj_of_address(Addr addr)
 {
   obj_node* obj;
   DebugInfo* di;
-  OffT offset;
+  PtrdiffT offset;
 
-  di = VG_(find_seginfo)(addr);
+  di = VG_(find_DebugInfo)(addr);
   obj = CLG_(get_obj_node)( di );
 
   /* Update symbol offset in object if remapped */
   /* FIXME (or at least check this) 2008 Feb 19: 'offset' is
      only correct for text symbols, not for data symbols */
-  offset = di ? VG_(seginfo_get_text_bias)(di):0;
+  offset = di ? VG_(DebugInfo_get_text_bias)(di):0;
   if (obj->offset != offset) {
-      Addr start = di ? VG_(seginfo_get_text_avma)(di) : 0;
+      Addr start = di ? VG_(DebugInfo_get_text_avma)(di) : 0;
 
       CLG_DEBUG(0, "Mapping changed for '%s': %#lx -> %#lx\n",
 		obj->name, obj->start, start);
 
       /* Size should be the same, and offset diff == start diff */
-      CLG_ASSERT( obj->size == (di ? VG_(seginfo_get_text_size)(di) : 0) );
+      CLG_ASSERT( obj->size == (di ? VG_(DebugInfo_get_text_size)(di) : 0) );
       CLG_ASSERT( obj->start - start == obj->offset - offset );
       obj->offset = offset;
       obj->start = start;
@@ -259,13 +259,13 @@ BB* CLG_(get_bb)(Addr addr, IRSB* bbIn, /*OUT*/ Bool *seen_before)
   if (*seen_before) {
     if (bb->instr_count != n_instrs) {
       VG_(message)(Vg_DebugMsg, 
-		   "ERROR: BB Retranslation Mismatch at BB %#lx", addr);
+		   "ERROR: BB Retranslation Mismatch at BB %#lx\n", addr);
       VG_(message)(Vg_DebugMsg,
-		   "  new: Obj %s, Off %#lx, BBOff %#lx, Instrs %u",
+		   "  new: Obj %s, Off %#lx, BBOff %#lx, Instrs %u\n",
 		   obj->name, obj->offset,
 		   addr - obj->offset, n_instrs);
       VG_(message)(Vg_DebugMsg,
-		   "  old: Obj %s, Off %#lx, BBOff %#lx, Instrs %u",
+		   "  old: Obj %s, Off %#lx, BBOff %#lx, Instrs %u\n",
 		   bb->obj->name, bb->obj->offset,
 		   bb->offset, bb->instr_count);
       CLG_ASSERT(bb->instr_count == n_instrs );
@@ -292,7 +292,7 @@ void CLG_(delete_bb)(Addr addr)
     Int idx, size;
 
     obj_node* obj = obj_of_address(addr);
-    OffT offset = addr - obj->offset;
+    PtrdiffT offset = addr - obj->offset;
 
     idx = bb_hash_idx(obj, offset, bbs.size);
     bb = bbs.table[idx];

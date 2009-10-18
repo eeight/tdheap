@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -40,7 +40,7 @@
 // as if the thread had been set up by clone()
 extern void VG_(main_thread_wrapper_NORETURN)(ThreadId tid);
 
-extern void VG_(client_syscall) ( ThreadId tid );
+extern void VG_(client_syscall) ( ThreadId tid, UInt trc );
 
 extern void VG_(post_syscall)   ( ThreadId tid );
 
@@ -51,7 +51,6 @@ extern void VG_(clear_syscallInfo) ( Int tid );
 extern void VG_(fixup_guest_state_after_syscall_interrupted)(
                ThreadId tid,
                Addr     ip, 
-               UWord    sysnum,
                SysRes   sysret,
                Bool     restart
             );

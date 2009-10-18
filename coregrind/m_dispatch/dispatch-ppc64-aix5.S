@@ -8,7 +8,7 @@
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2006-2008 OpenWorks LLP
+  Copyright (C) 2006-2009 OpenWorks LLP
      info@open-works.co.uk
 
   This program is free software; you can redistribute it and/or
@@ -33,6 +33,8 @@
   used to endorse or promote products derived from this software
   without prior written permission.
 */
+
+#if defined(VGP_ppc64_aix5)
 
 #include "pub_core_basics_asm.h"
 #include "pub_core_dispatch_asm.h"
@@ -644,6 +646,8 @@ void VG_(run_a_noredir_translation) ( UWord* argblock );
 	mtcr	0
 	mr	1,4
 	blr
+
+#endif // defined(VGP_ppc64_aix5)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

@@ -12,7 +12,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward.  All rights reserved.
+   Copyright (C) 2000-2009 Julian Seward.  All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions
@@ -92,26 +92,26 @@
 #undef PLAT_ppc32_aix5
 #undef PLAT_ppc64_aix5
 
-#if !defined(_AIX) && defined(__i386__)
-#  define PLAT_x86_linux 1
-#elif !defined(_AIX) && defined(__x86_64__)
-#  define PLAT_amd64_linux 1
-#elif !defined(_AIX) && defined(__powerpc__) && !defined(__powerpc64__)
-#  define PLAT_ppc32_linux 1
-#elif !defined(_AIX) && defined(__powerpc__) && defined(__powerpc64__)
-#  define PLAT_ppc64_linux 1
-#elif defined(_AIX) && defined(__64BIT__)
+
+#if defined(_AIX) && defined(__64BIT__)
 #  define PLAT_ppc64_aix5 1
 #elif defined(_AIX) && !defined(__64BIT__)
 #  define PLAT_ppc32_aix5 1
-#endif
-
-
+#elif defined(__APPLE__) && defined(__i386__)
+#  define PLAT_x86_darwin 1
+#elif defined(__APPLE__) && defined(__x86_64__)
+#  define PLAT_amd64_darwin 1
+#elif defined(__i386__)
+#  define PLAT_x86_linux 1
+#elif defined(__x86_64__)
+#  define PLAT_amd64_linux 1
+#elif defined(__powerpc__) && !defined(__powerpc64__)
+#  define PLAT_ppc32_linux 1
+#elif defined(__powerpc__) && defined(__powerpc64__)
+#  define PLAT_ppc64_linux 1
+#else
 /* If we're not compiling for our target platform, don't generate
    any inline asms.  */
-#if !defined(PLAT_x86_linux) && !defined(PLAT_amd64_linux) \
-    && !defined(PLAT_ppc32_linux) && !defined(PLAT_ppc64_linux) \
-    && !defined(PLAT_ppc32_aix5) && !defined(PLAT_ppc64_aix5)
 #  if !defined(NVALGRIND)
 #    define NVALGRIND 1
 #  endif
@@ -172,9 +172,9 @@
    inline asm stuff to be useful.
 */
 
-/* ------------------------- x86-linux ------------------------- */
+/* ------------------------- x86-{linux,darwin} ---------------- */
 
-#if defined(PLAT_x86_linux)
+#if defined(PLAT_x86_linux)  ||  defined(PLAT_x86_darwin)
 
 typedef
    struct { 
@@ -224,11 +224,11 @@ typedef
                      __SPECIAL_INSTRUCTION_PREAMBLE               \
                      /* call-noredir *%EAX */                     \
                      "xchgl %%edx,%%edx\n\t"
-#endif /* PLAT_x86_linux */
+#endif /* PLAT_x86_linux || PLAT_x86_darwin */
 
-/* ------------------------ amd64-linux ------------------------ */
+/* ------------------------ amd64-{linux,darwin} --------------- */
 
-#if defined(PLAT_amd64_linux)
+#if defined(PLAT_amd64_linux)  ||  defined(PLAT_amd64_darwin)
 
 typedef
    struct { 
@@ -278,7 +278,7 @@ typedef
                      __SPECIAL_INSTRUCTION_PREAMBLE               \
                      /* call-noredir *%RAX */                     \
                      "xchgq %%rdx,%%rdx\n\t"
-#endif /* PLAT_amd64_linux */
+#endif /* PLAT_amd64_linux || PLAT_amd64_darwin */
 
 /* ------------------------ ppc32-linux ------------------------ */
 
@@ -581,11 +581,15 @@ typedef
 /* Use these to write the name of your wrapper.  NOTE: duplicates
    VG_WRAP_FUNCTION_Z{U,Z} in pub_tool_redir.h. */
 
+/* Use an extra level of macroisation so as to ensure the soname/fnname
+   args are fully macro-expanded before pasting them together. */
+#define VG_CONCAT4(_aa,_bb,_cc,_dd) _aa##_bb##_cc##_dd
+
 #define I_WRAP_SONAME_FNNAME_ZU(soname,fnname)                    \
-   _vgwZU_##soname##_##fnname
+   VG_CONCAT4(_vgwZU_,soname,_,fnname)
 
 #define I_WRAP_SONAME_FNNAME_ZZ(soname,fnname)                    \
-   _vgwZZ_##soname##_##fnname
+   VG_CONCAT4(_vgwZZ_,soname,_,fnname)
 
 /* Use this macro from within a wrapper function to collect the
    context (address and possibly other info) of the original function.
@@ -612,9 +616,25 @@ typedef
    do { volatile unsigned long _junk;                             \
         CALL_FN_W_WWW(_junk,fnptr,arg1,arg2,arg3); } while (0)
 
-/* ------------------------- x86-linux ------------------------- */
+#define CALL_FN_v_WWWW(fnptr, arg1,arg2,arg3,arg4)                \
+   do { volatile unsigned long _junk;                             \
+        CALL_FN_W_WWWW(_junk,fnptr,arg1,arg2,arg3,arg4); } while (0)
 
-#if defined(PLAT_x86_linux)
+#define CALL_FN_v_5W(fnptr, arg1,arg2,arg3,arg4,arg5)             \
+   do { volatile unsigned long _junk;                             \
+        CALL_FN_W_5W(_junk,fnptr,arg1,arg2,arg3,arg4,arg5); } while (0)
+
+#define CALL_FN_v_6W(fnptr, arg1,arg2,arg3,arg4,arg5,arg6)        \
+   do { volatile unsigned long _junk;                             \
+        CALL_FN_W_6W(_junk,fnptr,arg1,arg2,arg3,arg4,arg5,arg6); } while (0)
+
+#define CALL_FN_v_7W(fnptr, arg1,arg2,arg3,arg4,arg5,arg6,arg7)   \
+   do { volatile unsigned long _junk;                             \
+        CALL_FN_W_7W(_junk,fnptr,arg1,arg2,arg3,arg4,arg5,arg6,arg7); } while (0)
+
+/* ------------------------- x86-{linux,darwin} ---------------- */
+
+#if defined(PLAT_x86_linux)  ||  defined(PLAT_x86_darwin)
 
 /* These regs are trashed by the hidden call.  No need to mention eax
    as gcc can already see that, plus causes gcc to bomb. */
@@ -1007,11 +1027,11 @@ typedef
       lval = (__typeof__(lval)) _res;                             \
    } while (0)
 
-#endif /* PLAT_x86_linux */
+#endif /* PLAT_x86_linux || PLAT_x86_darwin */
 
-/* ------------------------ amd64-linux ------------------------ */
+/* ------------------------ amd64-{linux,darwin} --------------- */
 
-#if defined(PLAT_amd64_linux)
+#if defined(PLAT_amd64_linux)  ||  defined(PLAT_amd64_darwin)
 
 /* ARGREGS: rdi rsi rdx rcx r8 r9 (the rest on stack in R-to-L order) */
 
@@ -1445,7 +1465,7 @@ typedef
       lval = (__typeof__(lval)) _res;                             \
    } while (0)
 
-#endif /* PLAT_amd64_linux */
+#endif /* PLAT_amd64_linux || PLAT_amd64_darwin */
 
 /* ------------------------ ppc32-linux ------------------------ */
 
@@ -3625,7 +3645,10 @@ typedef
           /* Stack support. */
           VG_USERREQ__STACK_REGISTER   = 0x1501,
           VG_USERREQ__STACK_DEREGISTER = 0x1502,
-          VG_USERREQ__STACK_CHANGE     = 0x1503
+          VG_USERREQ__STACK_CHANGE     = 0x1503,
+
+          /* Wine support */
+          VG_USERREQ__LOAD_PDB_DEBUGINFO = 0x1601
    } Vg_ClientRequest;
 
 #if !defined(__GNUC__)
@@ -3658,7 +3681,9 @@ typedef
 
 
 /* These requests are for getting Valgrind itself to print something.
-   Possibly with a backtrace.  This is a really ugly hack. */
+   Possibly with a backtrace.  This is a really ugly hack.  The return value
+   is the number of characters printed, excluding the "**<pid>** " part at the
+   start and the backtrace (if present). */
 
 #if defined(NVALGRIND)
 
@@ -3779,31 +3804,93 @@ VALGRIND_PRINTF_BACKTRACE(const char *format, ...)
     _qyy_res;                                                     \
    })
 
-/* Mark a block of memory as having been allocated by a malloc()-like
-   function.  `addr' is the start of the usable block (ie. after any
-   redzone) `rzB' is redzone size if the allocator can apply redzones;
-   use '0' if not.  Adding redzones makes it more likely Valgrind will spot
-   block overruns.  `is_zeroed' indicates if the memory is zeroed, as it is
-   for calloc().  Put it immediately after the point where a block is
-   allocated. 
+/* Several Valgrind tools (Memcheck, Massif, Helgrind, DRD) rely on knowing
+   when heap blocks are allocated in order to give accurate results.  This
+   happens automatically for the standard allocator functions such as
+   malloc(), calloc(), realloc(), memalign(), new, new[], free(), delete,
+   delete[], etc.
+
+   But if your program uses a custom allocator, this doesn't automatically
+   happen, and Valgrind will not do as well.  For example, if you allocate
+   superblocks with mmap() and then allocates chunks of the superblocks, all
+   Valgrind's observations will be at the mmap() level and it won't know that
+   the chunks should be considered separate entities.  In Memcheck's case,
+   that means you probably won't get heap block overrun detection (because
+   there won't be redzones marked as unaddressable) and you definitely won't
+   get any leak detection.
+
+   The following client requests allow a custom allocator to be annotated so
+   that it can be handled accurately by Valgrind.
+
+   VALGRIND_MALLOCLIKE_BLOCK marks a region of memory as having been allocated
+   by a malloc()-like function.  For Memcheck (an illustrative case), this
+   does two things:
+
+   - It records that the block has been allocated.  This means any addresses
+     within the block mentioned in error messages will be
+     identified as belonging to the block.  It also means that if the block
+     isn't freed it will be detected by the leak checker.
+
+   - It marks the block as being addressable and undefined (if 'is_zeroed' is
+     not set), or addressable and defined (if 'is_zeroed' is set).  This
+     controls how accesses to the block by the program are handled.
    
-   If you're using Memcheck: If you're allocating memory via superblocks,
-   and then handing out small chunks of each superblock, if you don't have
-   redzones on your small blocks, it's worth marking the superblock with
-   VALGRIND_MAKE_MEM_NOACCESS when it's created, so that block overruns are
-   detected.  But if you can put redzones on, it's probably better to not do
-   this, so that messages for small overruns are described in terms of the
-   small block rather than the superblock (but if you have a big overrun
-   that skips over a redzone, you could miss an error this way).  See
-   memcheck/tests/custom_alloc.c for an example.
+   'addr' is the start of the usable block (ie. after any
+   redzone), 'sizeB' is its size.  'rzB' is the redzone size if the allocator
+   can apply redzones -- these are blocks of padding at the start and end of
+   each block.  Adding redzones is recommended as it makes it much more likely
+   Valgrind will spot block overruns.  `is_zeroed' indicates if the memory is
+   zeroed (or filled with another predictable value), as is the case for
+   calloc().
+   
+   VALGRIND_MALLOCLIKE_BLOCK should be put immediately after the point where a
+   heap block -- that will be used by the client program -- is allocated.
+   It's best to put it at the outermost level of the allocator if possible;
+   for example, if you have a function my_alloc() which calls
+   internal_alloc(), and the client request is put inside internal_alloc(),
+   stack traces relating to the heap block will contain entries for both
+   my_alloc() and internal_alloc(), which is probably not what you want.
 
-   WARNING: if your allocator uses malloc() or 'new' to allocate
-   superblocks, rather than mmap() or brk(), this will not work properly --
-   you'll likely get assertion failures during leak detection.  This is
-   because Valgrind doesn't like seeing overlapping heap blocks.  Sorry.
+   For Memcheck users: if you use VALGRIND_MALLOCLIKE_BLOCK to carve out
+   custom blocks from within a heap block, B, that has been allocated with
+   malloc/calloc/new/etc, then block B will be *ignored* during leak-checking
+   -- the custom blocks will take precedence.
 
-   Nb: block must be freed via a free()-like function specified
-   with VALGRIND_FREELIKE_BLOCK or mismatch errors will occur. */
+   VALGRIND_FREELIKE_BLOCK is the partner to VALGRIND_MALLOCLIKE_BLOCK.  For
+   Memcheck, it does two things:
+
+   - It records that the block has been deallocated.  This assumes that the
+     block was annotated as having been allocated via
+     VALGRIND_MALLOCLIKE_BLOCK.  Otherwise, an error will be issued.
+
+   - It marks the block as being unaddressable.
+
+   VALGRIND_FREELIKE_BLOCK should be put immediately after the point where a
+   heap block is deallocated.
+
+   In many cases, these two client requests will not be enough to get your
+   allocator working well with Memcheck.  More specifically, if your allocator
+   writes to freed blocks in any way then a VALGRIND_MAKE_MEM_UNDEFINED call
+   will be necessary to mark the memory as addressable just before the zeroing
+   occurs, otherwise you'll get a lot of invalid write errors.  For example,
+   you'll need to do this if your allocator recycles freed blocks, but it
+   zeroes them before handing them back out (via VALGRIND_MALLOCLIKE_BLOCK).
+   Alternatively, if your allocator reuses freed blocks for allocator-internal
+   data structures, VALGRIND_MAKE_MEM_UNDEFINED calls will also be necessary.
+
+   Really, what's happening is a blurring of the lines between the client
+   program and the allocator... after VALGRIND_FREELIKE_BLOCK is called, the
+   memory should be considered unaddressable to the client program, but the
+   allocator knows more than the rest of the client program and so may be able
+   to safely access it.  Extra client requests are necessary for Valgrind to
+   understand the distinction between the allocator and the rest of the
+   program.
+
+   Note: there is currently no VALGRIND_REALLOCLIKE_BLOCK client request;  it
+   has to be emulated with MALLOCLIKE/FREELIKE and memory copying.
+   
+   Ignored if addr == 0.
+*/
 #define VALGRIND_MALLOCLIKE_BLOCK(addr, sizeB, rzB, is_zeroed)    \
    {unsigned int _qzz_res;                                        \
     VALGRIND_DO_CLIENT_REQUEST(_qzz_res, 0,                       \
@@ -3811,10 +3898,9 @@ VALGRIND_PRINTF_BACKTRACE(const char *format, ...)
                                addr, sizeB, rzB, is_zeroed, 0);   \
    }
 
-/* Mark a block of memory as having been freed by a free()-like function.
-   `rzB' is redzone size;  it must match that given to
-   VALGRIND_MALLOCLIKE_BLOCK.  Memory not freed will be detected by the leak
-   checker.  Put it immediately after the point where the block is freed. */
+/* See the comment for VALGRIND_MALLOCLIKE_BLOCK for details.
+   Ignored if addr == 0.
+*/
 #define VALGRIND_FREELIKE_BLOCK(addr, rzB)                        \
    {unsigned int _qzz_res;                                        \
     VALGRIND_DO_CLIENT_REQUEST(_qzz_res, 0,                       \
@@ -3880,6 +3966,7 @@ VALGRIND_PRINTF_BACKTRACE(const char *format, ...)
 
 /* Return 1 if a mempool exists, else 0. */
 #define VALGRIND_MEMPOOL_EXISTS(pool)                             \
+   __extension__                                                  \
    ({unsigned int _qzz_res;                                       \
     VALGRIND_DO_CLIENT_REQUEST(_qzz_res, 0,                       \
                                VG_USERREQ__MEMPOOL_EXISTS,        \
@@ -3889,6 +3976,7 @@ VALGRIND_PRINTF_BACKTRACE(const char *format, ...)
 
 /* Mark a piece of memory as being a stack. Returns a stack id. */
 #define VALGRIND_STACK_REGISTER(start, end)                       \
+   __extension__                                                  \
    ({unsigned int _qzz_res;                                       \
     VALGRIND_DO_CLIENT_REQUEST(_qzz_res, 0,                       \
                                VG_USERREQ__STACK_REGISTER,        \
@@ -3911,6 +3999,14 @@ VALGRIND_PRINTF_BACKTRACE(const char *format, ...)
     VALGRIND_DO_CLIENT_REQUEST(_qzz_res, 0,                       \
                                VG_USERREQ__STACK_CHANGE,          \
                                id, start, end, 0, 0);             \
+   }
+
+/* Load PDB debug info for Wine PE image_map. */
+#define VALGRIND_LOAD_PDB_DEBUGINFO(fd, ptr, total_size, delta)   \
+   {unsigned int _qzz_res;                                        \
+    VALGRIND_DO_CLIENT_REQUEST(_qzz_res, 0,                       \
+                               VG_USERREQ__LOAD_PDB_DEBUGINFO,    \
+                               fd, ptr, total_size, delta, 0);    \
    }
 
 

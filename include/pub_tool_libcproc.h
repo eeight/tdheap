@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -35,9 +35,7 @@
    Command-line and environment stuff
    ------------------------------------------------------------------ */
 
-/* Client args and environment.  Note that VG_(client_argv)[] can be written
-   to by the client, so you should check each entry is non-NULL before
-   printing.  VG_(client_envp) can be inspected with VG_(getenv)(). */
+/* Client environment. */
 extern Char** VG_(client_envp);
 
 /* Looks up VG_(client_envp) */
@@ -50,8 +48,10 @@ extern const Char *VG_(libdir);
    Important syscalls
    ------------------------------------------------------------------ */
 
-extern Int VG_(waitpid)( Int pid, Int *status, Int options );
-extern Int VG_(system) ( Char* cmd );
+extern Int  VG_(waitpid)( Int pid, Int *status, Int options );
+extern Int  VG_(system) ( Char* cmd );
+extern Int  VG_(fork)   ( void);
+extern void VG_(execv)  ( Char* filename, Char** argv );
 
 /* ---------------------------------------------------------------------
    Resource limits
@@ -79,6 +79,14 @@ extern Int VG_(getegid) ( void );
 // (roughly;  it gets initialised partway through Valgrind's initialisation
 // steps).
 extern UInt VG_(read_millisecond_timer) ( void );
+
+/* ---------------------------------------------------------------------
+   atfork
+   ------------------------------------------------------------------ */
+
+typedef void (*vg_atfork_t)(ThreadId);
+extern void VG_(atfork)(vg_atfork_t pre, vg_atfork_t parent, vg_atfork_t child);
+
 
 #endif   // __PUB_TOOL_LIBCPROC_H
 

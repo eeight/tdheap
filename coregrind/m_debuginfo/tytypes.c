@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2008 OpenWorks LLP
+   Copyright (C) 2008-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -34,6 +34,7 @@
 */
 
 #include "pub_core_basics.h"
+#include "pub_core_debuginfo.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_libcprint.h"
@@ -92,7 +93,8 @@ void ML_(pp_TyEnt)( TyEnt* te )
          VG_(printf)("UNKNOWN");
          break;
       case Te_Atom:
-         VG_(printf)("Te_Atom(%lld,\"%s\")",
+         VG_(printf)("Te_Atom(%s%lld,\"%s\")",
+                     te->Te.Atom.valueKnown ? "" : "unknown:",
                      te->Te.Atom.value, te->Te.Atom.name);
          break;
       case Te_Field:
@@ -239,10 +241,10 @@ void ML_(pp_TyEnt_C_ishly)( XArray* /* of TyEnt */ tyents,
          VG_(printf)("enum %s", ent->Te.TyEnum.name);
          break;
       case Te_TyStOrUn:
-         if (!ent->Te.TyStOrUn.name) goto unhandled;
          VG_(printf)("%s %s",
                      ent->Te.TyStOrUn.isStruct ? "struct" : "union",
-                     ent->Te.TyStOrUn.name);
+                     ent->Te.TyStOrUn.name ? ent->Te.TyStOrUn.name
+                                           : (UChar*)"<anonymous>" );
          break;
       case Te_TyArray:
          ML_(pp_TyEnt_C_ishly)(tyents, ent->Te.TyArray.typeR);
@@ -274,6 +276,9 @@ void ML_(pp_TyEnt_C_ishly)( XArray* /* of TyEnt */ tyents,
       case Te_TyVoid:
          VG_(printf)("%svoid",
                      ent->Te.TyVoid.isFake ? "fake" : "");
+         break;
+      case Te_UNKNOWN:
+         ML_(pp_TyEnt)(ent);
          break;
       default:
          goto unhandled;
@@ -456,6 +461,8 @@ Word ML_(TyEnt__cmp_by_all_except_cuOff) ( TyEnt* te1, TyEnt* te2 )
       r = UWord__cmp(te1->Te.INDIR.indR, te2->Te.INDIR.indR);
       return r;
    case Te_Atom:
+      r = Bool__cmp(te1->Te.Atom.valueKnown, te2->Te.Atom.valueKnown);
+      if (r != 0) return r;
       r = Long__cmp(te1->Te.Atom.value, te2->Te.Atom.value);
       if (r != 0) return r;
       r = Asciiz__cmp(te1->Te.Atom.name, te2->Te.Atom.name);
@@ -604,30 +611,30 @@ void ML_(TyEnt__make_EMPTY) ( TyEnt* te )
 /* How big is this type?  If .b in the returned struct is False, the
    size is unknown. */
 
-static MaybeUWord mk_MaybeUWord_Nothing ( void ) {
-   MaybeUWord muw;
-   muw.w = 0;
-   muw.b = False;
-   return muw;
+static MaybeULong mk_MaybeULong_Nothing ( void ) {
+   MaybeULong mul;
+   mul.ul = 0;
+   mul.b  = False;
+   return mul;
 }
-static MaybeUWord mk_MaybeUWord_Just ( UWord w ) {
-   MaybeUWord muw;
-   muw.w = w;
-   muw.b = True;
-   return muw;
+static MaybeULong mk_MaybeULong_Just ( ULong ul ) {
+   MaybeULong mul;
+   mul.ul = ul;
+   mul.b  = True;
+   return mul;
 }
-static MaybeUWord mul_MaybeUWord ( MaybeUWord muw1, MaybeUWord muw2 ) {
-   if (!muw1.b) { vg_assert(muw1.w == 0); return muw1; }
-   if (!muw2.b) { vg_assert(muw2.w == 0); return muw2; }
-   muw1.w *= muw2.w;
-   return muw1;
+static MaybeULong mul_MaybeULong ( MaybeULong mul1, MaybeULong mul2 ) {
+   if (!mul1.b) { vg_assert(mul1.ul == 0); return mul1; }
+   if (!mul2.b) { vg_assert(mul2.ul == 0); return mul2; }
+   mul1.ul *= mul2.ul;
+   return mul1;
 }
 
-MaybeUWord ML_(sizeOfType)( XArray* /* of TyEnt */ tyents,
+MaybeULong ML_(sizeOfType)( XArray* /* of TyEnt */ tyents,
                             UWord cuOff )
 {
    Word       i;
-   MaybeUWord eszB;
+   MaybeULong eszB;
    TyEnt*     ent = ML_(TyEnts__index_by_cuOff)(tyents, NULL, cuOff);
    TyEnt*     ent2;
    vg_assert(ent);
@@ -635,7 +642,7 @@ MaybeUWord ML_(sizeOfType)( XArray* /* of TyEnt */ tyents,
    switch (ent->tag) {
       case Te_TyBase:
          vg_assert(ent->Te.TyBase.szB > 0);
-         return mk_MaybeUWord_Just( ent->Te.TyBase.szB );
+         return mk_MaybeULong_Just( ent->Te.TyBase.szB );
       case Te_TyQual:
          return ML_(sizeOfType)( tyents, ent->Te.TyQual.typeR );
       case Te_TyTyDef:
@@ -643,23 +650,23 @@ MaybeUWord ML_(sizeOfType)( XArray* /* of TyEnt */ tyents,
                                             ent->Te.TyTyDef.typeR);
          vg_assert(ent2);
          if (ent2->tag == Te_UNKNOWN)
-            return mk_MaybeUWord_Nothing(); /*UNKNOWN*/
+            return mk_MaybeULong_Nothing(); /*UNKNOWN*/
          return ML_(sizeOfType)( tyents, ent->Te.TyTyDef.typeR );
       case Te_TyPorR:
          vg_assert(ent->Te.TyPorR.szB == 4 || ent->Te.TyPorR.szB == 8);
-         return mk_MaybeUWord_Just( ent->Te.TyPorR.szB );
+         return mk_MaybeULong_Just( ent->Te.TyPorR.szB );
       case Te_TyStOrUn:
          return ent->Te.TyStOrUn.complete
-                   ? mk_MaybeUWord_Just( ent->Te.TyStOrUn.szB )
-                   : mk_MaybeUWord_Nothing();
+                   ? mk_MaybeULong_Just( ent->Te.TyStOrUn.szB )
+                   : mk_MaybeULong_Nothing();
       case Te_TyEnum:
-         return mk_MaybeUWord_Just( ent->Te.TyEnum.szB );
+         return mk_MaybeULong_Just( ent->Te.TyEnum.szB );
       case Te_TyArray:
          ent2 = ML_(TyEnts__index_by_cuOff)(tyents, NULL,
                                             ent->Te.TyArray.typeR);
          vg_assert(ent2);
          if (ent2->tag == Te_UNKNOWN)
-            return mk_MaybeUWord_Nothing(); /*UNKNOWN*/
+            return mk_MaybeULong_Nothing(); /*UNKNOWN*/
          eszB = ML_(sizeOfType)( tyents, ent->Te.TyArray.typeR );
          for (i = 0; i < VG_(sizeXA)( ent->Te.TyArray.boundRs ); i++) {
             UWord bo_cuOff
@@ -669,11 +676,11 @@ MaybeUWord ML_(sizeOfType)( XArray* /* of TyEnt */ tyents,
             vg_assert(bo);
             vg_assert(bo->tag == Te_Bound);
             if (!(bo->Te.Bound.knownL && bo->Te.Bound.knownU))
-               return mk_MaybeUWord_Nothing(); /*UNKNOWN*/
-            eszB = mul_MaybeUWord( 
+               return mk_MaybeULong_Nothing(); /*UNKNOWN*/
+            eszB = mul_MaybeULong( 
                       eszB,
-                      mk_MaybeUWord_Just( bo->Te.Bound.boundU 
-                                          - bo->Te.Bound.boundL + 1 ));
+                      mk_MaybeULong_Just( (ULong)(bo->Te.Bound.boundU 
+                                                  - bo->Te.Bound.boundL + 1) ));
          }
          return eszB;
       default:
@@ -696,10 +703,10 @@ static void copy_UWord_into_XA ( XArray* /* of UChar */ xa,
    VG_(addBytesToXA)( xa, buf, VG_(strlen)(buf));
 }
 
-XArray* /*UChar*/ ML_(describe_type)( /*OUT*/OffT* residual_offset,
+XArray* /*UChar*/ ML_(describe_type)( /*OUT*/PtrdiffT* residual_offset,
                                       XArray* /* of TyEnt */ tyents,
                                       UWord ty_cuOff, 
-                                      OffT offset )
+                                      PtrdiffT offset )
 {
    TyEnt*  ty;
    XArray* xa = VG_(newXA)( ML_(dinfo_zalloc), "di.tytypes.dt.1",
@@ -727,11 +734,11 @@ XArray* /*UChar*/ ML_(describe_type)( /*OUT*/OffT* residual_offset,
          case Te_TyStOrUn: {
             Word       i;
             GXResult   res;
-            MaybeUWord muw;
+            MaybeULong mul;
             XArray*    fieldRs;
             UWord      fieldR;
             TyEnt*     field = NULL;
-            OffT       offMin = 0, offMax1 = 0;
+            PtrdiffT   offMin = 0, offMax1 = 0;
             if (!ty->Te.TyStOrUn.isStruct) goto done;
             fieldRs = ty->Te.TyStOrUn.fieldRs;
             if ((!fieldRs) || VG_(sizeXA)(fieldRs) == 0) goto done;
@@ -761,11 +768,11 @@ XArray* /*UChar*/ ML_(describe_type)( /*OUT*/OffT* residual_offset,
                }
                if (res.kind != GXR_Value)
                   continue;
-               muw = ML_(sizeOfType)( tyents, field->Te.Field.typeR );
-               if (muw.b != True)
+               mul = ML_(sizeOfType)( tyents, field->Te.Field.typeR );
+               if (mul.b != True)
                   goto done; /* size of field is unknown (?!) */
                offMin  = res.word;
-               offMax1 = offMin + muw.w;
+               offMax1 = offMin + (PtrdiffT)mul.ul;
                if (offMin == offMax1)
                   continue;
                vg_assert(offMin < offMax1);
@@ -792,7 +799,7 @@ XArray* /*UChar*/ ML_(describe_type)( /*OUT*/OffT* residual_offset,
          }
 
          case Te_TyArray: {
-            MaybeUWord muw;
+            MaybeULong mul;
             UWord      size, eszB, ix;
             UWord      boundR;
             TyEnt*     elemTy;
@@ -817,10 +824,10 @@ XArray* /*UChar*/ ML_(describe_type)( /*OUT*/OffT* residual_offset,
                goto done;
             size = bound->Te.Bound.boundU - bound->Te.Bound.boundL + 1;
             vg_assert(size >= 1);
-            muw = ML_(sizeOfType)( tyents, ty->Te.TyArray.typeR );
-            if (muw.b != True)
+            mul = ML_(sizeOfType)( tyents, ty->Te.TyArray.typeR );
+            if (mul.b != True)
                goto done; /* size of element type not known */
-            eszB = muw.w;
+            eszB = mul.ul;
             if (eszB == 0) goto done;
             ix = offset / eszB;
             VG_(addBytesToXA)( xa, "[", 1 );

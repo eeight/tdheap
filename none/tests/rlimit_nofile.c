@@ -37,14 +37,16 @@ int main(int argc, char **argv)
 
    if (newrlim.rlim_cur != oldrlim.rlim_cur / 2)
    {
-      fprintf(stderr, "rlim_cur is %lu (should be %lu)\n",
-              newrlim.rlim_cur, oldrlim.rlim_cur / 2);
+      fprintf(stderr, "rlim_cur is %llu (should be %llu)\n",
+              (unsigned long long)newrlim.rlim_cur,
+              (unsigned long long)oldrlim.rlim_cur / 2);
    }
 
    if (newrlim.rlim_max != oldrlim.rlim_max)
    {
-      fprintf(stderr, "rlim_max is %lu (should be %lu)\n",
-              newrlim.rlim_max, oldrlim.rlim_max);
+      fprintf(stderr, "rlim_max is %llu (should be %llu)\n",
+              (unsigned long long)newrlim.rlim_max,
+              (unsigned long long)oldrlim.rlim_max);
    }
 
    newrlim.rlim_cur -= 3; /* allow for stdin, stdout and stderr */

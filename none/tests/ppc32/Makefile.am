@@ -1,7 +1,9 @@
 
-noinst_SCRIPTS = filter_stderr
+include $(top_srcdir)/Makefile.tool-tests.am
 
-EXTRA_DIST = $(noinst_SCRIPTS) \
+dist_noinst_SCRIPTS = filter_stderr
+
+EXTRA_DIST = \
 	bug129390-ppc32.stdout.exp bug129390-ppc32.stderr.exp \
 	bug129390-ppc32.vgtest \
 	bug139050-ppc32.stdout.exp bug139050-ppc32.stderr.exp \
@@ -27,10 +29,10 @@ check_PROGRAMS = \
 	ldstrev lsw jm-insns mftocrf mcrfs round test_fx test_gx \
 	testVMX twi tw xlc_dbl_u32
 
-AM_CFLAGS   = $(WERROR) -Winline -Wall -Wshadow -g -I$(top_srcdir)/include \
-		@FLAG_M32@
-AM_CXXFLAGS = $(AM_CFLAGS) @FLAG_M32@
+AM_CFLAGS    += @FLAG_M32@
+AM_CXXFLAGS  += @FLAG_M32@
+AM_CCASFLAGS += @FLAG_M32@
 
-jm_insns_CFLAGS = -Winline -Wall -O -g -mregnames -maltivec @FLAG_M32@
-testVMX_CFLAGS  = -O -g -Wall -maltivec -mabi=altivec -DALTIVEC \
+jm_insns_CFLAGS = $(AM_CFLAGS) -Winline -Wall -O -g -mregnames -maltivec @FLAG_M32@
+testVMX_CFLAGS  = $(AM_CFLAGS) -O -g -Wall -maltivec -mabi=altivec -DALTIVEC \
 			-DGCC_COMPILER @FLAG_M32@

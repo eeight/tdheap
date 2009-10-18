@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2008, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2009, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -180,7 +180,7 @@ Int CLG_(sprint_eventset)(Char* buf, EventSet* es)
 
   for(i=0; i< es->size; i++) {
     if (pos>0) buf[pos++] = ' ';
-    pos += VG_(sprintf)(buf + pos, es->e[i].type->name);
+    pos += VG_(sprintf)(buf + pos, "%s", es->e[i].type->name);
   }
   buf[pos] = 0;
 
@@ -401,16 +401,16 @@ Bool CLG_(add_and_zero_cost_lz)(EventSet* es, ULong** pdst, ULong* src)
 
 /* Adds difference of new and old to dst, and set old to new.
  * Returns false if nothing changed */
-Bool CLG_(add_diff_cost)(EventSet* es, ULong* dst, ULong* old, ULong* new)
+Bool CLG_(add_diff_cost)(EventSet* es, ULong* dst, ULong* old, ULong* new_cost)
 {
   Int i = 0, j = 0;
 
   while(i<es->size) {
-    if (new[i] == old[i])
+    if (new_cost[i] == old[i])
       i = es->e[i].nextTop;
     else {
-      dst[i] += new[i] - old[i];
-      old[i] = new[i];
+      dst[i] += new_cost[i] - old[i];
+      old[i] = new_cost[i];
       i++;
       j++;
     }
@@ -422,18 +422,18 @@ Bool CLG_(add_diff_cost)(EventSet* es, ULong* dst, ULong* old, ULong* new)
 /* Adds difference of new and old to dst, and set old to new.
  * Returns false if nothing changed */
 Bool CLG_(add_diff_cost_lz)(EventSet* es, ULong** pdst, 
-			    ULong* old, ULong* new)
+			    ULong* old, ULong* new_cost)
 {
   Int i;
   ULong* dst;
 
-  if (!old && !new) return False;  
-  CLG_ASSERT(old && new);
+  if (!old && !new_cost) return False;
+  CLG_ASSERT(old && new_cost);
 
   i = 0;
   while(1) {
     if (i >= es->size) return False;
-    if (old[i] != new[i]) break;
+    if (old[i] != new_cost[i]) break;
     i = es->e[i].nextTop;
   }
 
@@ -444,16 +444,16 @@ Bool CLG_(add_diff_cost_lz)(EventSet* es, ULong** pdst,
     CLG_(zero_cost)(es,dst);
   }
 
-  dst[i] += new[i] - old[i];
-  old[i] = new[i];
+  dst[i] += new_cost[i] - old[i];
+  old[i] = new_cost[i];
   i++;
 
   while(i<es->size) {
-    if (new[i] == old[i])
+    if (new_cost[i] == old[i])
       i = es->e[i].nextTop;
     else {
-      dst[i] += new[i] - old[i];
-      old[i] = new[i];
+      dst[i] += new_cost[i] - old[i];
+      old[i] = new_cost[i];
       i++;
     }
   }
@@ -538,7 +538,7 @@ Int CLG_(sprint_eventmapping)(Char* buf, EventMapping* em)
 
   for(i=0; i< em->size; i++) {
     if (pos>0) buf[pos++] = ' ';
-    pos += VG_(sprintf)(buf + pos, em->set->e[em->index[i]].type->name);
+    pos += VG_(sprintf)(buf + pos, "%s", em->set->e[em->index[i]].type->name);
   }
   buf[pos] = 0;
 

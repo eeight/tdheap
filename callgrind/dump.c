@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2008, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2009, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -64,13 +64,13 @@ Int CLG_(get_dump_counter)(void)
 
 Char* CLG_(get_out_file)()
 {
-    CLG_ASSERT(dumps_initialized);
+    CLG_(init_dumps)();
     return out_file;
 }
 
 Char* CLG_(get_out_directory)()
 {
-    CLG_ASSERT(dumps_initialized);
+    CLG_(init_dumps)();
     return out_directory;
 }
 
@@ -185,19 +185,19 @@ static void my_fwrite(Int fd, Char* buf, Int len)
 
 static void print_obj(Char* buf, obj_node* obj)
 {
-    int n;
+    //int n;
 
     if (CLG_(clo).compress_strings) {
 	CLG_ASSERT(obj_dumped != 0);
 	if (obj_dumped[obj->number])
-	    n = VG_(sprintf)(buf, "(%d)\n", obj->number);
+	    /*n =*/ VG_(sprintf)(buf, "(%d)\n", obj->number);
 	else {
-	    n = VG_(sprintf)(buf, "(%d) %s\n",
+	    /*n =*/ VG_(sprintf)(buf, "(%d) %s\n",
 			     obj->number, obj->name);
 	}
     }
     else
-	n = VG_(sprintf)(buf, "%s\n", obj->name);
+	/*n =*/ VG_(sprintf)(buf, "%s\n", obj->name);
 
 #if 0
     /* add mapping parameters the first time a object is dumped
@@ -787,7 +787,7 @@ static Bool fprint_bbcc(Int fd, BBCC* bbcc, AddrPos* last)
   CLG_ASSERT(bbcc->cxt != 0);
   CLG_DEBUGIF(1) {
     VG_(printf)("+ fprint_bbcc (Instr %d): ", bb->instr_count);
-    CLG_(print_bbcc)(15, bbcc, False);
+    CLG_(print_bbcc)(15, bbcc);
   }
 
   CLG_ASSERT(currSum == 0 || currSum == 1);
@@ -832,7 +832,8 @@ static Bool fprint_bbcc(Int fd, BBCC* bbcc, AddrPos* last)
     if (bb->jmp[jmp].instr == instr) {
 	jcc_count=0;
 	for(jcc=bbcc->jmp[jmp].jcc_list; jcc; jcc=jcc->next_from)
-	    if ((jcc->jmpkind != Ijk_Call) && (jcc->call_counter >0))
+	    if (((jcc->jmpkind != Ijk_Call) && (jcc->call_counter >0)) ||
+		(!CLG_(is_zero_cost)( CLG_(sets).full, jcc->cost )))
 	      jcc_count++;
 
 	if (jcc_count>0) {    
@@ -845,7 +846,8 @@ static Bool fprint_bbcc(Int fd, BBCC* bbcc, AddrPos* last)
 	    fprint_apos(fd, &(currCost->p), last, bbcc->cxt->fn[0]->file);
 	    something_written = True;
 	    for(jcc=bbcc->jmp[jmp].jcc_list; jcc; jcc=jcc->next_from) {
-		if ((jcc->jmpkind != Ijk_Call) && (jcc->call_counter >0))
+		if (((jcc->jmpkind != Ijk_Call) && (jcc->call_counter >0)) ||
+		    (!CLG_(is_zero_cost)( CLG_(sets).full, jcc->cost )))
 		    fprint_jcc(fd, jcc, &(currCost->p), last, ecounter);
 	    }
 	}
@@ -1265,7 +1267,7 @@ static
 void file_err(void)
 {
    VG_(message)(Vg_UserMsg,
-                "Error: can not open cache simulation output file `%s'",
+                "Error: can not open cache simulation output file `%s'\n",
                 filename );
    VG_(exit)(1);
 }
@@ -1296,27 +1298,27 @@ static int new_dumpfile(Char buf[BUF_LEN], int tid, Char* trigger)
 	    i += VG_(sprintf)(filename+i, ".%d", out_counter);
 
 	if (CLG_(clo).separate_threads)
-	    i += VG_(sprintf)(filename+i, "-%02d", tid);
+	    VG_(sprintf)(filename+i, "-%02d", tid);
 
 	res = VG_(open)(filename, VKI_O_WRONLY|VKI_O_TRUNC, 0);
     }
     else {
 	VG_(sprintf)(filename, "%s", out_file);
         res = VG_(open)(filename, VKI_O_WRONLY|VKI_O_APPEND, 0);
-	if (!res.isError && out_counter>1)
+	if (!sr_isError(res) && out_counter>1)
 	    appending = True;
     }
 
-    if (res.isError) {
+    if (sr_isError(res)) {
 	res = VG_(open)(filename, VKI_O_CREAT|VKI_O_WRONLY,
 			VKI_S_IRUSR|VKI_S_IWUSR);
-	if (res.isError) {
+	if (sr_isError(res)) {
 	    /* If the file can not be opened for whatever reason (conflict
 	       between multiple supervised processes?), give up now. */
 	    file_err();
 	}
     }
-    fd = (Int) res.res;
+    fd = (Int) sr_Res(res);
 
     CLG_DEBUG(2, "  new_dumpfile '%s'\n", filename);
 
@@ -1467,13 +1469,13 @@ static int new_dumpfile(Char buf[BUF_LEN], int tid, Char* trigger)
    my_fwrite(fd, "\n\n",2);
 
    if (VG_(clo_verbosity) > 1)
-       VG_(message)(Vg_DebugMsg, "Dump to %s", filename);
+       VG_(message)(Vg_DebugMsg, "Dump to %s\n", filename);
 
    return fd;
 }
 
 
-static void close_dumpfile(Char buf[BUF_LEN], int fd, int tid)
+static void close_dumpfile(int fd)
 {
     if (fd <0) return;
 
@@ -1489,7 +1491,7 @@ static void close_dumpfile(Char buf[BUF_LEN], int fd, int tid)
     if (filename[0] == '.') {
 	if (-1 == VG_(rename) (filename, filename+1)) {
 	    /* Can not rename to correct file name: give out warning */
-	    VG_(message)(Vg_DebugMsg, "Warning: Can not rename .%s to %s",
+	    VG_(message)(Vg_DebugMsg, "Warning: Can not rename .%s to %s\n",
 			 filename, filename);
        }
    }
@@ -1575,7 +1577,7 @@ static void print_bbccs_of_thread(thread_info* ti)
     p++;
   }
 
-  close_dumpfile(print_buf, print_fd, CLG_(current_tid));
+  close_dumpfile(print_fd);
   if (array) VG_(free)(array);
   
   /* set counters of last dump */
@@ -1616,8 +1618,10 @@ void CLG_(dump_profile)(Char* trigger, Bool only_current_thread)
    CLG_DEBUG(2, "+ dump_profile(Trigger '%s')\n",
 	    trigger ? trigger : (Char*)"Prg.Term.");
 
+   CLG_(init_dumps)();
+
    if (VG_(clo_verbosity) > 1)
-       VG_(message)(Vg_DebugMsg, "Start dumping at BB %llu (%s)...",
+       VG_(message)(Vg_DebugMsg, "Start dumping at BB %llu (%s)...\n",
 		    CLG_(stat).bb_executions,
 		    trigger ? trigger : (Char*)"Prg.Term.");
 
@@ -1628,7 +1632,7 @@ void CLG_(dump_profile)(Char* trigger, Bool only_current_thread)
    bbs_done = CLG_(stat).bb_executions++;
 
    if (VG_(clo_verbosity) > 1)
-     VG_(message)(Vg_DebugMsg, "Dumping done.");
+     VG_(message)(Vg_DebugMsg, "Dumping done.\n");
 }
 
 /* copy command to cmd buffer (could change) */
@@ -1638,7 +1642,6 @@ void init_cmdbuf(void)
   Int i,j,size = 0;
   HChar* argv;
 
-#if VG_CORE_INTERFACE_VERSION > 8
   if (VG_(args_the_exename))
       size = VG_(sprintf)(cmdbuf, " %s", VG_(args_the_exename));
 
@@ -1649,15 +1652,6 @@ void init_cmdbuf(void)
       for(j=0;argv[j]!=0;j++)
 	  if (size < BUF_LEN) cmdbuf[size++] = argv[j];
   }
-#else
-  for(i = 0; i < VG_(client_argc); i++) {
-    argv = VG_(client_argv)[i];
-    if (!argv) continue;
-    if ((size>0) && (size < BUF_LEN)) cmdbuf[size++] = ' ';
-    for(j=0;argv[j]!=0;j++)
-      if (size < BUF_LEN) cmdbuf[size++] = argv[j];
-  }
-#endif
 
   if (size == BUF_LEN) size--;
   cmdbuf[size] = 0;
@@ -1673,14 +1667,34 @@ void init_cmdbuf(void)
  * <out_file> always starts with a full absolute path.
  * If the output format string represents a relative path, the current
  * working directory at program start is used.
+ *
+ * This function has to be called every time a profile dump is generated
+ * to be able to react on PID changes.
  */
 void CLG_(init_dumps)()
 {
    Int lastSlash, i;
    SysRes res;
 
+   static int thisPID = 0;
+   int currentPID = VG_(getpid)();
+   if (currentPID == thisPID) {
+       /* already initialized, and no PID change */
+       CLG_ASSERT(out_file != 0);
+       return;
+   }
+   thisPID = currentPID;
+   
    if (!CLG_(clo).out_format)
      CLG_(clo).out_format = DEFAULT_OUTFORMAT;
+
+   /* If a file name was already set, clean up before */
+   if (out_file) {
+       VG_(free)(out_file);
+       VG_(free)(out_directory);
+       VG_(free)(filename);
+       out_counter = 0;
+   }
 
    // Setup output filename.
    out_file =
@@ -1712,16 +1726,17 @@ void CLG_(init_dumps)()
     */ 
     VG_(strcpy)(filename, out_file);
     res = VG_(open)(filename, VKI_O_WRONLY|VKI_O_TRUNC, 0);
-    if (res.isError) { 
+    if (sr_isError(res)) { 
 	res = VG_(open)(filename, VKI_O_CREAT|VKI_O_WRONLY,
 		       VKI_S_IRUSR|VKI_S_IWUSR);
-	if (res.isError) {
+	if (sr_isError(res)) {
 	    file_err(); 
 	}
     }
-    if (!res.isError) VG_(close)( (Int)res.res );
+    if (!sr_isError(res)) VG_(close)( (Int)sr_Res(res) );
 
-    init_cmdbuf();
+    if (!dumps_initialized)
+	init_cmdbuf();
 
     dumps_initialized = True;
 }

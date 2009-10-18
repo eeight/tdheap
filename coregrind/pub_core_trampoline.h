@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -66,6 +66,7 @@ extern Char* VG_(x86_linux_REDIR_FOR_index) ( const Char*, Int );
 extern void VG_(amd64_linux_SUBST_FOR_rt_sigreturn);
 extern void VG_(amd64_linux_REDIR_FOR_vgettimeofday);
 extern void VG_(amd64_linux_REDIR_FOR_vtime);
+extern UInt VG_(amd64_linux_REDIR_FOR_strlen)( void* );
 #endif
 
 #if defined(VGP_ppc32_linux)
@@ -111,7 +112,17 @@ extern void VG_(ppctoc_magic_redirect_return_stub);
 /* See comment for ppc32_aix5 equivalent above. */
 extern void VG_(ppc64_aix5_do_preloads_then_start_client);
 #endif
- 
+
+#if defined(VGO_darwin)
+extern void  VG_(x86_darwin_SUBST_FOR_sigreturn);
+extern SizeT VG_(darwin_REDIR_FOR_strlen)( void* );
+extern SizeT VG_(darwin_REDIR_FOR_strcmp)( void*, void* );
+extern void* VG_(darwin_REDIR_FOR_strcat)( void*, void * );
+extern char* VG_(darwin_REDIR_FOR_strcpy)( char *s1, char *s2 );
+extern SizeT VG_(darwin_REDIR_FOR_strlcat)( char *s1, const char *s2, SizeT size );
+extern UInt VG_(darwin_REDIR_FOR_arc4random)( void );
+#endif
+
 #endif   // __PUB_CORE_TRAMPOLINE_H
 
 /*--------------------------------------------------------------------*/

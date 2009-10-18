@@ -1,0 +1,83 @@
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/using
+END
+locale
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/using/locale
+END
+export
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/using/export
+END
+fstream
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/using/fstream
+END
+iostream
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/using/iostream
+END
+strstream
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/using/strstream
+END
+istream
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/using/istream
+END
+streambuf
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/using/streambuf
+END
+cstring
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/using/cstring
+END
+ios
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/using/ios
+END
+ostream
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/using/ostream
+END
+iosfwd
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/using/iosfwd
+END
+iomanip
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/using/iomanip
+END
+sstream
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/using/sstream
+END

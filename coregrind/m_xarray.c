@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2008 OpenWorks LLP
+   Copyright (C) 2007-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -162,7 +162,7 @@ static inline void ensureSpaceXA ( struct _XArray* xa )
          else if (xa->elemSzB == 2) newsz = 4;
          else newsz = 2;
       } else {
-         newsz = 1 + (3 * xa->totsizeE) / 2;  /* 2 * xa->totsizeE; */
+         newsz = 2 + (3 * xa->totsizeE) / 2;  /* 2 * xa->totsizeE; */
       }
       if (0 && xa->totsizeE >= 10000) 
          VG_(printf)("addToXA: increasing from %ld to %ld\n", 
@@ -225,14 +225,14 @@ void VG_(sortXA) ( XArray* xao )
    xa->sorted = True;
 }
 
-Bool VG_(lookupXA) ( XArray* xao, void* key, Word* first, Word* last )
+Bool VG_(lookupXA_UNSAFE) ( XArray* xao, void* key,
+                            /*OUT*/Word* first, /*OUT*/Word* last,
+                            Int(*cmpFn)(void*,void*) )
 {
    Word  lo, mid, hi, cres;
    void* midv;
    struct _XArray* xa = (struct _XArray*)xao;
    vg_assert(xa);
-   vg_assert(xa->cmpFn);
-   vg_assert(xa->sorted);
    vg_assert(first);
    vg_assert(last);
    lo = 0;
@@ -242,21 +242,31 @@ Bool VG_(lookupXA) ( XArray* xao, void* key, Word* first, Word* last )
       if (lo > hi) return False; /* not found */
       mid  = (lo + hi) / 2;
       midv = VG_(indexXA)( xa, mid );
-      cres = xa->cmpFn( key, midv );
+      cres = cmpFn( key, midv );
       if (cres < 0)  { hi = mid-1; continue; }
       if (cres > 0)  { lo = mid+1; continue; }
       /* Found it, at mid.  See how far we can expand this. */
-      vg_assert(xa->cmpFn( key, VG_(indexXA)(xa, lo) ) >= 0);
-      vg_assert(xa->cmpFn( key, VG_(indexXA)(xa, hi) ) <= 0);
+      vg_assert(cmpFn( key, VG_(indexXA)(xa, lo) ) >= 0);
+      vg_assert(cmpFn( key, VG_(indexXA)(xa, hi) ) <= 0);
       *first = *last = mid;
       while (*first > 0 
-             && 0 == xa->cmpFn( key, VG_(indexXA)(xa, (*first)-1)))
+             && 0 == cmpFn( key, VG_(indexXA)(xa, (*first)-1)))
          (*first)--;
       while (*last < xa->usedsizeE-1
-             && 0 == xa->cmpFn( key, VG_(indexXA)(xa, (*last)+1)))
+             && 0 == cmpFn( key, VG_(indexXA)(xa, (*last)+1)))
          (*last)++;
       return True;
    }
+}
+
+Bool VG_(lookupXA) ( XArray* xao, void* key,
+                     /*OUT*/Word* first, /*OUT*/Word* last )
+{
+   struct _XArray* xa = (struct _XArray*)xao;
+   vg_assert(xa);
+   vg_assert(xa->cmpFn);
+   vg_assert(xa->sorted);
+   return VG_(lookupXA_UNSAFE)(xao, key, first, last, xa->cmpFn);
 }
 
 Word VG_(sizeXA) ( XArray* xao )
@@ -273,6 +283,52 @@ void VG_(dropTailXA) ( XArray* xao, Word n )
    vg_assert(n >= 0);
    vg_assert(n <= xa->usedsizeE);
    xa->usedsizeE -= n;
+}
+
+void VG_(dropHeadXA) ( XArray* xao, Word n )
+{
+   struct _XArray* xa = (struct _XArray*)xao;
+   vg_assert(xa);
+   vg_assert(n >= 0);
+   vg_assert(n <= xa->usedsizeE);
+   if (n == 0) {
+      return;
+   }
+   if (n == xa->usedsizeE) {
+      xa->usedsizeE = 0;
+      return;
+   }
+   vg_assert(n > 0);
+   vg_assert(xa->usedsizeE - n > 0);
+   VG_(memcpy)( (char*)xa->arr,
+                ((char*)xa->arr) + n * xa->elemSzB, 
+                (xa->usedsizeE - n) * xa->elemSzB );
+   xa->usedsizeE -= n;
+}
+
+/* --------- Printeffery --------- */
+
+static void add_char_to_XA ( HChar c, void* opaque )
+{
+   XArray* dst = (XArray*)opaque;
+   (void) VG_(addBytesToXA)( dst, &c, 1 );
+}
+
+void VG_(xaprintf)( XArray* dst, const HChar* format, ... )
+{
+   va_list vargs;
+   va_start(vargs, format);
+   VG_(vcbprintf)( add_char_to_XA, (void*)dst, format, vargs );
+   va_end(vargs);
+}
+
+/* and again .. */
+void VG_(xaprintf_no_f_c)( XArray* dst, const HChar* format, ... )
+{
+   va_list vargs;
+   va_start(vargs, format);
+   VG_(vcbprintf)( add_char_to_XA, (void*)dst, format, vargs );
+   va_end(vargs);
 }
 
 

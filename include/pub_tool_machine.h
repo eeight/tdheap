@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -68,6 +68,17 @@
 #  define VG_MAX_INSTR_SZB          4 
 #  define VG_CLREQ_SZB             20
 #  define VG_STACK_REDZONE_SZB    288 // is this right?
+#elif defined(VGP_x86_darwin)
+#  define VG_MIN_INSTR_SZB          1  // min length of native instruction
+#  define VG_MAX_INSTR_SZB         16  // max length of native instruction
+#  define VG_CLREQ_SZB             14  // length of a client request, may
+                                       //   be larger than VG_MAX_INSTR_SZB
+#  define VG_STACK_REDZONE_SZB      0  // number of addressable bytes below %RSP
+#elif defined(VGP_amd64_darwin)
+#  define VG_MIN_INSTR_SZB          1
+#  define VG_MAX_INSTR_SZB         16
+#  define VG_CLREQ_SZB             19
+#  define VG_STACK_REDZONE_SZB    128
 #else
 #  error Unknown platform
 #endif
@@ -90,10 +101,10 @@ extern void VG_(set_IP) ( ThreadId tid, Addr ip );
 void
 VG_(get_shadow_regs_area) ( ThreadId tid, 
                             /*DST*/UChar* dst,
-                            /*SRC*/Int shadowNo, OffT offset, SizeT size );
+                            /*SRC*/Int shadowNo, PtrdiffT offset, SizeT size );
 void
 VG_(set_shadow_regs_area) ( ThreadId tid, 
-                            /*DST*/Int shadowNo, OffT offset, SizeT size,
+                            /*DST*/Int shadowNo, PtrdiffT offset, SizeT size,
                             /*SRC*/const UChar* src );
 
 // Sets the shadow values for the syscall return value register(s).

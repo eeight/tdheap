@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -53,40 +53,25 @@ UInt VG_(clo_alignment)     = VG_MIN_MALLOC_SZB;
 
 Bool VG_(replacement_malloc_process_cmd_line_option)(Char* arg)
 {
-   if (VG_CLO_STREQN(12, arg, "--alignment=")) {
-      VG_(clo_alignment) = (UInt)VG_(atoll)(&arg[12]);
-
-      if (VG_(clo_alignment) < VG_MIN_MALLOC_SZB
-          || VG_(clo_alignment) > 4096
-          || VG_(log2)( VG_(clo_alignment) ) == -1 /* not a power of 2 */) {
-         VG_(message)(Vg_UserMsg, "");
+   if VG_INT_CLO(arg, "--alignment", VG_(clo_alignment)) {
+      if (VG_(clo_alignment) < VG_MIN_MALLOC_SZB ||
+          VG_(clo_alignment) > 4096 ||
+          VG_(log2)( VG_(clo_alignment) ) == -1 /* not a power of 2 */)
+      {
          VG_(message)(Vg_UserMsg, 
             "Invalid --alignment= setting.  "
-            "Should be a power of 2, >= %d, <= 4096.", VG_MIN_MALLOC_SZB);
+            "Should be a power of 2, >= %d, <= 4096.\n",
+            VG_MIN_MALLOC_SZB
+         );
          VG_(err_bad_option)("--alignment");
       }
    }
 
-   else VG_BOOL_CLO(arg, "--trace-malloc",  VG_(clo_trace_malloc))
+   else if VG_BOOL_CLO(arg, "--trace-malloc",  VG_(clo_trace_malloc)) {}
    else 
       return False;
 
    return True;
-}
-
-void VG_(replacement_malloc_print_usage)(void)
-{
-   VG_(printf)(
-"    --alignment=<number>      set minimum alignment of allocations [%d]\n",
-   VG_MIN_MALLOC_SZB
-   );
-}
-
-void VG_(replacement_malloc_print_debug_usage)(void)
-{
-   VG_(printf)(
-"    --trace-malloc=no|yes     show client malloc details? [no]\n"
-   );
 }
 
 /*------------------------------------------------------------*/

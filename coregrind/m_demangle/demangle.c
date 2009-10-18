@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -30,12 +30,14 @@
 
 #include "pub_core_basics.h"
 #include "pub_core_demangle.h"
+#include "pub_core_libcassert.h"
 #include "pub_core_libcbase.h"
+#include "pub_core_libcprint.h"
 #include "pub_core_mallocfree.h"
 #include "pub_core_options.h"
-#include "pub_core_libcassert.h"
+
+#include "vg_libciface.h"
 #include "demangle.h"
-#include "pub_core_libcprint.h"
 
 /* The demangler's job is to take a raw symbol name and turn it into
    something a Human Bean can understand.  There are two levels of
@@ -68,36 +70,47 @@
    - do the below-main hack
 */
 
+/* Note that the C++ demangler is from GNU libiberty and is almost
+   completely unmodified.  We use vg_libciface.h as a way to
+   impedance-match the libiberty code into our own framework.
+
+   The current code is from libiberty in the gcc tree, gcc svn
+   r141363, dated 26 Oct 2008 (when the gcc trunk was in Stage 3
+   leading up to a gcc-4.4 release).  As of r141363, libiberty is LGPL
+   2.1, which AFAICT is compatible with "GPL 2 or later" and so is OK
+   for inclusion in Valgrind.
+
+   To update to a newer libiberty, it might be simplest to svn diff
+   the gcc tree libibery against r141363 and then apply those diffs
+   here. */
+
 /* This is the main, standard demangler entry point. */
 
-void VG_(demangle) ( Bool do_cxx_demangle, 
+void VG_(demangle) ( Bool do_cxx_demangling, Bool do_z_demangling,
                      Char* orig, Char* result, Int result_size )
 {
 #  define N_ZBUF 4096
    HChar* demangled = NULL;
    HChar z_demangled[N_ZBUF];
 
-   if (!VG_(clo_demangle)) {
-      VG_(strncpy_safely)(result, orig, result_size);
-      return;
-   }
-
-   /* Undo (2) */
-   /* Demangling was requested.  First see if it's a Z-mangled
-      intercept specification.  The fastest way is just to attempt a
-      Z-demangling (with NULL soname buffer, since we're not
+   /* Possibly undo (2) */
+   /* Z-Demangling was requested.  
+      The fastest way to see if it's a Z-mangled name is just to attempt
+      to Z-demangle it (with NULL for the soname buffer, since we're not
       interested in that). */
-   if (VG_(maybe_Z_demangle)( orig, NULL,0,/*soname*/
-                              z_demangled, N_ZBUF, NULL)) {
-      orig = z_demangled;
+   if (do_z_demangling) {
+      if (VG_(maybe_Z_demangle)( orig, NULL,0,/*soname*/
+                                 z_demangled, N_ZBUF, NULL)) {
+         orig = z_demangled;
+      }
    }
 
    /* Possibly undo (1) */
-   if (do_cxx_demangle)
+   if (do_cxx_demangling && VG_(clo_demangle)) {
       demangled = ML_(cplus_demangle) ( orig, DMGL_ANSI | DMGL_PARAMS );
-   else
+   } else {
       demangled = NULL;
-
+   }
    if (demangled) {
       VG_(strncpy_safely)(result, demangled, result_size);
       VG_(arena_free) (VG_AR_DEMANGLE, demangled);
@@ -105,21 +118,11 @@ void VG_(demangle) ( Bool do_cxx_demangle,
       VG_(strncpy_safely)(result, orig, result_size);
    }
 
-   /* Do the below-main hack */
    // 13 Mar 2005: We used to check here that the demangler wasn't leaking
    // by calling the (now-removed) function VG_(is_empty_arena)().  But,
    // very rarely (ie. I've heard of it twice in 3 years), the demangler
    // does leak.  But, we can't do much about it, and it's not a disaster,
    // so we just let it slide without aborting or telling the user.
-
-   // Finally, to reduce the endless nuisance of multiple different names 
-   // for "the frame below main()" screwing up the testsuite, change all
-   // known incarnations of said into a single name, "(below main)".
-   if (0==VG_(strcmp)("__libc_start_main", result)
-       || 0==VG_(strcmp)("generic_start_main", result)
-       || 0==VG_(strcmp)("__start", result)) /* on AIX */
-      VG_(strncpy_safely)(result, "(below main)", 13);
-
 #  undef N_ZBUF
 }
 
@@ -164,7 +167,7 @@ Bool VG_(maybe_Z_demangle) ( const HChar* sym,
          }                                     \
       } while (0)
 
-   Bool error, oflow, valid, fn_is_encoded;
+   Bool error, oflow, valid, fn_is_encoded, is_VG_Z_prefixed;
    Int  soi, fni, i;
 
    vg_assert(soLen > 0 || (soLen == 0 && so == NULL));
@@ -189,6 +192,19 @@ Bool VG_(maybe_Z_demangle) ( const HChar* sym,
    if (isWrap)
       *isWrap = sym[3] == 'w';
 
+   /* Now check the soname prefix isn't "VG_Z_", as described in
+      pub_tool_redir.h. */
+   is_VG_Z_prefixed =
+      sym[ 7] == 'V' &&
+      sym[ 8] == 'G' &&
+      sym[ 9] == '_' &&
+      sym[10] == 'Z' &&
+      sym[11] == '_';
+   if (is_VG_Z_prefixed) {
+      vg_assert2(0, "symbol with a 'VG_Z_' prefix: %s.\n"
+                    "see pub_tool_redir.h for an explanation.", sym);
+   }
+
    /* Now scan the Z-encoded soname. */
    i = 7;
    while (True) {
@@ -212,16 +228,17 @@ Bool VG_(maybe_Z_demangle) ( const HChar* sym,
       i++;
       switch (sym[i]) {
          case 'a': EMITSO('*'); break;
-         case 'p': EMITSO('+'); break;
          case 'c': EMITSO(':'); break;
          case 'd': EMITSO('.'); break;
-         case 'u': EMITSO('_'); break;
          case 'h': EMITSO('-'); break;
+         case 'p': EMITSO('+'); break;
          case 's': EMITSO(' '); break;
-         case 'Z': EMITSO('Z'); break;
+         case 'u': EMITSO('_'); break;
          case 'A': EMITSO('@'); break;
+         case 'D': EMITSO('$'); break;
          case 'L': EMITSO('('); break;
          case 'R': EMITSO(')'); break;
+         case 'Z': EMITSO('Z'); break;
          default: error = True; goto out;
       }
       i++;
@@ -260,16 +277,17 @@ Bool VG_(maybe_Z_demangle) ( const HChar* sym,
       i++;
       switch (sym[i]) {
          case 'a': EMITFN('*'); break;
-         case 'p': EMITFN('+'); break;
          case 'c': EMITFN(':'); break;
          case 'd': EMITFN('.'); break;
-         case 'u': EMITFN('_'); break;
          case 'h': EMITFN('-'); break;
+         case 'p': EMITFN('+'); break;
          case 's': EMITFN(' '); break;
-         case 'Z': EMITFN('Z'); break;
+         case 'u': EMITFN('_'); break;
          case 'A': EMITFN('@'); break;
-         case 'L': EMITSO('('); break;
-         case 'R': EMITSO(')'); break;
+         case 'D': EMITFN('$'); break;
+         case 'L': EMITFN('('); break;
+         case 'R': EMITFN(')'); break;
+         case 'Z': EMITFN('Z'); break;
          default: error = True; goto out;
       }
       i++;
@@ -281,12 +299,14 @@ Bool VG_(maybe_Z_demangle) ( const HChar* sym,
 
    if (error) {
       /* Something's wrong.  Give up. */
-      VG_(message)(Vg_UserMsg, "m_demangle: error Z-demangling: %s", sym);
+      VG_(message)(Vg_UserMsg,
+                   "m_demangle: error Z-demangling: %s\n", sym);
       return False;
    }
    if (oflow) {
       /* It didn't fit.  Give up. */
-      VG_(message)(Vg_UserMsg, "m_demangle: oflow Z-demangling: %s", sym);
+      VG_(message)(Vg_UserMsg,
+                   "m_demangle: oflow Z-demangling: %s\n", sym);
       return False;
    }
 

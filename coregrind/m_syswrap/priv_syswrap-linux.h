@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Nicholas Nethercote
+   Copyright (C) 2000-2009 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -48,6 +48,11 @@ DECL_TEMPLATE(linux, sys_mount);
 DECL_TEMPLATE(linux, sys_oldumount);
 DECL_TEMPLATE(linux, sys_umount);
 
+// POSIX, but various sub-cases differ between Linux and Darwin.
+DECL_TEMPLATE(linux, sys_fcntl);
+DECL_TEMPLATE(linux, sys_fcntl64);
+DECL_TEMPLATE(linux, sys_ioctl);
+
 DECL_TEMPLATE(linux, sys_setfsuid16);
 DECL_TEMPLATE(linux, sys_setfsuid);
 DECL_TEMPLATE(linux, sys_setfsgid16);
@@ -80,10 +85,14 @@ DECL_TEMPLATE(linux, sys_pselect6);
 DECL_TEMPLATE(linux, sys_ppoll);
 
 DECL_TEMPLATE(linux, sys_epoll_create);
+DECL_TEMPLATE(linux, sys_epoll_create1);
 DECL_TEMPLATE(linux, sys_epoll_ctl);
 DECL_TEMPLATE(linux, sys_epoll_wait);
 DECL_TEMPLATE(linux, sys_epoll_pwait);
 DECL_TEMPLATE(linux, sys_eventfd);
+DECL_TEMPLATE(linux, sys_eventfd2);
+
+DECL_TEMPLATE(linux, sys_fallocate);
 
 DECL_TEMPLATE(linux, sys_gettid);
 DECL_TEMPLATE(linux, sys_set_tid_address);
@@ -100,6 +109,7 @@ DECL_TEMPLATE(linux, sys_io_submit);
 DECL_TEMPLATE(linux, sys_io_cancel);
 
 DECL_TEMPLATE(linux, sys_ioprio_set);
+DECL_TEMPLATE(linux, sys_ioprio_get);
 
 DECL_TEMPLATE(linux, sys_mbind);
 DECL_TEMPLATE(linux, sys_set_mempolicy);
@@ -131,6 +141,7 @@ DECL_TEMPLATE(linux, sys_timerfd_gettime);
 DECL_TEMPLATE(linux, sys_timerfd_settime);
 
 DECL_TEMPLATE(linux, sys_signalfd);
+DECL_TEMPLATE(linux, sys_signalfd4);
 
 DECL_TEMPLATE(linux, sys_capget);
 DECL_TEMPLATE(linux, sys_capset);
@@ -206,6 +217,7 @@ DECL_TEMPLATE(linux, sys_sched_getaffinity);
 // Also, some archs on Linux do not match the generic wrapper for sys_pipe.
 DECL_TEMPLATE(linux, sys_munlockall);
 DECL_TEMPLATE(linux, sys_pipe);
+DECL_TEMPLATE(linux, sys_pipe2);
 DECL_TEMPLATE(linux, sys_quotactl);
 DECL_TEMPLATE(linux, sys_waitid);
 
@@ -229,10 +241,14 @@ DECL_TEMPLATE(linux, sys_rt_sigsuspend);
 
 // Linux-specific?
 DECL_TEMPLATE(linux, sys_sync_file_range);
+DECL_TEMPLATE(linux, sys_stime);  /* maybe generic?  I'm not sure */
 
 // Linux specific (kernel modules)
 DECL_TEMPLATE(linux, sys_init_module);
 DECL_TEMPLATE(linux, sys_delete_module);
+
+// Linux-specific (oprofile-related)
+DECL_TEMPLATE(linux, sys_lookup_dcookie);        // (*/32/64) L
 
 /* ---------------------------------------------------------------------
    Wrappers for sockets and ipc-ery.  These are split into standalone
@@ -244,11 +260,13 @@ DECL_TEMPLATE(linux, sys_delete_module);
 #define UW  UWord
 #define SR  SysRes
 
-extern void   ML_(linux_PRE_sys_msgsnd)  ( TId, UW, UW, UW, UW );
-extern void   ML_(linux_PRE_sys_msgrcv)  ( TId, UW, UW, UW, UW, UW );
-extern void   ML_(linux_POST_sys_msgrcv) ( TId, UW, UW, UW, UW, UW, UW );
-extern void   ML_(linux_PRE_sys_msgctl)  ( TId, UW, UW, UW );
-extern void   ML_(linux_POST_sys_msgctl) ( TId, UW, UW, UW, UW );
+extern void ML_(linux_PRE_sys_msgsnd)      ( TId, UW, UW, UW, UW );
+extern void ML_(linux_PRE_sys_msgrcv)      ( TId, UW, UW, UW, UW, UW );
+extern void ML_(linux_POST_sys_msgrcv)     ( TId, UW, UW, UW, UW, UW, UW );
+extern void ML_(linux_PRE_sys_msgctl)      ( TId, UW, UW, UW );
+extern void ML_(linux_POST_sys_msgctl)     ( TId, UW, UW, UW, UW );
+extern void ML_(linux_PRE_sys_getsockopt)  ( TId, UW, UW, UW, UW, UW );
+extern void ML_(linux_POST_sys_getsockopt) ( TId, SR, UW, UW, UW, UW, UW );
 
 #undef TId
 #undef UW

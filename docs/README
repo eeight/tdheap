@@ -119,6 +119,26 @@ Catalog/Stylesheet Location
 in recent distros.
 
 
+Notes [May 2009]
+-----------------
+For Ubuntu 9.04, to build HTML docs I had to:
+
+  sudo apt-get install docbook docbook-xsl
+
+Actually, I'm not sure if the 'docbook' is necessary, but 'docbook-xsl'
+definitely is.
+
+To build the man pages I also changed the Makefile.am to try this
+stylesheet:
+
+    /usr/share/xml/docbook/stylesheet/nwalsh/current/manpages/docbook.xsl
+
+if it can't find this one:
+
+    /usr/share/xml/docbook/stylesheet/nwalsh/manpages/docbook.xsl
+
+I haven't succeeded in building the print docs.
+
 Notes [Mar. 2007]
 -----------------
 For SuSE 10.1, I have to install the following packages to get a

@@ -1,21 +1,19 @@
 
 
 FILE DESCRIPTORS: 5 open at exit.
-Open file descriptor .:
-   at 0x........: pipe (in /...libc...)
-   by 0x........: (below main) (in /...libc...)
+Open file descriptor ...:
+   ...
 
-Open file descriptor .:
-   at 0x........: pipe (in /...libc...)
-   by 0x........: (below main) (in /...libc...)
+Open file descriptor ...:
+   ...
 
-Open file descriptor .: .
+Open file descriptor ...: ...
    <inherited from parent>
 
-Open file descriptor .: .
+Open file descriptor ...: ...
    <inherited from parent>
 
-Open file descriptor .: /dev/null
+Open file descriptor ...: /dev/null
    <inherited from parent>
 
 

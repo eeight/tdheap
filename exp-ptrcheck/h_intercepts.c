@@ -7,7 +7,7 @@
    This file is part of Ptrcheck, a Valgrind tool for checking pointer
    use in programs.
 
-   Copyright (C) 2003-2008 Nicholas Nethercote
+   Copyright (C) 2003-2009 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -41,31 +41,41 @@
 
 
 /* The following intercepts are copied verbatim from
-   memcheck/mc_replace_strmem.c. */
+   memcheck/mc_replace_strmem.c.  If you copy more in, please keep
+   them in the same order as in mc_replace_strmem.c. */
 
-/* --------- Some handy Z-encoded names. --------- */
 
-/* --- Soname of the standard C library. --- */
+#define STRNLEN(soname, fnname) \
+   SizeT VG_REPLACE_FUNCTION_ZU(soname,fnname) ( const char* str, SizeT n ); \
+   SizeT VG_REPLACE_FUNCTION_ZU(soname,fnname) ( const char* str, SizeT n ) \
+   { \
+      SizeT i = 0; \
+      while (i < n && str[i] != 0) i++; \
+      return i; \
+   }
 
+STRNLEN(VG_Z_LIBC_SONAME, strnlen)
+
+
+// Note that this replacement often doesn't get used because gcc inlines
+// calls to strlen() with its own built-in version.  This can be very
+// confusing if you aren't expecting it.  Other small functions in this file
+// may also be inline by gcc.
+#define STRLEN(soname, fnname) \
+   SizeT VG_REPLACE_FUNCTION_ZU(soname,fnname)( const char* str ); \
+   SizeT VG_REPLACE_FUNCTION_ZU(soname,fnname)( const char* str ) \
+   { \
+      SizeT i = 0; \
+      while (str[i] != 0) i++; \
+      return i; \
+   }
+
+STRLEN(VG_Z_LIBC_SONAME,          strlen)
 #if defined(VGO_linux)
-#  define  m_libc_soname     libcZdsoZa              // libc.so*
-#elif defined(VGP_ppc32_aix5)
-   /* AIX has both /usr/lib/libc.a and /usr/lib/libc_r.a. */
-#  define  m_libc_soname     libcZaZdaZLshrZdoZR     // libc*.a(shr.o)
-#elif defined(VGP_ppc64_aix5)
-#  define  m_libc_soname     libcZaZdaZLshrZu64ZdoZR // libc*.a(shr_64.o)
-#else
-#  error "Unknown platform"
+STRLEN(VG_Z_LD_LINUX_SO_2,        strlen)
+STRLEN(VG_Z_LD_LINUX_X86_64_SO_2, strlen)
+STRLEN(VG_Z_LD_SO_1,              strlen)
 #endif
-
-/* --- Sonames for Linux ELF linkers. --- */
-
-#define  m_ld_linux_so_2         ldZhlinuxZdsoZd2           // ld-linux.so.2
-#define  m_ld_linux_x86_64_so_2  ldZhlinuxZhx86Zh64ZdsoZd2  // ld-linux-x86-64.so.2
-#define  m_ld64_so_1             ld64ZdsoZd1                // ld64.so.1
-#define  m_ld_so_1               ldZdsoZd1                  // ld.so.1
-
-
 
 
 #define STRCMP(soname, fnname) \
@@ -88,27 +98,11 @@
       return 0; \
    }
 
-STRCMP(m_libc_soname,          strcmp)
-STRCMP(m_ld_linux_x86_64_so_2, strcmp)
-STRCMP(m_ld64_so_1,            strcmp)
-
-
-// Note that this replacement often doesn't get used because gcc inlines
-// calls to strlen() with its own built-in version.  This can be very
-// confusing if you aren't expecting it.  Other small functions in this file
-// may also be inline by gcc.
-#define STRLEN(soname, fnname) \
-   SizeT VG_REPLACE_FUNCTION_ZU(soname,fnname)( const char* str ); \
-   SizeT VG_REPLACE_FUNCTION_ZU(soname,fnname)( const char* str ) \
-   { \
-      SizeT i = 0; \
-      while (str[i] != 0) i++; \
-      return i; \
-   }
-
-STRLEN(m_libc_soname,          strlen)
-STRLEN(m_ld_linux_so_2,        strlen)
-STRLEN(m_ld_linux_x86_64_so_2, strlen)
+STRCMP(VG_Z_LIBC_SONAME,          strcmp)
+#if defined(VGO_linux)
+STRCMP(VG_Z_LD_LINUX_X86_64_SO_2, strcmp)
+STRCMP(VG_Z_LD64_SO_1,            strcmp)
+#endif
 
 
 #define MEMCPY(soname, fnname) \
@@ -153,9 +147,30 @@ STRLEN(m_ld_linux_x86_64_so_2, strlen)
    return dest; \
    }
 
-MEMCPY(m_libc_soname, memcpy)
-MEMCPY(m_ld_so_1,     memcpy) /* ld.so.1 */
-MEMCPY(m_ld64_so_1,   memcpy) /* ld64.so.1 */
+MEMCPY(VG_Z_LIBC_SONAME, memcpy)
+#if defined(VGO_linux)
+MEMCPY(VG_Z_LD_SO_1,     memcpy) /* ld.so.1 */
+MEMCPY(VG_Z_LD64_SO_1,   memcpy) /* ld64.so.1 */
+#endif
+
+
+/* Copy SRC to DEST, returning the address of the terminating '\0' in
+   DEST. (minor variant of strcpy) */
+#define STPCPY(soname, fnname) \
+   char* VG_REPLACE_FUNCTION_ZU(soname,fnname) ( char* dst, const char* src ); \
+   char* VG_REPLACE_FUNCTION_ZU(soname,fnname) ( char* dst, const char* src ) \
+   { \
+      while (*src) *dst++ = *src++; \
+      *dst = 0; \
+      \
+      return dst; \
+   }
+
+STPCPY(VG_Z_LIBC_SONAME,          stpcpy)
+#if defined(VGO_linux)
+STPCPY(VG_Z_LD_LINUX_SO_2,        stpcpy)
+STPCPY(VG_Z_LD_LINUX_X86_64_SO_2, stpcpy)
+#endif
 
 
 /*--------------------------------------------------------------------*/

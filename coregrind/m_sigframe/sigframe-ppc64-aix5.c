@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2008 OpenWorks LLP
+   Copyright (C) 2006-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -33,6 +33,8 @@
    used to endorse or promote products derived from this software
    without prior written permission.
 */
+
+#if defined(VGP_ppc64_aix5)
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
@@ -231,7 +233,7 @@ void VG_(sigframe_destroy)( ThreadId tid, Bool isRT )
    if (frame->magicPI != 0x31415927) {
       if (!VG_(clo_xml))
          VG_(message)(Vg_DebugMsg, 
-            "WARNING: dubious signal return: searching %ld bytes for frame", 
+            "WARNING: dubious signal return: searching %ld bytes for frame\n", 
             scannable_bytes);
       for (i = 0; i < scannable_bytes/4; i++) {
          if (frame->magicPI == 0x31415927)
@@ -253,7 +255,7 @@ void VG_(sigframe_destroy)( ThreadId tid, Bool isRT )
 
    if (VG_(clo_trace_signals))
       VG_(message)(Vg_DebugMsg,
-                   "vg_pop_signal_frame (thread %d): valid magic; CIA=%#llx",
+                   "vg_pop_signal_frame (thread %d): valid magic; CIA=%#llx\n",
                    tid, tst->arch.vex.guest_CIA);
 
    VG_TRACK( die_mem_stack_signal, 
@@ -264,6 +266,8 @@ void VG_(sigframe_destroy)( ThreadId tid, Bool isRT )
    VG_TRACK( post_deliver_signal, tid, sigNo );
 }
 
+#endif // defined(VGP_ppc64_aix5)
+
 /*--------------------------------------------------------------------*/
-/*--- end                                   sigframe-ppc64-linux.c ---*/
+/*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/

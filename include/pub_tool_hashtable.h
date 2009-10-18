@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2008 Nicholas Nethercote
+   Copyright (C) 2005-2009 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -58,19 +58,20 @@ extern VgHashTable VG_(HT_construct) ( HChar* name );
 /* Count the number of nodes in a table. */
 extern Int VG_(HT_count_nodes) ( VgHashTable table );
 
-/* Add a node to the table. */
+/* Add a node to the table.  Duplicate keys are permitted. */
 extern void VG_(HT_add_node) ( VgHashTable t, void* node );
 
-/* Looks up a VgHashNode in the table.  Returns NULL if not found. */
+/* Looks up a VgHashNode in the table.  Returns NULL if not found.  If entries
+ * with duplicate keys are present, the most recently-added of the dups will
+ * be returned, but it's probably better to avoid dups altogether. */
 extern void* VG_(HT_lookup) ( VgHashTable table, UWord key );
 
 /* Removes a VgHashNode from the table.  Returns NULL if not found. */
 extern void* VG_(HT_remove) ( VgHashTable table, UWord key );
 
-/* Allocates a suitably-sized array, copies all the hashtable elements
-   into it, then returns both the array and the size of it.  This is
-   used by the memory-leak detector.  The array must be freed with
-   VG_(free). */
+/* Allocates a suitably-sized array, copies pointers to all the hashtable
+   elements into it, then returns both the array and the size of it.  The
+   array must be freed with VG_(free). */
 extern VgHashNode** VG_(HT_to_array) ( VgHashTable t, /*OUT*/ UInt* n_elems );
 
 /* Reset the table's iterator to point to the first element. */

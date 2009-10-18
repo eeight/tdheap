@@ -1,0 +1,53 @@
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/backward
+END
+hash_map
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/backward/hash_map
+END
+hashtable.h
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/backward/hashtable.h
+END
+hash_fun.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/backward/hash_fun.h
+END
+auto_ptr.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/backward/auto_ptr.h
+END
+strstream
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/backward/strstream
+END
+backward_warning.h
+K 25
+svn:wc:ra_dav:version-url
+V 72
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/backward/backward_warning.h
+END
+binders.h
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/backward/binders.h
+END
+hash_set
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/backward/hash_set
+END

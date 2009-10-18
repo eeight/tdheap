@@ -1,0 +1,227 @@
+K 25
+svn:wc:ra_dav:version-url
+V 48
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std
+END
+valarray
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/valarray
+END
+iostream
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/iostream
+END
+algorithm
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/algorithm
+END
+tuple
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/tuple
+END
+iomanip
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/iomanip
+END
+locale
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/locale
+END
+numeric
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/numeric
+END
+vector
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/vector
+END
+deque
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/deque
+END
+stdexcept
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/stdexcept
+END
+utility
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/utility
+END
+type_traits
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/type_traits
+END
+memory
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/memory
+END
+regex
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/regex
+END
+list
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/list
+END
+map
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/map
+END
+random
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/random
+END
+unordered_map
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/unordered_map
+END
+queue
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/queue
+END
+streambuf
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/streambuf
+END
+iterator
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/iterator
+END
+ios
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/ios
+END
+bitset
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/bitset
+END
+set
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/set
+END
+c++0x_warning.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/c++0x_warning.h
+END
+iosfwd
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/iosfwd
+END
+limits
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/limits
+END
+fstream
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/fstream
+END
+unordered_set
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/unordered_set
+END
+functional
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/functional
+END
+istream
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/istream
+END
+stack
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/stack
+END
+string
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/string
+END
+complex
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/complex
+END
+ostream
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/ostream
+END
+array
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/array
+END
+sstream
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/std/sstream
+END

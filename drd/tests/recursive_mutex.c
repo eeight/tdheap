@@ -12,22 +12,23 @@
 
 static void lock_twice(pthread_mutex_t* const p)
 {
-  pthread_mutex_lock(p);
-  pthread_mutex_lock(p);
-  pthread_mutex_unlock(p);
-  pthread_mutex_unlock(p);
+  if (pthread_mutex_trylock(p) != 0)
+    fprintf(stderr, "first lock call failed !\n");
+  if (pthread_mutex_trylock(p) != 0)
+    fprintf(stderr, "second lock call failed !\n");
+  if (pthread_mutex_unlock(p) != 0)
+    fprintf(stderr, "first unlock call failed !\n");
+  if (pthread_mutex_unlock(p) != 0)
+    fprintf(stderr, "second unlock call failed !\n");
 }
 
 int main(int argc, char** argv)
 {
-  /* Let the program abort after 3 seconds instead of leaving it deadlocked. */
-  alarm(3);
-
 #if defined(HAVE_PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP)
   {
     pthread_mutex_t m = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
 
-    printf("Recursive mutex (statically initialized).\n");
+    fprintf(stderr, "Recursive mutex (statically initialized).\n");
     lock_twice(&m);
     pthread_mutex_destroy(&m);
   }
@@ -37,7 +38,7 @@ int main(int argc, char** argv)
     pthread_mutex_t m;
     pthread_mutexattr_t attr;
 
-    printf("Recursive mutex (initialized via mutex attributes).\n");
+    fprintf(stderr, "\nRecursive mutex (initialized via mutex attributes).\n");
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE_NP);
     pthread_mutex_init(&m, &attr);
@@ -51,7 +52,7 @@ int main(int argc, char** argv)
     pthread_mutex_t m;
     pthread_mutexattr_t attr;
 
-    printf("Error checking mutex.\n");
+    fprintf(stderr, "\nError checking mutex.\n");
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK_NP);
     pthread_mutex_init(&m, &attr);
@@ -60,13 +61,15 @@ int main(int argc, char** argv)
     pthread_mutex_destroy(&m);
   }
 #endif
+
   {
     pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
 
-    printf("Non-recursive mutex.\n");
-    fflush(stdout);
+    fprintf(stderr, "\nNon-recursive mutex.\n");
     lock_twice(&m);
   }
-  printf("Done.\n");
+
+  fprintf(stderr, "\nDone.\n");
+
   return 0;
 }

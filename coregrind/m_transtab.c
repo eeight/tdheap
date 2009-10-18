@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -714,21 +714,21 @@ static void initialiseSector ( Int sno )
       VG_(debugLog)(1,"transtab", "allocate sector %d\n", sno);
 
       sres = VG_(am_mmap_anon_float_valgrind)( 8 * tc_sector_szQ );
-      if (sres.isError) {
+      if (sr_isError(sres)) {
          VG_(out_of_memory_NORETURN)("initialiseSector(TC)", 
                                      8 * tc_sector_szQ );
 	 /*NOTREACHED*/
       }
-      sec->tc = (ULong*)sres.res;
+      sec->tc = (ULong*)(AddrH)sr_Res(sres);
 
       sres = VG_(am_mmap_anon_float_valgrind)
                 ( N_TTES_PER_SECTOR * sizeof(TTEntry) );
-      if (sres.isError) {
+      if (sr_isError(sres)) {
          VG_(out_of_memory_NORETURN)("initialiseSector(TT)", 
                                      N_TTES_PER_SECTOR * sizeof(TTEntry) );
 	 /*NOTREACHED*/
       }
-      sec->tt = (TTEntry*)sres.res;
+      sec->tt = (TTEntry*)(AddrH)sr_Res(sres);
 
       for (i = 0; i < N_TTES_PER_SECTOR; i++) {
          sec->tt[i].status   = Empty;
@@ -736,7 +736,7 @@ static void initialiseSector ( Int sno )
       }
 
       if (VG_(clo_verbosity) > 2)
-         VG_(message)(Vg_DebugMsg, "TT/TC: initialise sector %d", sno);
+         VG_(message)(Vg_DebugMsg, "TT/TC: initialise sector %d\n", sno);
 
    } else {
 
@@ -780,7 +780,7 @@ static void initialiseSector ( Int sno )
       }
 
       if (VG_(clo_verbosity) > 2)
-         VG_(message)(Vg_DebugMsg, "TT/TC: recycle sector %d", sno);
+         VG_(message)(Vg_DebugMsg, "TT/TC: recycle sector %d\n", sno);
    }
 
    sec->tc_next = sec->tc;
@@ -1313,12 +1313,14 @@ static void init_unredir_tt_tc ( void )
 {
    Int i;
    if (unredir_tc == NULL) {
-      SysRes sres = VG_(am_mmap_anon_float_valgrind)( N_UNREDIR_TT * UNREDIR_SZB );
-      if (sres.isError) {
-         VG_(out_of_memory_NORETURN)("init_unredir_tt_tc", N_UNREDIR_TT * UNREDIR_SZB);
+      SysRes sres = VG_(am_mmap_anon_float_valgrind)
+                       ( N_UNREDIR_TT * UNREDIR_SZB );
+      if (sr_isError(sres)) {
+         VG_(out_of_memory_NORETURN)("init_unredir_tt_tc",
+                                     N_UNREDIR_TT * UNREDIR_SZB);
          /*NOTREACHED*/
       }
-      unredir_tc = (ULong *)sres.res;
+      unredir_tc = (ULong *)(AddrH)sr_Res(sres);
    }
    unredir_tc_used = 0;
    for (i = 0; i < N_UNREDIR_TT; i++)
@@ -1350,8 +1352,7 @@ static Bool sanity_check_redir_tt_tc ( void )
 void VG_(add_to_unredir_transtab)( VexGuestExtents* vge,
                                    Addr64           entry,
                                    AddrH            code,
-                                   UInt             code_len,
-                                   Bool             is_self_checking )
+                                   UInt             code_len )
 {
    Int   i, j, code_szQ;
    HChar *srcP, *dstP;
@@ -1458,7 +1459,7 @@ void VG_(init_tt_tc) ( void )
    if (VG_(clo_verbosity) > 2)
       VG_(message)(Vg_DebugMsg, 
                    "TT/TC: VG_(init_tt_tc) "
-                   "(startup of code management)");
+                   "(startup of code management)\n");
 
    /* Figure out how big each tc area should be.  */
    avg_codeszQ   = (VG_(details).avg_translation_sizeB + 7) / 8;
@@ -1494,11 +1495,11 @@ void VG_(init_tt_tc) ( void )
 
    if (VG_(clo_verbosity) > 2) {
       VG_(message)(Vg_DebugMsg,
-         "TT/TC: cache: %d sectors of %d bytes each = %d total", 
+         "TT/TC: cache: %d sectors of %d bytes each = %d total\n", 
           N_SECTORS, 8 * tc_sector_szQ,
           N_SECTORS * 8 * tc_sector_szQ );
       VG_(message)(Vg_DebugMsg,
-         "TT/TC: table: %d total entries, max occupancy %d (%d%%)",
+         "TT/TC: table: %d total entries, max occupancy %d (%d%%)\n",
          N_SECTORS * N_TTES_PER_SECTOR,
          N_SECTORS * N_TTES_PER_SECTOR_USABLE, 
          SECTOR_TT_LIMIT_PERCENT );
@@ -1533,23 +1534,23 @@ UInt VG_(get_bbs_translated) ( void )
 void VG_(print_tt_tc_stats) ( void )
 {
    VG_(message)(Vg_DebugMsg,
-      "    tt/tc: %'llu tt lookups requiring %'llu probes",
+      "    tt/tc: %'llu tt lookups requiring %'llu probes\n",
       n_full_lookups, n_lookup_probes );
    VG_(message)(Vg_DebugMsg,
-      "    tt/tc: %'llu fast-cache updates, %'llu flushes",
+      "    tt/tc: %'llu fast-cache updates, %'llu flushes\n",
       n_fast_updates, n_fast_flushes );
 
    VG_(message)(Vg_DebugMsg,
                 " transtab: new        %'lld "
-                "(%'llu -> %'llu; ratio %'llu:10) [%'llu scs]",
+                "(%'llu -> %'llu; ratio %'llu:10) [%'llu scs]\n",
                 n_in_count, n_in_osize, n_in_tsize,
                 safe_idiv(10*n_in_tsize, n_in_osize),
                 n_in_sc_count);
    VG_(message)(Vg_DebugMsg,
-                " transtab: dumped     %'llu (%'llu -> ?" "?)",
+                " transtab: dumped     %'llu (%'llu -> ?" "?)\n",
                 n_dump_count, n_dump_osize );
    VG_(message)(Vg_DebugMsg,
-                " transtab: discarded  %'llu (%'llu -> ?" "?)",
+                " transtab: discarded  %'llu (%'llu -> ?" "?)\n",
                 n_disc_count, n_disc_osize );
 
    if (0) {

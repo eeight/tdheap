@@ -8,7 +8,7 @@
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2005-2008 Cerion Armour-Brown <cerion@open-works.co.uk>
+  Copyright (C) 2005-2009 Cerion Armour-Brown <cerion@open-works.co.uk>
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -27,6 +27,8 @@
 
   The GNU General Public License is contained in the file COPYING.
 */
+
+#if defined(VGP_ppc32_linux)
 
 #include "pub_core_basics_asm.h"
 #include "pub_core_dispatch_asm.h"
@@ -620,6 +622,8 @@ VG_(run_a_noredir_translation):
 
 /* Let the linker know we don't need an executable stack */
 .section .note.GNU-stack,"",@progbits
+
+#endif // defined(VGP_ppc32_linux)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

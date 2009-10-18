@@ -1,0 +1,113 @@
+K 25
+svn:wc:ra_dav:version-url
+V 46
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c
+END
+csignal
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c/csignal
+END
+cstdlib
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c/cstdlib
+END
+cstdio
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c/cstdio
+END
+cstdarg
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c/cstdarg
+END
+cctype
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c/cctype
+END
+cerrno
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c/cerrno
+END
+cmath
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c/cmath
+END
+ciso646
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c/ciso646
+END
+ctime
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c/ctime
+END
+clocale
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c/clocale
+END
+cassert
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c/cassert
+END
+climits
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c/climits
+END
+csetjmp
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c/csetjmp
+END
+cwchar
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c/cwchar
+END
+cfloat
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c/cfloat
+END
+cstring
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c/cstring
+END
+cstddef
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c/cstddef
+END
+cwctype
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c/cwctype
+END

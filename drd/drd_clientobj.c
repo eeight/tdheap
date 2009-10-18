@@ -1,8 +1,8 @@
+/* -*- mode: C; c-basic-offset: 3; -*- */
 /*
-  This file is part of drd, a data race detector.
+  This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2008 Bart Van Assche
-  bart.vanassche@gmail.com
+  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -36,190 +36,222 @@
 #include "pub_tool_threadstate.h" // VG_(get_running_tid)()
 
 
-// Local variables.
+/* Local variables. */
 
-static OSet* s_clientobj;
+static OSet* s_clientobj_set;
 static Bool s_trace_clientobj;
 
 
-// Function definitions.
+/* Local functions. */
 
-void clientobj_set_trace(const Bool trace)
+static Bool clientobj_remove_obj(DrdClientobj* const p);
+
+
+/* Function definitions. */
+
+void DRD_(clientobj_set_trace)(const Bool trace)
 {
-  s_trace_clientobj = trace;
+   s_trace_clientobj = trace;
 }
 
 /** Initialize the client object set. */
-void clientobj_init(void)
+void DRD_(clientobj_init)(void)
 {
-  tl_assert(s_clientobj == 0);
-  s_clientobj = VG_(OSetGen_Create)(0, 0, VG_(malloc), "drd.clientobj.ci.1",
-                                          VG_(free));
-  tl_assert(s_clientobj);
+   tl_assert(s_clientobj_set == 0);
+   s_clientobj_set = VG_(OSetGen_Create)(0, 0, VG_(malloc),
+                                         "drd.clientobj.ci.1", VG_(free));
+   tl_assert(s_clientobj_set);
 }
 
-/** Free the memory allocated for the client object set.
- *  @pre Client object set is empty.
+/**
+ * Free the memory allocated for the client object set.
+ *
+ * @pre Client object set is empty.
  */
-void clientobj_cleanup(void)
+void DRD_(clientobj_cleanup)(void)
 {
-  tl_assert(s_clientobj);
-  tl_assert(VG_(OSetGen_Size)(s_clientobj) == 0);
-  VG_(OSetGen_Destroy)(s_clientobj);
-  s_clientobj = 0;
+   tl_assert(s_clientobj_set);
+   tl_assert(VG_(OSetGen_Size)(s_clientobj_set) == 0);
+   VG_(OSetGen_Destroy)(s_clientobj_set);
+   s_clientobj_set = 0;
 }
 
-/** Return the data associated with the client object at client address addr.
- *  Return 0 if there is no client object in the set with the specified start
- *  address.
+/**
+ * Return the data associated with the client object at client address addr.
+ * Return 0 if there is no client object in the set with the specified start
+ * address.
  */
-DrdClientobj* clientobj_get_any(const Addr addr)
+DrdClientobj* DRD_(clientobj_get_any)(const Addr addr)
 {
-  return VG_(OSetGen_Lookup)(s_clientobj, &addr);
+   return VG_(OSetGen_Lookup)(s_clientobj_set, &addr);
 }
 
-/** Return the data associated with the client object at client address addr
- *  and that has object type t. Return 0 if there is no client object in the
- *  set with the specified start address.
+/**
+ * Return the data associated with the client object at client address addr
+ * and that has object type t. Return 0 if there is no client object in the
+ * set with the specified start address.
  */
-DrdClientobj* clientobj_get(const Addr addr, const ObjType t)
+DrdClientobj* DRD_(clientobj_get)(const Addr addr, const ObjType t)
 {
-  DrdClientobj* p;
-  p = VG_(OSetGen_Lookup)(s_clientobj, &addr);
-  if (p && p->any.type == t)
-    return p;
-  return 0;
+   DrdClientobj* p;
+   p = VG_(OSetGen_Lookup)(s_clientobj_set, &addr);
+   if (p && p->any.type == t)
+      return p;
+   return 0;
 }
 
 /** Return true if and only if the address range of any client object overlaps
  *  with the specified address range.
  */
-Bool clientobj_present(const Addr a1, const Addr a2)
+Bool DRD_(clientobj_present)(const Addr a1, const Addr a2)
 {
-  DrdClientobj *p;
+   DrdClientobj *p;
 
-  tl_assert(a1 < a2);
-  VG_(OSetGen_ResetIter)(s_clientobj);
-  for ( ; (p = VG_(OSetGen_Next)(s_clientobj)) != 0; )
-  {
-    if (a1 <= p->any.a1 && p->any.a1 < a2)
-    {
-      return True;  
-    }
-  }
-  return False;
+   tl_assert(a1 < a2);
+   VG_(OSetGen_ResetIter)(s_clientobj_set);
+   for ( ; (p = VG_(OSetGen_Next)(s_clientobj_set)) != 0; )
+   {
+      if (a1 <= p->any.a1 && p->any.a1 < a2)
+      {
+         return True;  
+      }
+   }
+   return False;
 }
 
-/** Add state information for the client object at client address addr and
- *  of type t. Suppress data race reports on the address range [addr,addr+size[.
- *  @pre No other client object is present in the address range [addr,addr+size[.
+/**
+ * Add state information for the client object at client address addr and
+ * of type t. Suppress data race reports on the address range [addr,addr+size[.
+ *
+ * @pre No other client object is present in the address range [addr,addr+size[.
  */
-DrdClientobj*
-clientobj_add(const Addr a1, const ObjType t)
+DrdClientobj* DRD_(clientobj_add)(const Addr a1, const ObjType t)
 {
-  DrdClientobj* p;
+   DrdClientobj* p;
 
-  tl_assert(! clientobj_present(a1, a1 + 1));
-  tl_assert(VG_(OSetGen_Lookup)(s_clientobj, &a1) == 0);
+   tl_assert(! DRD_(clientobj_present)(a1, a1 + 1));
+   tl_assert(VG_(OSetGen_Lookup)(s_clientobj_set, &a1) == 0);
 
-  if (s_trace_clientobj)
-  {
-    VG_(message)(Vg_UserMsg, "Adding client object 0x%lx of type %d", a1, t);
-  }
+   if (s_trace_clientobj)
+   {
+      VG_(message)(Vg_UserMsg, "Adding client object 0x%lx of type %d\n", a1, t);
+   }
 
-  p = VG_(OSetGen_AllocNode)(s_clientobj, sizeof(*p));
-  VG_(memset)(p, 0, sizeof(*p));
-  p->any.a1   = a1;
-  p->any.type = t;
-  p->any.first_observed_at = VG_(record_ExeContext)(VG_(get_running_tid)(), 0);
-  VG_(OSetGen_Insert)(s_clientobj, p);
-  tl_assert(VG_(OSetGen_Lookup)(s_clientobj, &a1) == p);
-  drd_start_suppression(a1, a1 + 1, "clientobj");
-  return p;
+   p = VG_(OSetGen_AllocNode)(s_clientobj_set, sizeof(*p));
+   VG_(memset)(p, 0, sizeof(*p));
+   p->any.a1   = a1;
+   p->any.type = t;
+   p->any.first_observed_at = VG_(record_ExeContext)(VG_(get_running_tid)(), 0);
+   VG_(OSetGen_Insert)(s_clientobj_set, p);
+   tl_assert(VG_(OSetGen_Lookup)(s_clientobj_set, &a1) == p);
+   DRD_(start_suppression)(a1, a1 + 1, "clientobj");
+   return p;
 }
 
-Bool clientobj_remove(const Addr addr, const ObjType t)
+/**
+ * Remove the information that was stored about the client object.
+ *
+ * @param[in] addr Address of the client object in the client address space.
+ * @param[in] t    Type of the client object.
+ */
+Bool DRD_(clientobj_remove)(const Addr addr, const ObjType t)
 {
-  DrdClientobj* p;
+   DrdClientobj* p;
 
-  if (s_trace_clientobj)
-  {
-    VG_(message)(Vg_UserMsg, "Removing client object 0x%lx of type %d",
-                 addr, t);
+   p = VG_(OSetGen_Lookup)(s_clientobj_set, &addr);
+   tl_assert(p);
+   tl_assert(p->any.type == t);
+   return clientobj_remove_obj(p);
+}
+
+/**
+ * Remove the information that was stored about the client object p.
+ *
+ * @note The order of operations below is important. The client object is
+ *   removed from the client object set after the cleanup function has been
+ *   called such that if the cleanup function can still use the function
+ *   DRD_(clientobj_get_any)(). This happens e.g. in the function
+ *   first_observed() in drd_error.c.
+ */
+static Bool clientobj_remove_obj(DrdClientobj* const p)
+{
+   tl_assert(p);
+
+   if (s_trace_clientobj)
+   {
+      VG_(message)(Vg_UserMsg, "Removing client object 0x%lx of type %d\n",
+                   p->any.a1, p->any.type);
 #if 0
-    VG_(get_and_pp_StackTrace)(VG_(get_running_tid)(),
-                               VG_(clo_backtrace_size));
+      VG_(get_and_pp_StackTrace)(VG_(get_running_tid)(),
+                                 VG_(clo_backtrace_size));
 #endif
-  }
+   }
 
-  p = VG_(OSetGen_Lookup)(s_clientobj, &addr);
-  tl_assert(p->any.type == t);
-  p = VG_(OSetGen_Remove)(s_clientobj, &addr);
-  if (p)
-  {
-    tl_assert(VG_(OSetGen_Lookup)(s_clientobj, &addr) == 0);
-    tl_assert(p->any.cleanup);
-    (*p->any.cleanup)(p);
-    VG_(OSetGen_FreeNode)(s_clientobj, p);
-    return True;
-  }
-  return False;
+   tl_assert(p->any.cleanup);
+   (*p->any.cleanup)(p);
+   VG_(OSetGen_Remove)(s_clientobj_set, &p->any.a1);
+   VG_(OSetGen_FreeNode)(s_clientobj_set, p);
+   return True;
 }
 
-void clientobj_stop_using_mem(const Addr a1, const Addr a2)
+/**
+ * Clean up all client objects p for which their start address p->any.a1 fits
+ * inside the address range [ a1, a2 [.
+ *
+ * @note The implementation of this function relies on the fact that the
+ *   data in s_clientobj_set is sorted on the start address of client objects.
+ */
+void DRD_(clientobj_stop_using_mem)(const Addr a1, const Addr a2)
 {
-  Addr removed_at;
-  DrdClientobj* p;
+   Addr removed_at;
+   DrdClientobj* p;
 
-  tl_assert(s_clientobj);
+   tl_assert(s_clientobj_set);
 
-  if (! drd_is_any_suppressed(a1, a2))
-    return;
+   if (! DRD_(is_any_suppressed)(a1, a2))
+      return;
 
-  VG_(OSetGen_ResetIter)(s_clientobj);
-  p = VG_(OSetGen_Next)(s_clientobj);
-  for ( ; p != 0; )
-  {
-    if (a1 <= p->any.a1 && p->any.a1 < a2)
-    {
+   VG_(OSetGen_ResetIterAt)(s_clientobj_set, &a1);
+   for ( ; (p = VG_(OSetGen_Next)(s_clientobj_set)) != 0 && p->any.a1 < a2; )
+   {
+      tl_assert(a1 <= p->any.a1);
       removed_at = p->any.a1;
-      clientobj_remove(p->any.a1, p->any.type);
-      /* The above call removes an element from the oset and hence */
-      /* invalidates the iterator. Set the iterator back.          */
-      VG_(OSetGen_ResetIter)(s_clientobj);
-      while ((p = VG_(OSetGen_Next)(s_clientobj)) != 0
-             && p->any.a1 <= removed_at)
-      { }
-    }
-    else
-    {
-      p = VG_(OSetGen_Next)(s_clientobj);
-    }
-  }
+      clientobj_remove_obj(p);
+      /*
+       * The above call removes an element from the oset and hence
+       * invalidates the iterator. Restore the iterator.
+       */
+      VG_(OSetGen_ResetIterAt)(s_clientobj_set, &removed_at);
+   }
 }
 
-void clientobj_resetiter(void)
+/**
+ * Delete the per-thread information stored in client objects for the
+ * specified thread.
+ */
+void DRD_(clientobj_delete_thread)(const DrdThreadId tid)
 {
-  VG_(OSetGen_ResetIter)(s_clientobj);
+   DrdClientobj *p;
+
+   VG_(OSetGen_ResetIter)(s_clientobj_set);
+   for ( ; (p = VG_(OSetGen_Next)(s_clientobj_set)) != 0; )
+   {
+      if (p->any.delete_thread)
+      {
+         (*p->any.delete_thread)(p, tid);
+      }
+   }
 }
 
-DrdClientobj* clientobj_next(const ObjType t)
+const char* DRD_(clientobj_type_name)(const ObjType t)
 {
-  DrdClientobj* p;
-  while ((p = VG_(OSetGen_Next)(s_clientobj)) != 0 && p->any.type != t)
-    ;
-  return p;
-}
-
-const char* clientobj_type_name(const ObjType t)
-{
-  switch (t)
-  {
-  case ClientMutex:     return "mutex";
-  case ClientCondvar:   return "cond";
-  case ClientSemaphore: return "semaphore";
-  case ClientBarrier:   return "barrier";
-  case ClientRwlock:    return "rwlock";
-  }
-  return "(unknown)";
+   switch (t)
+   {
+   case ClientMutex:     return "mutex";
+   case ClientCondvar:   return "cond";
+   case ClientSemaphore: return "semaphore";
+   case ClientBarrier:   return "barrier";
+   case ClientRwlock:    return "rwlock";
+   }
+   return "(unknown)";
 }

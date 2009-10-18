@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -45,16 +45,16 @@
    Assertery.
    ------------------------------------------------------------------ */
 
-#if defined(VGP_x86_linux)
+#if defined(VGP_x86_linux)  ||  defined(VGP_x86_darwin)
 #  define GET_REAL_PC_SP_AND_FP(pc, sp, fp)      \
-      asm("call m_libcassert_get_ip;" \
-          "m_libcassert_get_ip: popl %0;" \
+      asm("call 0f;" \
+          "0: popl %0;" \
           "movl %%esp, %1;" \
           "movl %%ebp, %2;" \
           : "=r" (pc),\
             "=r" (sp),\
             "=r" (fp));
-#elif defined(VGP_amd64_linux)
+#elif defined(VGP_amd64_linux)  ||  defined(VGP_amd64_darwin)
 #  define GET_REAL_PC_SP_AND_FP(pc, sp, fp)      \
       asm("leaq 0(%%rip), %0;" \
           "movq %%rsp, %1;" \
@@ -99,14 +99,18 @@
 /* Pull down the entire world */
 void VG_(exit)( Int status )
 {
-#  if defined(VGO_linux)
+#if defined(VGO_linux)
    (void)VG_(do_syscall1)(__NR_exit_group, status );
-#  endif
+#elif defined(VGO_aix5) || defined(VGO_darwin)
    (void)VG_(do_syscall1)(__NR_exit, status );
-   /* Why are we still alive here? */
+#else
+#  error Unknown OS
+#endif
    /*NOTREACHED*/
-   *(volatile Int *)0 = 'x';
-   vg_assert(2+2 == 5);
+   // We really shouldn't reach here.  Just in case we do, use some very crude
+   // methods to force abort
+   __builtin_trap();
+   *(volatile Int*)0 = 'x';
 }
 
 // Print the scheduler status.
@@ -130,6 +134,7 @@ static void report_and_quit ( const Char* report,
 {
    Addr stacktop;
    Addr ips[BACKTRACE_DEPTH];
+   Int  n_ips;
    ThreadState *tst 
       = VG_(get_ThreadState)( VG_(lwpid_to_vgtid)( VG_(gettid)() ) );
  
@@ -141,25 +146,32 @@ static void report_and_quit ( const Char* report,
    }
  
    stacktop = tst->os_state.valgrind_stack_init_SP;
- 
-   VG_(get_StackTrace_wrk)(
-      0/*tid is unknown*/, 
-      ips, BACKTRACE_DEPTH, 
-      NULL/*array to dump SP values in*/,
-      NULL/*array to dump FP values in*/,
-      ip, sp, fp, lr, sp, stacktop
-   );
-   VG_(pp_StackTrace)  (ips, BACKTRACE_DEPTH);
+
+   n_ips = 
+      VG_(get_StackTrace_wrk)(
+         0/*tid is unknown*/, 
+         ips, BACKTRACE_DEPTH, 
+         NULL/*array to dump SP values in*/,
+         NULL/*array to dump FP values in*/,
+         ip, sp, fp, lr, sp, stacktop
+      );
+   VG_(clo_xml) = False;
+   VG_(pp_StackTrace) (ips, n_ips);
  
    VG_(show_sched_status)();
-   VG_(printf)("\n");
-   VG_(printf)("Note: see also the FAQ.txt in the source distribution.\n");
-   VG_(printf)("It contains workarounds to several common problems.\n");
-   VG_(printf)("\n");
-   VG_(printf)("If that doesn't help, please report this bug to: %s\n\n", 
-               report);
-   VG_(printf)("In the bug report, send all the above text, the valgrind\n");
-   VG_(printf)("version, and what Linux distro you are using.  Thanks.\n\n");
+   VG_(printf)(
+      "\n"
+      "Note: see also the FAQ in the source distribution.\n"
+      "It contains workarounds to several common problems.\n"
+      "In particular, if Valgrind aborted or crashed after\n"
+      "identifying problems in your program, there's a good chance\n"
+      "that fixing those problems will prevent Valgrind aborting or\n"
+      "crashing, especially if it happened in m_mallocfree.c.\n"
+      "\n"
+      "If that doesn't help, please report this bug to: %s\n\n"
+      "In the bug report, send all the above text, the valgrind\n"
+      "version, and what OS and version you are using.  Thanks.\n\n",
+      report);
    VG_(exit)(1);
 }
 
@@ -189,7 +201,7 @@ void VG_(assert_fail) ( Bool isCore, const Char* expr, const Char* file,
    }
 
    if (VG_(clo_xml))
-      VG_(message)(Vg_UserMsg, "</valgrindoutput>\n");
+      VG_(printf_xml)("</valgrindoutput>\n");
 
    // Treat vg_assert2(0, "foo") specially, as a panicky abort
    if (VG_STREQ(expr, "0")) {
@@ -210,7 +222,7 @@ static void panic ( Char* name, Char* report, Char* str,
                     Addr ip, Addr sp, Addr fp, Addr lr )
 {
    if (VG_(clo_xml))
-      VG_(message)(Vg_UserMsg, "</valgrindoutput>\n");
+      VG_(printf_xml)("</valgrindoutput>\n");
    VG_(printf)("\n%s: the 'impossible' happened:\n   %s\n", name, str);
    report_and_quit(report, ip, sp, fp, lr);
 }
@@ -234,27 +246,20 @@ void VG_(tool_panic) ( Char* str )
 void VG_(unimplemented) ( Char* msg )
 {
    if (VG_(clo_xml))
-      VG_(message)(Vg_UserMsg, "</valgrindoutput>\n");
-   VG_(message)(Vg_UserMsg, "");
-   VG_(message)(Vg_UserMsg, 
-      "Valgrind detected that your program requires");
-   VG_(message)(Vg_UserMsg, 
-      "the following unimplemented functionality:");
-   VG_(message)(Vg_UserMsg, "   %s", msg);
-   VG_(message)(Vg_UserMsg,
-      "This may be because the functionality is hard to implement,");
-   VG_(message)(Vg_UserMsg,
-      "or because no reasonable program would behave this way,");
-   VG_(message)(Vg_UserMsg,
-      "or because nobody has yet needed it.  In any case, let us know at");
-   VG_(message)(Vg_UserMsg,
-      "%s and/or try to work around the problem, if you can.", VG_BUGS_TO);
-   VG_(message)(Vg_UserMsg,
-      "");
-   VG_(message)(Vg_UserMsg,
-      "Valgrind has to exit now.  Sorry.  Bye!");
-   VG_(message)(Vg_UserMsg,
-      "");
+      VG_(printf_xml)("</valgrindoutput>\n");
+   VG_(umsg)("\n");
+   VG_(umsg)("Valgrind detected that your program requires\n");
+   VG_(umsg)("the following unimplemented functionality:\n");
+   VG_(umsg)("   %s\n", msg);
+   VG_(umsg)("This may be because the functionality is hard to implement,\n");
+   VG_(umsg)("or because no reasonable program would behave this way,\n");
+   VG_(umsg)("or because nobody has yet needed it.  "
+             "In any case, let us know at\n");
+   VG_(umsg)("%s and/or try to work around the problem, if you can.\n",
+             VG_BUGS_TO);
+   VG_(umsg)("\n");
+   VG_(umsg)("Valgrind has to exit now.  Sorry.  Bye!\n");
+   VG_(umsg)("\n");
    VG_(show_sched_status)();
    VG_(exit)(1);
 }

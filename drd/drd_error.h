@@ -1,8 +1,8 @@
+/* -*- mode: C; c-basic-offset: 3; -*- */
 /*
-  This file is part of drd, a data race detector.
+  This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2008 Bart Van Assche
-  bart.vanassche@gmail.com
+  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -59,6 +59,10 @@ typedef enum {
    HoldtimeErr    = 10,
 #define STR_GenericErr   "GenericErr"
    GenericErr     = 11,
+#define STR_InvalidThreadId "InvalidThreadId"
+   InvalidThreadId = 12,
+#define STR_UnimpClReq "UnimpClReq"
+   UnimpClReq      = 13,
 } DrdErrorKind;
 
 /* The classification of a faulting address. */
@@ -81,15 +85,18 @@ typedef
 struct {                      // Used by:
    AddrKind    akind;         //   ALL
    SizeT       size;          //   ALL
-   OffT        rwoffset;      //   ALL
+   PtrdiffT    rwoffset;      //   ALL
    ExeContext* lastchange;    //   Mallocd
    DrdThreadId stack_tid;     //   Stack
    DebugInfo*  debuginfo;     //   Segment
    Char        name[256];     //   Segment
    Char        descr[256];    //   Segment
-}
-   AddrInfo;
+} AddrInfo;
 
+/*
+ * NOTE: the first member of each error info structure MUST be the thread ID
+ * in which the error has been observed.
+ */
 typedef struct {
    DrdThreadId   tid;         // Thread ID of the running thread.
    Addr          addr;        // Conflicting address in current thread.
@@ -98,57 +105,78 @@ typedef struct {
 } DataRaceErrInfo;
 
 typedef struct {
-   Addr mutex;
-   Int recursion_count;
+   DrdThreadId tid;
+   Addr        mutex;
+   Int         recursion_count;
    DrdThreadId owner;
 } MutexErrInfo;
 
 typedef struct {
-   Addr cond;
+   DrdThreadId tid;
+   Addr        cond;
 } CondErrInfo;
 
 typedef struct {
+   DrdThreadId tid;
    Addr        cond;
    Addr        mutex;
-   DrdThreadId tid;
+   DrdThreadId owner;
 } CondDestrErrInfo;
 
 typedef struct {
-   Addr cond;
-   Addr mutex;
+   DrdThreadId tid;
+   Addr        cond;
+   Addr        mutex;
 } CondRaceErrInfo;
 
 typedef struct {
-   Addr cond;
-   Addr mutex1;
-   Addr mutex2;
+   DrdThreadId tid;
+   Addr        cond;
+   Addr        mutex1;
+   Addr        mutex2;
 } CondWaitErrInfo;
 
 typedef struct {
-   Addr semaphore;
+   DrdThreadId tid;
+   Addr        semaphore;
 } SemaphoreErrInfo;
 
 typedef struct {
-   Addr barrier;
+   DrdThreadId tid;
+   Addr        barrier;
+   DrdThreadId other_tid;
+   ExeContext* other_context;
 } BarrierErrInfo;
 
 typedef struct {
-   Addr rwlock;
+   DrdThreadId tid;
+   Addr        rwlock;
 } RwlockErrInfo;
 
 typedef struct {
-  Addr        synchronization_object;
-  ExeContext* acquired_at;
-  UInt        hold_time_ms;
-  UInt        threshold_ms;
+   DrdThreadId tid;
+   Addr        synchronization_object;
+   ExeContext* acquired_at;
+   UInt        hold_time_ms;
+   UInt        threshold_ms;
 } HoldtimeErrInfo;
 
 typedef struct {
+   DrdThreadId tid;
 } GenericErrInfo;
 
+typedef struct {
+   DrdThreadId tid;
+   ULong       ptid;
+} InvalidThreadIdInfo;
 
-void set_show_conflicting_segments(const Bool scs);
-void drd_register_error_handlers(void);
+typedef struct {
+   DrdThreadId tid;
+   Char*       descr;
+} UnimpClReqInfo;
+
+void DRD_(set_show_conflicting_segments)(const Bool scs);
+void DRD_(register_error_handlers)(void);
 
 
 #endif /* __DRD_ERROR_H */

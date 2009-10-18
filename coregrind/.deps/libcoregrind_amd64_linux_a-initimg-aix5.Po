@@ -1,0 +1,1 @@
+libcoregrind_amd64_linux_a-initimg-aix5.o: m_initimg/initimg-aix5.c

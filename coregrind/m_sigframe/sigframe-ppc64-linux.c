@@ -8,9 +8,9 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Nicholas Nethercote
+   Copyright (C) 2000-2009 Nicholas Nethercote
       njn@valgrind.org
-   Copyright (C) 2004-2008 Paul Mackerras
+   Copyright (C) 2004-2009 Paul Mackerras
       paulus@samba.org
 
    This program is free software; you can redistribute it and/or
@@ -30,6 +30,8 @@
 
    The GNU General Public License is contained in the file COPYING.
 */
+
+#if defined(VGP_ppc64_linux)
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
@@ -148,12 +150,12 @@ static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
    if (stackseg == NULL || !stackseg->hasR || !stackseg->hasW) {
       VG_(message)(
          Vg_UserMsg,
-         "Can't extend stack to %#lx during signal delivery for thread %d:",
+         "Can't extend stack to %#lx during signal delivery for thread %d:\n",
          addr, tid);
       if (stackseg == NULL)
-         VG_(message)(Vg_UserMsg, "  no stack segment");
+         VG_(message)(Vg_UserMsg, "  no stack segment\n");
       else
-         VG_(message)(Vg_UserMsg, "  too small or bad protection modes");
+         VG_(message)(Vg_UserMsg, "  too small or bad protection modes\n");
 
       /* set SIGSEGV to default handler */
       VG_(set_default_handler)(VKI_SIGSEGV);
@@ -375,13 +377,16 @@ void VG_(sigframe_destroy)( ThreadId tid, Bool isRT )
 
    if (VG_(clo_trace_signals))
       VG_(message)(Vg_DebugMsg,
-                   "vg_pop_signal_frame (thread %d): isRT=%d valid magic; EIP=%#llx",
+                   "vg_pop_signal_frame (thread %d): isRT=%d "
+                   "valid magic; EIP=%#llx\n",
                    tid, has_siginfo, tst->arch.vex.guest_CIA);
 
    /* tell the tools */
    VG_TRACK( post_deliver_signal, tid, sigNo );
 }
 
+#endif // defined(VGP_ppc64_linux)
+
 /*--------------------------------------------------------------------*/
-/*--- end                                   sigframe-ppc64-linux.c ---*/
+/*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/

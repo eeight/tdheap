@@ -1,0 +1,41 @@
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/pointers
+END
+_list.h
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/pointers/_list.h
+END
+_set.h
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/pointers/_set.h
+END
+_slist.h
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/pointers/_slist.h
+END
+_tools.h
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/pointers/_tools.h
+END
+_vector.h
+K 25
+svn:wc:ra_dav:version-url
+V 69
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/pointers/_vector.h
+END
+_deque.h
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/!svn/ver/630/trunk/cpp_vg/include/stlport/stl/pointers/_deque.h
+END

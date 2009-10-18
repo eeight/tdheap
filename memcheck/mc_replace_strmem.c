@@ -9,7 +9,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -97,28 +97,6 @@ Bool is_overlap ( void* dst, const void* src, SizeT dstlen, SizeT srclen )
 			      s, src, dst, len, 0); \
 }
 
-/* --------- Some handy Z-encoded names. --------- */
-
-/* --- Soname of the standard C library. --- */
-
-#if defined(VGO_linux)
-#  define  m_libc_soname     libcZdsoZa              // libc.so*
-#elif defined(VGP_ppc32_aix5)
-   /* AIX has both /usr/lib/libc.a and /usr/lib/libc_r.a. */
-#  define  m_libc_soname     libcZaZdaZLshrZdoZR     // libc*.a(shr.o)
-#elif defined(VGP_ppc64_aix5)
-#  define  m_libc_soname     libcZaZdaZLshrZu64ZdoZR // libc*.a(shr_64.o)
-#else
-#  error "Unknown platform"
-#endif
-
-/* --- Sonames for Linux ELF linkers. --- */
-
-#define  m_ld_linux_so_2         ldZhlinuxZdsoZd2           // ld-linux.so.2
-#define  m_ld_linux_x86_64_so_2  ldZhlinuxZhx86Zh64ZdsoZd2  // ld-linux-x86-64.so.2
-#define  m_ld64_so_1             ld64ZdsoZd1                // ld64.so.1
-#define  m_ld_so_1               ldZdsoZd1                  // ld.so.1
-
 
 #define STRRCHR(soname, fnname) \
    char* VG_REPLACE_FUNCTION_ZU(soname,fnname)( const char* s, int c ); \
@@ -135,9 +113,14 @@ Bool is_overlap ( void* dst, const void* src, SizeT dstlen, SizeT srclen )
    }
 
 // Apparently rindex() is the same thing as strrchr()
-STRRCHR(m_libc_soname,   strrchr)
-STRRCHR(m_libc_soname,   rindex)
-STRRCHR(m_ld_linux_so_2, rindex)
+STRRCHR(VG_Z_LIBC_SONAME,   strrchr)
+STRRCHR(VG_Z_LIBC_SONAME,   rindex)
+#if defined(VGO_linux)
+STRRCHR(VG_Z_LD_LINUX_SO_2, rindex)
+#elif defined(VGO_darwin)
+STRRCHR(VG_Z_DYLD,          strrchr)
+STRRCHR(VG_Z_DYLD,          rindex)
+#endif
    
 
 #define STRCHR(soname, fnname) \
@@ -154,12 +137,17 @@ STRRCHR(m_ld_linux_so_2, rindex)
    }
 
 // Apparently index() is the same thing as strchr()
-STRCHR(m_libc_soname,          strchr)
-STRCHR(m_ld_linux_so_2,        strchr)
-STRCHR(m_ld_linux_x86_64_so_2, strchr)
-STRCHR(m_libc_soname,          index)
-STRCHR(m_ld_linux_so_2,        index)
-STRCHR(m_ld_linux_x86_64_so_2, index)
+STRCHR(VG_Z_LIBC_SONAME,          strchr)
+STRCHR(VG_Z_LIBC_SONAME,          index)
+#if defined(VGO_linux)
+STRCHR(VG_Z_LD_LINUX_SO_2,        strchr)
+STRCHR(VG_Z_LD_LINUX_SO_2,        index)
+STRCHR(VG_Z_LD_LINUX_X86_64_SO_2, strchr)
+STRCHR(VG_Z_LD_LINUX_X86_64_SO_2, index)
+#elif defined(VGO_darwin)
+STRCHR(VG_Z_DYLD,                 strchr)
+STRCHR(VG_Z_DYLD,                 index)
+#endif
 
 
 #define STRCAT(soname, fnname) \
@@ -183,7 +171,7 @@ STRCHR(m_ld_linux_x86_64_so_2, index)
       return dst_orig; \
    }
 
-STRCAT(m_libc_soname, strcat)
+STRCAT(VG_Z_LIBC_SONAME, strcat)
 
 
 #define STRNCAT(soname, fnname) \
@@ -211,7 +199,52 @@ STRCAT(m_libc_soname, strcat)
       return dst_orig; \
    }
 
-STRNCAT(m_libc_soname, strncat)
+STRNCAT(VG_Z_LIBC_SONAME, strncat)
+#if defined(VGO_darwin)
+STRNCAT(VG_Z_DYLD,        strncat)
+#endif
+
+
+/* Append src to dst. n is the size of dst's buffer. dst is guaranteed 
+   to be nul-terminated after the copy, unless n <= strlen(dst_orig). 
+   Returns min(n, strlen(dst_orig)) + strlen(src_orig). 
+   Truncation occurred if retval >= n. 
+*/
+#define STRLCAT(soname, fnname) \
+    SizeT VG_REPLACE_FUNCTION_ZU(soname,fnname) \
+        ( char* dst, const char* src, SizeT n ); \
+    SizeT VG_REPLACE_FUNCTION_ZU(soname,fnname) \
+        ( char* dst, const char* src, SizeT n ) \
+   { \
+      const Char* src_orig = src; \
+      Char* dst_orig = dst; \
+      SizeT m = 0; \
+\
+      while (m < n && *dst) { m++; dst++; } \
+      if (m < n) { \
+         /* Fill as far as dst_orig[n-2], then nul-terminate. */ \
+         while (m < n-1 && *src) { m++; *dst++ = *src++; } \
+         *dst = 0; \
+      } else { \
+         /* No space to copy anything to dst. m == n */ \
+      } \
+      /* Finish counting min(n, strlen(dst_orig)) + strlen(src_orig) */ \
+      while (*src) { m++; src++; } \
+      /* This checks for overlap after copying, unavoidable without */ \
+      /* pre-counting lengths... should be ok */ \
+      if (is_overlap(dst_orig,  \
+                     src_orig,  \
+                     (Addr)dst-(Addr)dst_orig+1,  \
+                     (Addr)src-(Addr)src_orig+1)) \
+         RECORD_OVERLAP_ERROR("strlcat", dst_orig, src_orig, n); \
+\
+      return m; \
+   }
+
+#if defined(VGO_darwin)
+STRLCAT(VG_Z_LIBC_SONAME, strlcat)
+STRLCAT(VG_Z_DYLD,        strlcat)
+#endif
 
 
 #define STRNLEN(soname, fnname) \
@@ -223,7 +256,7 @@ STRNCAT(m_libc_soname, strncat)
       return i; \
    }
 
-STRNLEN(m_libc_soname, strnlen)
+STRNLEN(VG_Z_LIBC_SONAME, strnlen)
    
 
 // Note that this replacement often doesn't get used because gcc inlines
@@ -239,9 +272,11 @@ STRNLEN(m_libc_soname, strnlen)
       return i; \
    }
 
-STRLEN(m_libc_soname,          strlen)
-STRLEN(m_ld_linux_so_2,        strlen)
-STRLEN(m_ld_linux_x86_64_so_2, strlen)
+STRLEN(VG_Z_LIBC_SONAME,          strlen)
+#if defined(VGO_linux)
+STRLEN(VG_Z_LD_LINUX_SO_2,        strlen)
+STRLEN(VG_Z_LD_LINUX_X86_64_SO_2, strlen)
+#endif
 
 
 #define STRCPY(soname, fnname) \
@@ -265,7 +300,10 @@ STRLEN(m_ld_linux_x86_64_so_2, strlen)
       return dst_orig; \
    }
 
-STRCPY(m_libc_soname, strcpy)
+STRCPY(VG_Z_LIBC_SONAME, strcpy)
+#if defined(VGO_darwin)
+STRCPY(VG_Z_DYLD,        strcpy)
+#endif
 
 
 #define STRNCPY(soname, fnname) \
@@ -288,7 +326,41 @@ STRCPY(m_libc_soname, strcpy)
       return dst_orig; \
    }
 
-STRNCPY(m_libc_soname, strncpy)
+STRNCPY(VG_Z_LIBC_SONAME, strncpy)
+#if defined(VGO_darwin)
+STRNCPY(VG_Z_DYLD,        strncpy)
+#endif
+
+
+/* Copy up to n-1 bytes from src to dst. Then nul-terminate dst if n > 0. 
+   Returns strlen(src). Does not zero-fill the remainder of dst. */
+#define STRLCPY(soname, fnname) \
+   SizeT VG_REPLACE_FUNCTION_ZU(soname, fnname) \
+       ( char* dst, const char* src, SizeT n ); \
+   SizeT VG_REPLACE_FUNCTION_ZU(soname, fnname) \
+       ( char* dst, const char* src, SizeT n ) \
+   { \
+      const char* src_orig = src; \
+      char* dst_orig = dst; \
+      SizeT m = 0; \
+\
+      while (m < n-1 && *src) { m++; *dst++ = *src++; } \
+      /* m non-nul bytes have now been copied, and m <= n-1. */ \
+      /* Check for overlap after copying; all n bytes of dst are relevant, */ \
+      /* but only m+1 bytes of src if terminator was found */ \
+      if (is_overlap(dst_orig, src_orig, n, (m < n) ? m+1 : n)) \
+          RECORD_OVERLAP_ERROR("strlcpy", dst, src, n); \
+      /* Nul-terminate dst. */ \
+      if (n > 0) *dst = 0; \
+      /* Finish counting strlen(src). */ \
+      while (*src) src++; \
+      return src - src_orig; \
+   }
+
+#if defined(VGO_darwin)
+STRLCPY(VG_Z_LIBC_SONAME, strlcpy)
+STRLCPY(VG_Z_DYLD,        strlcpy)
+#endif
 
 
 #define STRNCMP(soname, fnname) \
@@ -311,7 +383,10 @@ STRNCPY(m_libc_soname, strncpy)
       } \
    }
 
-STRNCMP(m_libc_soname, strncmp)
+STRNCMP(VG_Z_LIBC_SONAME, strncmp)
+#if defined(VGO_darwin)
+STRNCMP(VG_Z_DYLD,        strncmp)
+#endif
 
 
 #define STRCMP(soname, fnname) \
@@ -334,9 +409,11 @@ STRNCMP(m_libc_soname, strncmp)
       return 0; \
    }
 
-STRCMP(m_libc_soname,          strcmp)
-STRCMP(m_ld_linux_x86_64_so_2, strcmp)
-STRCMP(m_ld64_so_1,            strcmp)
+STRCMP(VG_Z_LIBC_SONAME,          strcmp)
+#if defined(VGO_linux)
+STRCMP(VG_Z_LD_LINUX_X86_64_SO_2, strcmp)
+STRCMP(VG_Z_LD64_SO_1,            strcmp)
+#endif
 
 
 #define MEMCHR(soname, fnname) \
@@ -351,7 +428,10 @@ STRCMP(m_ld64_so_1,            strcmp)
       return NULL; \
    }
 
-MEMCHR(m_libc_soname, memchr)
+MEMCHR(VG_Z_LIBC_SONAME, memchr)
+#if defined(VGO_darwin)
+MEMCHR(VG_Z_DYLD,        memchr)
+#endif
 
 
 #define MEMCPY(soname, fnname) \
@@ -399,9 +479,13 @@ MEMCHR(m_libc_soname, memchr)
       return dst; \
    }
 
-MEMCPY(m_libc_soname, memcpy)
-MEMCPY(m_ld_so_1,     memcpy) /* ld.so.1 */
-MEMCPY(m_ld64_so_1,   memcpy) /* ld64.so.1 */
+MEMCPY(VG_Z_LIBC_SONAME, memcpy)
+#if defined(VGO_linux)
+MEMCPY(VG_Z_LD_SO_1,     memcpy) /* ld.so.1 */
+MEMCPY(VG_Z_LD64_SO_1,   memcpy) /* ld64.so.1 */
+#elif defined(VGO_darwin)
+MEMCPY(VG_Z_DYLD,        memcpy)
+#endif
 /* icc9 blats these around all over the place.  Not only in the main
    executable but various .so's.  They are highly tuned and read
    memory beyond the source boundary (although work correctly and
@@ -438,9 +522,14 @@ MEMCPY(NONE, _intel_fast_memcpy)
       return 0; \
    }
 
-MEMCMP(m_libc_soname, memcmp)
-MEMCMP(m_libc_soname, bcmp)
-MEMCMP(m_ld_so_1, bcmp)
+MEMCMP(VG_Z_LIBC_SONAME, memcmp)
+MEMCMP(VG_Z_LIBC_SONAME, bcmp)
+#if defined(VGO_linux)
+MEMCMP(VG_Z_LD_SO_1,     bcmp)
+#elif defined(VGO_darwin)
+MEMCMP(VG_Z_DYLD,        memcmp)
+MEMCMP(VG_Z_DYLD,        bcmp)
+#endif
 
 
 /* Copy SRC to DEST, returning the address of the terminating '\0' in
@@ -466,10 +555,14 @@ MEMCMP(m_ld_so_1, bcmp)
       return dst; \
    }
 
-STPCPY(m_libc_soname,         stpcpy)
-STPCPY(m_ld_linux_so_2,        stpcpy)
-STPCPY(m_ld_linux_x86_64_so_2, stpcpy)
-   
+STPCPY(VG_Z_LIBC_SONAME,          stpcpy)
+#if defined(VGO_linux)
+STPCPY(VG_Z_LD_LINUX_SO_2,        stpcpy)
+STPCPY(VG_Z_LD_LINUX_X86_64_SO_2, stpcpy)
+#elif defined(VGO_darwin)
+STPCPY(VG_Z_DYLD,                 stpcpy)
+#endif
+
 
 #define MEMSET(soname, fnname) \
    void* VG_REPLACE_FUNCTION_ZU(soname,fnname)(void *s, Int c, SizeT n); \
@@ -490,7 +583,10 @@ STPCPY(m_ld_linux_x86_64_so_2, stpcpy)
       return s; \
    }
 
-MEMSET(m_libc_soname, memset)
+MEMSET(VG_Z_LIBC_SONAME, memset)
+#if defined(VGO_darwin)
+MEMSET(VG_Z_DYLD,        memset)
+#endif
 
 
 #define MEMMOVE(soname, fnname) \
@@ -514,7 +610,36 @@ MEMSET(m_libc_soname, memset)
       return dst; \
    }
 
-MEMMOVE(m_libc_soname, memmove)
+MEMMOVE(VG_Z_LIBC_SONAME, memmove)
+#if defined(VGO_darwin)
+MEMMOVE(VG_Z_DYLD,        memmove)
+#endif
+
+
+#define BCOPY(soname, fnname) \
+   void VG_REPLACE_FUNCTION_ZU(soname,fnname) \
+            (const void *srcV, void *dstV, SizeT n); \
+   void VG_REPLACE_FUNCTION_ZU(soname,fnname) \
+            (const void *srcV, void *dstV, SizeT n) \
+   { \
+      SizeT i; \
+      Char* dst = (Char*)dstV; \
+      Char* src = (Char*)srcV; \
+      if (dst < src) { \
+         for (i = 0; i < n; i++) \
+            dst[i] = src[i]; \
+      } \
+      else  \
+      if (dst > src) { \
+         for (i = 0; i < n; i++) \
+            dst[n-i-1] = src[n-i-1]; \
+      } \
+   }
+
+#if defined(VGO_darwin)
+BCOPY(VG_Z_LIBC_SONAME, bcopy)
+BCOPY(VG_Z_DYLD,        bcopy)
+#endif
 
 
 /* glibc 2.5 variant of memmove which checks the dest is big enough.
@@ -544,13 +669,13 @@ MEMMOVE(m_libc_soname, memmove)
      badness: \
       VALGRIND_PRINTF_BACKTRACE( \
          "*** memmove_chk: buffer overflow detected ***: " \
-         "program terminated"); \
+         "program terminated\n"); \
      _exit(127); \
      /*NOTREACHED*/ \
      return NULL; \
    }
 
-GLIBC25___MEMMOVE_CHK(m_libc_soname, __memmove_chk)
+GLIBC25___MEMMOVE_CHK(VG_Z_LIBC_SONAME, __memmove_chk)
 
 
 /* Find the first occurrence of C in S or the final NUL byte.  */
@@ -567,7 +692,7 @@ GLIBC25___MEMMOVE_CHK(m_libc_soname, __memmove_chk)
       } \
    }
 
-GLIBC232_STRCHRNUL(m_libc_soname, strchrnul)
+GLIBC232_STRCHRNUL(VG_Z_LIBC_SONAME, strchrnul)
 
 
 /* Find the first occurrence of C in S.  */
@@ -583,7 +708,7 @@ GLIBC232_STRCHRNUL(m_libc_soname, strchrnul)
       } \
    }
 
-GLIBC232_RAWMEMCHR(m_libc_soname, rawmemchr)
+GLIBC232_RAWMEMCHR(VG_Z_LIBC_SONAME, rawmemchr)
 
 
 /* glibc variant of strcpy that checks the dest is big enough.
@@ -605,13 +730,13 @@ GLIBC232_RAWMEMCHR(m_libc_soname, rawmemchr)
      badness: \
       VALGRIND_PRINTF_BACKTRACE( \
          "*** strcpy_chk: buffer overflow detected ***: " \
-         "program terminated"); \
+         "program terminated\n"); \
      _exit(127); \
      /*NOTREACHED*/ \
      return NULL; \
    }
 
-GLIBC25___STRCPY_CHK(m_libc_soname, __strcpy_chk)
+GLIBC25___STRCPY_CHK(VG_Z_LIBC_SONAME, __strcpy_chk)
 
 
 /* glibc variant of stpcpy that checks the dest is big enough.
@@ -632,13 +757,13 @@ GLIBC25___STRCPY_CHK(m_libc_soname, __strcpy_chk)
      badness: \
       VALGRIND_PRINTF_BACKTRACE( \
          "*** stpcpy_chk: buffer overflow detected ***: " \
-         "program terminated"); \
+         "program terminated\n"); \
      _exit(127); \
      /*NOTREACHED*/ \
      return NULL; \
    }
 
-GLIBC25___STPCPY_CHK(m_libc_soname, __stpcpy_chk)
+GLIBC25___STPCPY_CHK(VG_Z_LIBC_SONAME, __stpcpy_chk)
 
 
 /* mempcpy */
@@ -674,8 +799,10 @@ GLIBC25___STPCPY_CHK(m_libc_soname, __stpcpy_chk)
       return (void*)( ((char*)dst) + len_saved ); \
    }
 
-GLIBC25_MEMPCPY(m_libc_soname, mempcpy)
-GLIBC25_MEMPCPY(m_ld_so_1,     mempcpy) /* ld.so.1 */
+GLIBC25_MEMPCPY(VG_Z_LIBC_SONAME, mempcpy)
+#if defined(VGO_linux)
+GLIBC25_MEMPCPY(VG_Z_LD_SO_1,     mempcpy) /* ld.so.1 */
+#endif
 
 
 #define GLIBC26___MEMCPY_CHK(soname, fnname) \
@@ -713,13 +840,13 @@ GLIBC25_MEMPCPY(m_ld_so_1,     mempcpy) /* ld.so.1 */
      badness: \
       VALGRIND_PRINTF_BACKTRACE( \
          "*** memcpy_chk: buffer overflow detected ***: " \
-         "program terminated"); \
+         "program terminated\n"); \
      _exit(127); \
      /*NOTREACHED*/ \
      return NULL; \
    }
 
-GLIBC26___MEMCPY_CHK(m_libc_soname, __memcpy_chk)
+GLIBC26___MEMCPY_CHK(VG_Z_LIBC_SONAME, __memcpy_chk)
 
 
 /*------------------------------------------------------------*/
@@ -729,8 +856,8 @@ GLIBC26___MEMCPY_CHK(m_libc_soname, __memcpy_chk)
 #if defined(VGO_linux)
 
 /* putenv */
-int VG_WRAP_FUNCTION_ZU(m_libc_soname, putenv) (char* string);
-int VG_WRAP_FUNCTION_ZU(m_libc_soname, putenv) (char* string)
+int VG_WRAP_FUNCTION_ZU(VG_Z_LIBC_SONAME, putenv) (char* string);
+int VG_WRAP_FUNCTION_ZU(VG_Z_LIBC_SONAME, putenv) (char* string)
 {
     OrigFn fn;
     Word result;
@@ -746,8 +873,8 @@ int VG_WRAP_FUNCTION_ZU(m_libc_soname, putenv) (char* string)
 }
 
 /* unsetenv */
-int VG_WRAP_FUNCTION_ZU(m_libc_soname, unsetenv) (const char* name);
-int VG_WRAP_FUNCTION_ZU(m_libc_soname, unsetenv) (const char* name)
+int VG_WRAP_FUNCTION_ZU(VG_Z_LIBC_SONAME, unsetenv) (const char* name);
+int VG_WRAP_FUNCTION_ZU(VG_Z_LIBC_SONAME, unsetenv) (const char* name)
 {
     OrigFn fn;
     Word result;
@@ -763,9 +890,9 @@ int VG_WRAP_FUNCTION_ZU(m_libc_soname, unsetenv) (const char* name)
 }
 
 /* setenv */
-int VG_WRAP_FUNCTION_ZU(m_libc_soname, setenv)
+int VG_WRAP_FUNCTION_ZU(VG_Z_LIBC_SONAME, setenv)
     (const char* name, const char* value, int overwrite);
-int VG_WRAP_FUNCTION_ZU(m_libc_soname, setenv)
+int VG_WRAP_FUNCTION_ZU(VG_Z_LIBC_SONAME, setenv)
     (const char* name, const char* value, int overwrite)
 {
     OrigFn fn;

@@ -1,8 +1,8 @@
+/* -*- mode: C; c-basic-offset: 3; -*- */
 /*
-  This file is part of drd, a data race detector.
+  This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2008 Bart Van Assche
-  bart.vanassche@gmail.com
+  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -31,25 +31,28 @@
 
 
 #include "drd_thread.h"           // DrdThreadId
-#include "drd_vc.h"
 #include "pub_tool_basics.h"      // Addr
 
 
 struct semaphore_info;
 
 
-void semaphore_set_trace(const Bool trace_semaphore);
-struct semaphore_info* semaphore_init(const Addr semaphore,
-                                      const Word pshared, const UWord value);
-void semaphore_destroy(const Addr semaphore);
-void semaphore_pre_wait(const Addr semaphore);
-void semaphore_post_wait(const DrdThreadId tid, const Addr semaphore,
-                         const Bool waited);
-void semaphore_pre_post(const DrdThreadId tid, const Addr semaphore);
-void semaphore_post_post(const DrdThreadId tid, const Addr semaphore,
-                         const Bool waited);
-void semaphore_thread_delete(const DrdThreadId tid);
-ULong get_semaphore_segment_creation_count(void);
+void DRD_(semaphore_set_trace)(const Bool trace_semaphore);
+struct semaphore_info* DRD_(semaphore_init)(const Addr semaphore,
+                                            const Word pshared,
+                                            const UInt value);
+void DRD_(semaphore_destroy)(const Addr semaphore);
+struct semaphore_info* DRD_(semaphore_open)(const Addr semaphore,
+                                            const Char* name, const Word oflag,
+                                            const Word mode, const UInt value);
+void DRD_(semaphore_close)(const Addr semaphore);
+void DRD_(semaphore_pre_wait)(const Addr semaphore);
+void DRD_(semaphore_post_wait)(const DrdThreadId tid, const Addr semaphore,
+                               const Bool waited);
+void DRD_(semaphore_pre_post)(const DrdThreadId tid, const Addr semaphore);
+void DRD_(semaphore_post_post)(const DrdThreadId tid, const Addr semaphore,
+                               const Bool waited);
+ULong DRD_(get_semaphore_segment_creation_count)(void);
 
 
 #endif /* __DRD_SEMAPHORE_H */

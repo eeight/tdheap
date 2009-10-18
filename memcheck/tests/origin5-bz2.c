@@ -2784,7 +2784,7 @@ void mainQSort3 ( UInt32* ptr,
 #define SETMASK (1 << 21)
 #define CLEARMASK (~(SETMASK))
 
-static
+static __attribute__((noinline))
 void mainSort ( UInt32* ptr, 
                 UChar*  block,
                 UInt16* quadrant, 
@@ -6412,8 +6412,8 @@ void set_inbuf ( void )
   my_strcat(inbuf, "\n");
 }
 
+
 #include <stdio.h>
-#include <malloc.h>
 #include <assert.h>
 
 /* For providing services. */

@@ -1,4 +1,4 @@
-#if !defined(_AIX)
+#include "../../config.h"
 #include <assert.h>
 #include <errno.h>
 #include <pthread.h>
@@ -8,7 +8,9 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include <asm/unistd.h>
+#ifdef HAVE_ASM_UNISTD_H
+#include <asm/unistd.h> // __NR_gettid
+#endif
 #include "../drd.h"
 
 
@@ -31,7 +33,7 @@ static void print_thread_id(const char* const label)
     char msg[256];
     snprintf(msg, sizeof(msg),
              "%spid %d / kernel thread ID %d / Valgrind thread ID %d\n",
-             label, getpid(), getktid(), vg_get_valgrind_threadid());
+             label, getpid(), getktid(), DRD_GET_VALGRIND_THREADID);
     write(STDOUT_FILENO, msg, strlen(msg));
   }
 }
@@ -61,7 +63,7 @@ int main(int argc, char** argv)
   if (argc > 1)
     s_debug = 1;
 
-  vgthreadid = vg_get_valgrind_threadid();
+  vgthreadid = DRD_GET_VALGRIND_THREADID;
 
   print_thread_id("main: ");
 
@@ -84,11 +86,3 @@ int main(int argc, char** argv)
 
   return 0;
 }
-
-#else /* !defined(_AIX) */
-#include <stdio.h>
-int main ( void ) {
-  fprintf(stderr, "This test does not compile on AIX5.\n");
-  return 0;
-}
-#endif /* !defined(_AIX) */

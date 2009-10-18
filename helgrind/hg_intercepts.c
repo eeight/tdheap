@@ -8,7 +8,7 @@
    This file is part of Helgrind, a Valgrind tool for detecting errors
    in threaded programs.
 
-   Copyright (C) 2007-2008 OpenWorks LLP
+   Copyright (C) 2007-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -45,7 +45,15 @@
    doing something.
 */
 
+// DDD: for Darwin, need to have non-"@*"-suffixed versions for all pthread
+// functions that currently have them.
+// Note also, in the comments and code below, all Darwin symbols start
+// with a leading underscore, which is not shown either in the comments
+// nor in the redirect specs.
+
+
 #include "pub_tool_basics.h"
+#include "pub_tool_redir.h"
 #include "valgrind.h"
 #include "helgrind.h"
 
@@ -58,8 +66,8 @@
 /*----------------------------------------------------------------*/
 
 #define PTH_FUNC(ret_ty, f, args...) \
-   ret_ty I_WRAP_SONAME_FNNAME_ZZ(libpthreadZdsoZd0,f)(args); \
-   ret_ty I_WRAP_SONAME_FNNAME_ZZ(libpthreadZdsoZd0,f)(args)
+   ret_ty I_WRAP_SONAME_FNNAME_ZZ(VG_Z_LIBPTHREAD_SONAME,f)(args); \
+   ret_ty I_WRAP_SONAME_FNNAME_ZZ(VG_Z_LIBPTHREAD_SONAME,f)(args)
 
 // Do a client request.  This is a macro rather than a function 
 // so as to avoid having an extra function in the stack trace.
@@ -86,7 +94,7 @@
                                  _arg1,_arg2,0,0,0);     \
    } while (0)
 
-#define DO_CREQ_W_WW(_resF, _creqF, _ty1F,_arg1F, _ty2F,_arg2F)	\
+#define DO_CREQ_W_WW(_resF, _creqF, _ty1F,_arg1F, _ty2F,_arg2F)        \
    do {                                                  \
       Word _res, _arg1, _arg2;                           \
       assert(sizeof(_ty1F) == sizeof(Word));             \
@@ -100,7 +108,7 @@
    } while (0)
 
 #define DO_CREQ_v_WWW(_creqF, _ty1F,_arg1F,              \
-		      _ty2F,_arg2F, _ty3F, _arg3F)       \
+                      _ty2F,_arg2F, _ty3F, _arg3F)       \
    do {                                                  \
       Word _unused_res, _arg1, _arg2, _arg3;             \
       assert(sizeof(_ty1F) == sizeof(Word));             \
@@ -118,7 +126,7 @@
 #define DO_PthAPIerror(_fnnameF, _errF)                  \
    do {                                                  \
       char* _fnname = (char*)(_fnnameF);                 \
-      long  _err    = (long)(int)(_errF);	         \
+      long  _err    = (long)(int)(_errF);                \
       char* _errstr = lame_strerror(_err);               \
       DO_CREQ_v_WWW(_VG_USERREQ__HG_PTH_API_ERROR,       \
                     char*,_fnname,                       \
@@ -193,10 +201,18 @@ static void* mythread_wrapper ( void* xargsV )
    return (void*) fn( (void*)arg );
 }
 
-// pthread_create
-PTH_FUNC(int, pthreadZucreateZAZa, // pthread_create@*
-              pthread_t *thread, const pthread_attr_t *attr,
-              void *(*start) (void *), void *arg)
+//-----------------------------------------------------------
+// glibc:  pthread_create@GLIBC_2.0
+// glibc:  pthread_create@@GLIBC_2.1
+// glibc:  pthread_create@@GLIBC_2.2.5
+// darwin: pthread_create
+// darwin: pthread_create_suspended_np (trapped)
+//
+/* ensure this has its own frame, so as to make it more distinguishable
+   in suppressions */
+__attribute__((noinline))
+static int pthread_create_WRK(pthread_t *thread, const pthread_attr_t *attr,
+                              void *(*start) (void *), void *arg)
 {
    int    ret;
    OrigFn fn;
@@ -233,10 +249,35 @@ PTH_FUNC(int, pthreadZucreateZAZa, // pthread_create@*
    }
    return ret;
 }
+#if defined(VGO_linux)
+   PTH_FUNC(int, pthreadZucreateZAZa, // pthread_create@*
+                 pthread_t *thread, const pthread_attr_t *attr,
+                 void *(*start) (void *), void *arg) {
+      return pthread_create_WRK(thread, attr, start, arg);
+   }
+#elif defined(VGO_darwin)
+   PTH_FUNC(int, pthreadZucreate, // pthread_create
+                 pthread_t *thread, const pthread_attr_t *attr,
+                 void *(*start) (void *), void *arg) {
+      return pthread_create_WRK(thread, attr, start, arg);
+   }
+   PTH_FUNC(int, pthreadZucreateZuZa, // pthread_create_*
+                 pthread_t *thread, const pthread_attr_t *attr,
+                 void *(*start) (void *), void *arg) {
+      // trap anything else
+      assert(0);
+   }
+#else
+#  error "Unsupported OS"
+#endif
 
-// pthread_join
-PTH_FUNC(int, pthreadZujoin, // pthread_join
-              pthread_t thread, void** value_pointer)
+
+//-----------------------------------------------------------
+// glibc:  pthread_join
+// darwin: pthread_join
+// darwin: pthread_join$NOCANCEL$UNIX2003
+// darwin  pthread_join$UNIX2003
+static int pthread_join_WRK(pthread_t thread, void** value_pointer)
 {
    int ret;
    OrigFn fn;
@@ -261,6 +302,20 @@ PTH_FUNC(int, pthreadZujoin, // pthread_join
    }
    return ret;
 }
+#if defined(VGO_linux)
+   PTH_FUNC(int, pthreadZujoin, // pthread_join
+            pthread_t thread, void** value_pointer) {
+      return pthread_join_WRK(thread, value_pointer);
+   }
+#elif defined(VGO_darwin)
+   PTH_FUNC(int, pthreadZujoinZa, // pthread_join*
+            pthread_t thread, void** value_pointer) {
+      return pthread_join_WRK(thread, value_pointer);
+   }
+#else
+#  error "Unsupported OS"
+#endif
+
 
 /* Behaviour of pthread_join on NPTL:
 
@@ -312,14 +367,11 @@ done.  No way the joiner can return before the thread is gone.
               pthread_mutex_lock
               pthread_mutex_trylock pthread_mutex_timedlock
               pthread_mutex_unlock
-
-   Unhandled: pthread_spin_init pthread_spin_destroy 
-              pthread_spin_lock
-              pthread_spin_trylock
-              pthread_spin_unlock
 */
 
-// pthread_mutex_init
+//-----------------------------------------------------------
+// glibc:  pthread_mutex_init
+// darwin: pthread_mutex_init
 PTH_FUNC(int, pthreadZumutexZuinit, // pthread_mutex_init
               pthread_mutex_t *mutex,
               pthread_mutexattr_t* attr)
@@ -356,7 +408,9 @@ PTH_FUNC(int, pthreadZumutexZuinit, // pthread_mutex_init
 }
 
 
-// pthread_mutex_destroy
+//-----------------------------------------------------------
+// glibc:  pthread_mutex_destroy
+// darwin: pthread_mutex_destroy
 PTH_FUNC(int, pthreadZumutexZudestroy, // pthread_mutex_destroy
               pthread_mutex_t *mutex)
 {
@@ -383,7 +437,9 @@ PTH_FUNC(int, pthreadZumutexZudestroy, // pthread_mutex_destroy
 }
 
 
-// pthread_mutex_lock
+//-----------------------------------------------------------
+// glibc:  pthread_mutex_lock
+// darwin: pthread_mutex_lock
 PTH_FUNC(int, pthreadZumutexZulock, // pthread_mutex_lock
               pthread_mutex_t *mutex)
 {
@@ -418,6 +474,10 @@ PTH_FUNC(int, pthreadZumutexZulock, // pthread_mutex_lock
 }
 
 
+//-----------------------------------------------------------
+// glibc:  pthread_mutex_trylock
+// darwin: pthread_mutex_trylock
+//
 // pthread_mutex_trylock.  The handling needed here is very similar
 // to that for pthread_mutex_lock, except that we need to tell
 // the pre-lock creq that this is a trylock-style operation, and
@@ -459,9 +519,13 @@ PTH_FUNC(int, pthreadZumutexZutrylock, // pthread_mutex_trylock
 }
 
 
+//-----------------------------------------------------------
+// glibc:  pthread_mutex_timedlock
+// darwin: (doesn't appear to exist)
+//
 // pthread_mutex_timedlock.  Identical logic to pthread_mutex_trylock.
 PTH_FUNC(int, pthreadZumutexZutimedlock, // pthread_mutex_timedlock
-	 pthread_mutex_t *mutex,
+         pthread_mutex_t *mutex,
          void* timeout)
 {
    int    ret;
@@ -497,7 +561,9 @@ PTH_FUNC(int, pthreadZumutexZutimedlock, // pthread_mutex_timedlock
 }
 
 
-// pthread_mutex_unlock
+//-----------------------------------------------------------
+// glibc:  pthread_mutex_unlock
+// darwin: pthread_mutex_unlock
 PTH_FUNC(int, pthreadZumutexZuunlock, // pthread_mutex_unlock
               pthread_mutex_t *mutex)
 {
@@ -534,14 +600,21 @@ PTH_FUNC(int, pthreadZumutexZuunlock, // pthread_mutex_unlock
 
 /* Handled:   pthread_cond_wait pthread_cond_timedwait
               pthread_cond_signal pthread_cond_broadcast
+              pthread_cond_destroy
 
-   Unhandled: pthread_cond_init pthread_cond_destroy
-              -- are these important?
+   Unhandled: pthread_cond_init
+              -- is this important?
 */
 
-// pthread_cond_wait
-PTH_FUNC(int, pthreadZucondZuwaitZAZa, // pthread_cond_wait@*
-              pthread_cond_t* cond, pthread_mutex_t* mutex)
+//-----------------------------------------------------------
+// glibc:  pthread_cond_wait@GLIBC_2.2.5
+// glibc:  pthread_cond_wait@@GLIBC_2.3.2
+// darwin: pthread_cond_wait
+// darwin: pthread_cond_wait$NOCANCEL$UNIX2003
+// darwin: pthread_cond_wait$UNIX2003
+//
+static int pthread_cond_wait_WRK(pthread_cond_t* cond,
+                                 pthread_mutex_t* mutex)
 {
    int ret;
    OrigFn fn;
@@ -596,12 +669,33 @@ PTH_FUNC(int, pthreadZucondZuwaitZAZa, // pthread_cond_wait@*
 
    return ret;
 }
+#if defined(VGO_linux)
+   PTH_FUNC(int, pthreadZucondZuwaitZAZa, // pthread_cond_wait@*
+                 pthread_cond_t* cond, pthread_mutex_t* mutex) {
+      return pthread_cond_wait_WRK(cond, mutex);
+   }
+#elif defined(VGO_darwin)
+   PTH_FUNC(int, pthreadZucondZuwaitZa, // pthread_cond_wait*
+                 pthread_cond_t* cond, pthread_mutex_t* mutex) {
+      return pthread_cond_wait_WRK(cond, mutex);
+   }
+#else
+#  error "Unsupported OS"
+#endif
 
 
-// pthread_cond_timedwait
-PTH_FUNC(int, pthreadZucondZutimedwaitZAZa, // pthread_cond_timedwait@*
-         pthread_cond_t* cond, pthread_mutex_t* mutex, 
-         struct timespec* abstime)
+//-----------------------------------------------------------
+// glibc:  pthread_cond_timedwait@@GLIBC_2.3.2
+// glibc:  pthread_cond_timedwait@GLIBC_2.2.5
+// glibc:  pthread_cond_timedwait@GLIBC_2.0
+// darwin: pthread_cond_timedwait
+// darwin: pthread_cond_timedwait$NOCANCEL$UNIX2003
+// darwin: pthread_cond_timedwait$UNIX2003
+// darwin: pthread_cond_timedwait_relative_np (trapped)
+//
+static int pthread_cond_timedwait_WRK(pthread_cond_t* cond,
+                                      pthread_mutex_t* mutex, 
+                                      struct timespec* abstime)
 {
    int ret;
    OrigFn fn;
@@ -654,11 +748,41 @@ PTH_FUNC(int, pthreadZucondZutimedwaitZAZa, // pthread_cond_timedwait@*
 
    return ret;
 }
+#if defined(VGO_linux)
+   PTH_FUNC(int, pthreadZucondZutimedwaitZAZa, // pthread_cond_timedwait@*
+                 pthread_cond_t* cond, pthread_mutex_t* mutex, 
+                 struct timespec* abstime) {
+      return pthread_cond_timedwait_WRK(cond, mutex, abstime);
+   }
+#elif defined(VGO_darwin)
+   PTH_FUNC(int, pthreadZucondZutimedwait, // pthread_cond_timedwait
+                 pthread_cond_t* cond, pthread_mutex_t* mutex, 
+                 struct timespec* abstime) {
+      return pthread_cond_timedwait_WRK(cond, mutex, abstime);
+   }
+   PTH_FUNC(int, pthreadZucondZutimedwaitZDZa, // pthread_cond_timedwait$*
+                 pthread_cond_t* cond, pthread_mutex_t* mutex, 
+                 struct timespec* abstime) {
+      return pthread_cond_timedwait_WRK(cond, mutex, abstime);
+   }
+   PTH_FUNC(int, pthreadZucondZutimedwaitZuZa, // pthread_cond_timedwait_*
+                 pthread_cond_t* cond, pthread_mutex_t* mutex, 
+                 struct timespec* abstime) {
+      assert(0);
+   }
+#else
+#  error "Unsupported OS"
+#endif
 
 
-// pthread_cond_signal
-PTH_FUNC(int, pthreadZucondZusignalZAZa, // pthread_cond_signal@*
-              pthread_cond_t* cond)
+//-----------------------------------------------------------
+// glibc:  pthread_cond_signal@GLIBC_2.0
+// glibc:  pthread_cond_signal@GLIBC_2.2.5
+// glibc:  pthread_cond_signal@@GLIBC_2.3.2
+// darwin: pthread_cond_signal
+// darwin: pthread_cond_signal_thread_np (don't intercept this)
+//
+static int pthread_cond_signal_WRK(pthread_cond_t* cond)
 {
    int ret;
    OrigFn fn;
@@ -684,21 +808,39 @@ PTH_FUNC(int, pthreadZucondZusignalZAZa, // pthread_cond_signal@*
 
    return ret;
 }
+#if defined(VGO_linux)
+   PTH_FUNC(int, pthreadZucondZusignalZAZa, // pthread_cond_signal@*
+                 pthread_cond_t* cond) {
+      return pthread_cond_signal_WRK(cond);
+   }
+#elif defined(VGO_darwin)
+   PTH_FUNC(int, pthreadZucondZusignal, // pthread_cond_signal
+                 pthread_cond_t* cond) {
+      return pthread_cond_signal_WRK(cond);
+   }
+#else
+#  error "Unsupported OS"
+#endif
 
 
-// pthread_cond_broadcast
+//-----------------------------------------------------------
+// glibc:  pthread_cond_broadcast@GLIBC_2.0
+// glibc:  pthread_cond_broadcast@GLIBC_2.2.5
+// glibc:  pthread_cond_broadcast@@GLIBC_2.3.2
+// darwin: pthread_cond_broadcast
+//
 // Note, this is pretty much identical, from a dependency-graph
 // point of view, with cond_signal, so the code is duplicated.
 // Maybe it should be commoned up.
-PTH_FUNC(int, pthreadZucondZubroadcastZAZa, // pthread_cond_broadcast@*
-              pthread_cond_t* cond)
+//
+static int pthread_cond_broadcast_WRK(pthread_cond_t* cond)
 {
    int ret;
    OrigFn fn;
    VALGRIND_GET_ORIG_FN(fn);
 
    if (TRACE_PTH_FNS) {
-      fprintf(stderr, "<< pthread_broadcast_signal %p", cond);
+      fprintf(stderr, "<< pthread_cond_broadcast %p", cond);
       fflush(stderr);
    }
 
@@ -717,6 +859,384 @@ PTH_FUNC(int, pthreadZucondZubroadcastZAZa, // pthread_cond_broadcast@*
 
    return ret;
 }
+#if defined(VGO_linux)
+   PTH_FUNC(int, pthreadZucondZubroadcastZAZa, // pthread_cond_broadcast@*
+                 pthread_cond_t* cond) {
+      return pthread_cond_broadcast_WRK(cond);
+   }
+#elif defined(VGO_darwin)
+   PTH_FUNC(int, pthreadZucondZubroadcast, // pthread_cond_broadcast
+                 pthread_cond_t* cond) {
+      return pthread_cond_broadcast_WRK(cond);
+   }
+#else
+#   error "Unsupported OS"
+#endif
+
+
+//-----------------------------------------------------------
+// glibc:  pthread_cond_destroy@@GLIBC_2.3.2
+// glibc:  pthread_cond_destroy@GLIBC_2.2.5
+// glibc:  pthread_cond_destroy@GLIBC_2.0
+// darwin: pthread_cond_destroy
+//
+static int pthread_cond_destroy_WRK(pthread_cond_t* cond)
+{
+   int ret;
+   OrigFn fn;
+
+   VALGRIND_GET_ORIG_FN(fn);
+
+   if (TRACE_PTH_FNS) {
+      fprintf(stderr, "<< pthread_cond_destroy %p", cond);
+      fflush(stderr);
+   }
+
+   DO_CREQ_v_W(_VG_USERREQ__HG_PTHREAD_COND_DESTROY_PRE,
+               pthread_cond_t*,cond);
+
+   CALL_FN_W_W(ret, fn, cond);
+
+   if (ret != 0) {
+      DO_PthAPIerror( "pthread_cond_destroy", ret );
+   }
+
+   if (TRACE_PTH_FNS) {
+      fprintf(stderr, " codestr -> %d >>\n", ret);
+   }
+
+   return ret;
+}
+#if defined(VGO_linux)
+   PTH_FUNC(int, pthreadZucondZudestroyZAZa, // pthread_cond_destroy@*
+                 pthread_cond_t* cond) {
+      return pthread_cond_destroy_WRK(cond);
+   }
+#elif defined(VGO_darwin)
+   PTH_FUNC(int, pthreadZucondZudestroy, // pthread_cond_destroy
+                 pthread_cond_t* cond) {
+      return pthread_cond_destroy_WRK(cond);
+   }
+#else
+#  error "Unsupported OS"
+#endif
+
+
+/*----------------------------------------------------------------*/
+/*--- pthread_barrier_t functions                              ---*/
+/*----------------------------------------------------------------*/
+
+#if defined(HAVE_PTHREAD_BARRIER_INIT)
+
+/* Handled:   pthread_barrier_init
+              pthread_barrier_wait
+              pthread_barrier_destroy
+
+   Unhandled: pthread_barrierattr_destroy
+              pthread_barrierattr_getpshared
+              pthread_barrierattr_init
+              pthread_barrierattr_setpshared
+              -- are these important?
+*/
+
+//-----------------------------------------------------------
+// glibc:  pthread_barrier_init
+// darwin: (doesn't appear to exist)
+PTH_FUNC(int, pthreadZubarrierZuinit, // pthread_barrier_init
+         pthread_barrier_t* bar,
+         pthread_barrierattr_t* attr, unsigned long count)
+{
+   int ret;
+   OrigFn fn;
+   VALGRIND_GET_ORIG_FN(fn);
+
+   if (TRACE_PTH_FNS) {
+      fprintf(stderr, "<< pthread_barrier_init %p %p %lu",
+                      bar, attr, count);
+      fflush(stderr);
+   }
+
+   DO_CREQ_v_WW(_VG_USERREQ__HG_PTHREAD_BARRIER_INIT_PRE,
+                pthread_barrier_t*,bar,
+                unsigned long,count);
+
+   CALL_FN_W_WWW(ret, fn, bar,attr,count);
+
+   if (ret != 0) {
+      DO_PthAPIerror( "pthread_barrier_init", ret );
+   }
+
+   if (TRACE_PTH_FNS) {
+      fprintf(stderr, "  pthread_barrier_init -> %d >>\n", ret);
+   }
+
+   return ret;
+}
+
+
+//-----------------------------------------------------------
+// glibc:  pthread_barrier_wait
+// darwin: (doesn't appear to exist)
+PTH_FUNC(int, pthreadZubarrierZuwait, // pthread_barrier_wait
+              pthread_barrier_t* bar)
+{
+   int ret;
+   OrigFn fn;
+   VALGRIND_GET_ORIG_FN(fn);
+
+   if (TRACE_PTH_FNS) {
+      fprintf(stderr, "<< pthread_barrier_wait %p", bar);
+      fflush(stderr);
+   }
+
+   /* That this works correctly, and doesn't screw up when a thread
+      leaving the barrier races round to the front and re-enters while
+      other threads are still leaving it, is quite subtle.  See
+      comments in the handler for PTHREAD_BARRIER_WAIT_PRE in
+      hg_main.c. */
+   DO_CREQ_v_W(_VG_USERREQ__HG_PTHREAD_BARRIER_WAIT_PRE,
+               pthread_barrier_t*,bar);
+
+   CALL_FN_W_W(ret, fn, bar);
+
+   if (ret != 0 && ret != PTHREAD_BARRIER_SERIAL_THREAD) {
+      DO_PthAPIerror( "pthread_barrier_wait", ret );
+   }
+
+   if (TRACE_PTH_FNS) {
+      fprintf(stderr, "  pthread_barrier_wait -> %d >>\n", ret);
+   }
+
+   return ret;
+}
+
+
+//-----------------------------------------------------------
+// glibc:  pthread_barrier_destroy
+// darwin: (doesn't appear to exist)
+PTH_FUNC(int, pthreadZubarrierZudestroy, // pthread_barrier_destroy
+         pthread_barrier_t* bar)
+{
+   int ret;
+   OrigFn fn;
+   VALGRIND_GET_ORIG_FN(fn);
+
+   if (TRACE_PTH_FNS) {
+      fprintf(stderr, "<< pthread_barrier_destroy %p", bar);
+      fflush(stderr);
+   }
+
+   DO_CREQ_v_W(_VG_USERREQ__HG_PTHREAD_BARRIER_DESTROY_PRE,
+               pthread_barrier_t*,bar);
+
+   CALL_FN_W_W(ret, fn, bar);
+
+   if (ret != 0) {
+      DO_PthAPIerror( "pthread_barrier_destroy", ret );
+   }
+
+   if (TRACE_PTH_FNS) {
+      fprintf(stderr, "  pthread_barrier_destroy -> %d >>\n", ret);
+   }
+
+   return ret;
+}
+
+#endif   // defined(HAVE_PTHREAD_BARRIER_INIT)
+
+
+/*----------------------------------------------------------------*/
+/*--- pthread_spinlock_t functions                             ---*/
+/*----------------------------------------------------------------*/
+
+#if defined(HAVE_PTHREAD_SPIN_LOCK)
+
+/* Handled:   pthread_spin_init pthread_spin_destroy
+              pthread_spin_lock pthread_spin_trylock
+              pthread_spin_unlock
+
+   Unhandled:
+*/
+
+/* This is a nasty kludge, in that glibc "knows" that initialising a
+   spin lock unlocks it, and pthread_spin_{init,unlock} are names for
+   the same function.  Hence we have to have a wrapper which does both
+   things, without knowing which the user intended to happen. */
+
+//-----------------------------------------------------------
+// glibc:  pthread_spin_init
+// glibc:  pthread_spin_unlock
+// darwin: (doesn't appear to exist)
+static int pthread_spin_init_or_unlock_WRK(pthread_spinlock_t* lock,
+                                           int pshared) {
+   int    ret;
+   OrigFn fn;
+   VALGRIND_GET_ORIG_FN(fn);
+   if (TRACE_PTH_FNS) {
+      fprintf(stderr, "<< pthread_spin_iORu %p", lock); fflush(stderr);
+   }
+
+   DO_CREQ_v_W(_VG_USERREQ__HG_PTHREAD_SPIN_INIT_OR_UNLOCK_PRE,
+               pthread_spinlock_t*, lock);
+
+   CALL_FN_W_WW(ret, fn, lock,pshared);
+
+   if (ret == 0 /*success*/) {
+      DO_CREQ_v_W(_VG_USERREQ__HG_PTHREAD_SPIN_INIT_OR_UNLOCK_POST,
+                  pthread_spinlock_t*,lock);
+   } else { 
+      DO_PthAPIerror( "pthread_spinlock_{init,unlock}", ret );
+   }
+
+   if (TRACE_PTH_FNS) {
+      fprintf(stderr, " :: spiniORu -> %d >>\n", ret);
+   }
+   return ret;
+}
+#if defined(VGO_linux)
+   PTH_FUNC(int, pthreadZuspinZuinit, // pthread_spin_init
+            pthread_spinlock_t* lock, int pshared) {
+      return pthread_spin_init_or_unlock_WRK(lock, pshared);
+   }
+   PTH_FUNC(int, pthreadZuspinZuunlock, // pthread_spin_unlock
+            pthread_spinlock_t* lock) {
+      /* this is never actually called */
+      return pthread_spin_init_or_unlock_WRK(lock, 0/*pshared*/);
+   }
+#elif defined(VGO_darwin)
+#else
+#  error "Unsupported OS"
+#endif
+
+
+//-----------------------------------------------------------
+// glibc:  pthread_spin_destroy
+// darwin: (doesn't appear to exist)
+#if defined(VGO_linux)
+
+PTH_FUNC(int, pthreadZuspinZudestroy, // pthread_spin_destroy
+              pthread_spinlock_t* lock)
+{
+   int    ret;
+   OrigFn fn;
+   VALGRIND_GET_ORIG_FN(fn);
+   if (TRACE_PTH_FNS) {
+      fprintf(stderr, "<< pthread_spin_destroy %p", lock);
+      fflush(stderr);
+   }
+
+   DO_CREQ_v_W(_VG_USERREQ__HG_PTHREAD_SPIN_DESTROY_PRE,
+               pthread_spinlock_t*,lock);
+
+   CALL_FN_W_W(ret, fn, lock);
+
+   if (ret != 0) {
+      DO_PthAPIerror( "pthread_spin_destroy", ret );
+   }
+
+   if (TRACE_PTH_FNS) {
+      fprintf(stderr, " :: spindestroy -> %d >>\n", ret);
+   }
+   return ret;
+}
+
+#elif defined(VGO_darwin)
+#else
+#  error "Unsupported OS"
+#endif
+
+
+//-----------------------------------------------------------
+// glibc:  pthread_spin_lock
+// darwin: (doesn't appear to exist)
+#if defined(VGO_linux)
+
+PTH_FUNC(int, pthreadZuspinZulock, // pthread_spin_lock
+              pthread_spinlock_t* lock)
+{
+   int    ret;
+   OrigFn fn;
+   VALGRIND_GET_ORIG_FN(fn);
+   if (TRACE_PTH_FNS) {
+      fprintf(stderr, "<< pthread_spinlock %p", lock);
+      fflush(stderr);
+   }
+
+   DO_CREQ_v_WW(_VG_USERREQ__HG_PTHREAD_SPIN_LOCK_PRE,
+                pthread_spinlock_t*,lock, long,0/*!isTryLock*/);
+
+   CALL_FN_W_W(ret, fn, lock);
+
+   /* There's a hole here: libpthread now knows the lock is locked,
+      but the tool doesn't, so some other thread could run and detect
+      that the lock has been acquired by someone (this thread).  Does
+      this matter?  Not sure, but I don't think so. */
+
+   if (ret == 0 /*success*/) {
+      DO_CREQ_v_W(_VG_USERREQ__HG_PTHREAD_SPIN_LOCK_POST,
+                  pthread_spinlock_t*,lock);
+   } else { 
+      DO_PthAPIerror( "pthread_spin_lock", ret );
+   }
+
+   if (TRACE_PTH_FNS) {
+      fprintf(stderr, " :: spinlock -> %d >>\n", ret);
+   }
+   return ret;
+}
+
+#elif defined(VGO_darwin)
+#else
+#  error "Unsupported OS"
+#endif
+
+
+//-----------------------------------------------------------
+// glibc:  pthread_spin_trylock
+// darwin: (doesn't appear to exist)
+#if defined(VGO_linux)
+
+PTH_FUNC(int, pthreadZuspinZutrylock, // pthread_spin_trylock
+              pthread_spinlock_t* lock)
+{
+   int    ret;
+   OrigFn fn;
+   VALGRIND_GET_ORIG_FN(fn);
+   if (TRACE_PTH_FNS) {
+      fprintf(stderr, "<< pthread_spin_trylock %p", lock);
+      fflush(stderr);
+   }
+
+   DO_CREQ_v_WW(_VG_USERREQ__HG_PTHREAD_SPIN_LOCK_PRE,
+                pthread_spinlock_t*,lock, long,1/*isTryLock*/);
+
+   CALL_FN_W_W(ret, fn, lock);
+
+   /* There's a hole here: libpthread now knows the lock is locked,
+      but the tool doesn't, so some other thread could run and detect
+      that the lock has been acquired by someone (this thread).  Does
+      this matter?  Not sure, but I don't think so. */
+
+   if (ret == 0 /*success*/) {
+      DO_CREQ_v_W(_VG_USERREQ__HG_PTHREAD_SPIN_LOCK_POST,
+                  pthread_spinlock_t*,lock);
+   } else {
+      if (ret != EBUSY)
+         DO_PthAPIerror( "pthread_spin_trylock", ret );
+   }
+
+   if (TRACE_PTH_FNS) {
+      fprintf(stderr, " :: spin_trylock -> %d >>\n", ret);
+   }
+   return ret;
+}
+
+#elif defined(VGO_darwin)
+#else
+#  error "Unsupported OS"
+#endif
+
+#endif // defined(HAVE_PTHREAD_SPIN_LOCK)
 
 
 /*----------------------------------------------------------------*/
@@ -735,10 +1255,12 @@ PTH_FUNC(int, pthreadZucondZubroadcastZAZa, // pthread_cond_broadcast@*
               pthread_rwlock_trywrlock
 */
 
-// pthread_rwlock_init
-PTH_FUNC(int, pthreadZurwlockZuinit, // pthread_rwlock_init
-              pthread_rwlock_t *rwl,
-              pthread_rwlockattr_t* attr)
+//-----------------------------------------------------------
+// glibc:  pthread_rwlock_init
+// darwin: pthread_rwlock_init
+// darwin: pthread_rwlock_init$UNIX2003
+static int pthread_rwlock_init_WRK(pthread_rwlock_t *rwl,
+                                   pthread_rwlockattr_t* attr)
 {
    int    ret;
    OrigFn fn;
@@ -761,11 +1283,29 @@ PTH_FUNC(int, pthreadZurwlockZuinit, // pthread_rwlock_init
    }
    return ret;
 }
+#if defined(VGO_linux)
+   PTH_FUNC(int, pthreadZurwlockZuinit, // pthread_rwlock_init
+                 pthread_rwlock_t *rwl,
+                 pthread_rwlockattr_t* attr) {
+      return pthread_rwlock_init_WRK(rwl, attr);
+   }
+#elif defined(VGO_darwin)
+   PTH_FUNC(int, pthreadZurwlockZuinitZa, // pthread_rwlock_init*
+                 pthread_rwlock_t *rwl,
+                 pthread_rwlockattr_t* attr) {
+      return pthread_rwlock_init_WRK(rwl, attr);
+   }
+#else
+#  error "Unsupported OS"
+#endif
 
 
-// pthread_rwlock_destroy
-PTH_FUNC(int, pthreadZurwlockZudestroy, // pthread_rwlock_destroy
-              pthread_rwlock_t *rwl)
+//-----------------------------------------------------------
+// glibc:  pthread_rwlock_destroy
+// darwin: pthread_rwlock_destroy
+// darwin: pthread_rwlock_destroy$UNIX2003
+//
+static int pthread_rwlock_destroy_WRK(pthread_rwlock_t* rwl)
 {
    int    ret;
    OrigFn fn;
@@ -788,11 +1328,27 @@ PTH_FUNC(int, pthreadZurwlockZudestroy, // pthread_rwlock_destroy
    }
    return ret;
 }
+#if defined(VGO_linux)
+   PTH_FUNC(int, pthreadZurwlockZudestroy, // pthread_rwlock_destroy
+                 pthread_rwlock_t *rwl) {
+      return pthread_rwlock_destroy_WRK(rwl);
+   }
+#elif defined(VGO_darwin)
+   PTH_FUNC(int, pthreadZurwlockZudestroyZa, // pthread_rwlock_destroy*
+                 pthread_rwlock_t *rwl) {
+      return pthread_rwlock_destroy_WRK(rwl);
+   }
+#else
+#  error "Unsupported OS"
+#endif
 
 
-// pthread_rwlock_wrlock
-PTH_FUNC(int, pthreadZurwlockZuwrlock, // pthread_rwlock_wrlock
-	 pthread_rwlock_t* rwlock)
+//-----------------------------------------------------------
+// glibc:  pthread_rwlock_wrlock
+// darwin: pthread_rwlock_wrlock
+// darwin: pthread_rwlock_wrlock$UNIX2003
+//
+static int pthread_rwlock_wrlock_WRK(pthread_rwlock_t* rwlock)
 {
    int    ret;
    OrigFn fn;
@@ -819,11 +1375,27 @@ PTH_FUNC(int, pthreadZurwlockZuwrlock, // pthread_rwlock_wrlock
    }
    return ret;
 }
+#if defined(VGO_linux)
+   PTH_FUNC(int, pthreadZurwlockZuwrlock, // pthread_rwlock_wrlock
+                 pthread_rwlock_t* rwlock) {
+      return pthread_rwlock_wrlock_WRK(rwlock);
+   }
+#elif defined(VGO_darwin)
+   PTH_FUNC(int, pthreadZurwlockZuwrlockZa, // pthread_rwlock_wrlock*
+                 pthread_rwlock_t* rwlock) {
+      return pthread_rwlock_wrlock_WRK(rwlock);
+   }
+#else
+#  error "Unsupported OS"
+#endif
 
 
-// pthread_rwlock_rdlock
-PTH_FUNC(int, pthreadZurwlockZurdlock, // pthread_rwlock_rdlock
-	 pthread_rwlock_t* rwlock)
+//-----------------------------------------------------------
+// glibc:  pthread_rwlock_rdlock
+// darwin: pthread_rwlock_rdlock
+// darwin: pthread_rwlock_rdlock$UNIX2003
+//
+static int pthread_rwlock_rdlock_WRK(pthread_rwlock_t* rwlock)
 {
    int    ret;
    OrigFn fn;
@@ -850,11 +1422,27 @@ PTH_FUNC(int, pthreadZurwlockZurdlock, // pthread_rwlock_rdlock
    }
    return ret;
 }
+#if defined(VGO_linux)
+   PTH_FUNC(int, pthreadZurwlockZurdlock, // pthread_rwlock_rdlock
+                 pthread_rwlock_t* rwlock) {
+      return pthread_rwlock_rdlock_WRK(rwlock);
+   }
+#elif defined(VGO_darwin)
+   PTH_FUNC(int, pthreadZurwlockZurdlockZa, // pthread_rwlock_rdlock*
+                 pthread_rwlock_t* rwlock) {
+      return pthread_rwlock_rdlock_WRK(rwlock);
+   }
+#else
+#  error "Unsupported OS"
+#endif
 
 
-// pthread_rwlock_trywrlock
-PTH_FUNC(int, pthreadZurwlockZutrywrlock, // pthread_rwlock_trywrlock
-	 pthread_rwlock_t* rwlock)
+//-----------------------------------------------------------
+// glibc:  pthread_rwlock_trywrlock
+// darwin: pthread_rwlock_trywrlock
+// darwin: pthread_rwlock_trywrlock$UNIX2003
+//
+static int pthread_rwlock_trywrlock_WRK(pthread_rwlock_t* rwlock)
 {
    int    ret;
    OrigFn fn;
@@ -887,11 +1475,27 @@ PTH_FUNC(int, pthreadZurwlockZutrywrlock, // pthread_rwlock_trywrlock
    }
    return ret;
 }
+#if defined(VGO_linux)
+   PTH_FUNC(int, pthreadZurwlockZutrywrlock, // pthread_rwlock_trywrlock
+                 pthread_rwlock_t* rwlock) {
+      return pthread_rwlock_trywrlock_WRK(rwlock);
+   }
+#elif defined(VGO_darwin)
+   PTH_FUNC(int, pthreadZurwlockZutrywrlockZa, // pthread_rwlock_trywrlock*
+                 pthread_rwlock_t* rwlock) {
+      return pthread_rwlock_trywrlock_WRK(rwlock);
+   }
+#else
+#  error "Unsupported OS"
+#endif
 
 
-// pthread_rwlock_tryrdlock
-PTH_FUNC(int, pthreadZurwlockZutryrdlock, // pthread_rwlock_tryrdlock
-	 pthread_rwlock_t* rwlock)
+//-----------------------------------------------------------
+// glibc:  pthread_rwlock_tryrdlock
+// darwin: pthread_rwlock_trywrlock
+// darwin: pthread_rwlock_trywrlock$UNIX2003
+//
+static int pthread_rwlock_tryrdlock_WRK(pthread_rwlock_t* rwlock)
 {
    int    ret;
    OrigFn fn;
@@ -924,11 +1528,26 @@ PTH_FUNC(int, pthreadZurwlockZutryrdlock, // pthread_rwlock_tryrdlock
    }
    return ret;
 }
+#if defined(VGO_linux)
+   PTH_FUNC(int, pthreadZurwlockZutryrdlock, // pthread_rwlock_tryrdlock
+                 pthread_rwlock_t* rwlock) {
+      return pthread_rwlock_tryrdlock_WRK(rwlock);
+   }
+#elif defined(VGO_darwin)
+   PTH_FUNC(int, pthreadZurwlockZutryrdlockZa, // pthread_rwlock_tryrdlock*
+                 pthread_rwlock_t* rwlock) {
+      return pthread_rwlock_tryrdlock_WRK(rwlock);
+   }
+#else
+#  error "Unsupported OS"
+#endif
 
 
-// pthread_rwlock_unlock
-PTH_FUNC(int, pthreadZurwlockZuunlock, // pthread_rwlock_unlock
-	 pthread_rwlock_t* rwlock)
+//-----------------------------------------------------------
+// glibc:  pthread_rwlock_unlock
+// darwin: pthread_rwlock_unlock
+// darwin: pthread_rwlock_unlock$UNIX2003
+static int pthread_rwlock_unlock_WRK(pthread_rwlock_t* rwlock)
 {
    int    ret;
    OrigFn fn;
@@ -954,6 +1573,19 @@ PTH_FUNC(int, pthreadZurwlockZuunlock, // pthread_rwlock_unlock
    }
    return ret;
 }
+#if defined(VGO_linux)
+   PTH_FUNC(int, pthreadZurwlockZuunlock, // pthread_rwlock_unlock
+                 pthread_rwlock_t* rwlock) {
+      return pthread_rwlock_unlock_WRK(rwlock);
+   }
+#elif defined(VGO_darwin)
+   PTH_FUNC(int, pthreadZurwlockZuunlockZa, // pthread_rwlock_unlock*
+                 pthread_rwlock_t* rwlock) {
+      return pthread_rwlock_unlock_WRK(rwlock);
+   }
+#else
+#  error "Unsupported OS"
+#endif
 
 
 /*----------------------------------------------------------------*/
@@ -961,6 +1593,7 @@ PTH_FUNC(int, pthreadZurwlockZuunlock, // pthread_rwlock_unlock
 /*----------------------------------------------------------------*/
 
 #include <semaphore.h>
+#include <fcntl.h>       /* O_CREAT */
 
 #define TRACE_SEM_FNS 0
 
@@ -969,6 +1602,10 @@ PTH_FUNC(int, pthreadZurwlockZuunlock, // pthread_rwlock_unlock
      int sem_destroy(sem_t *sem);
      int sem_wait(sem_t *sem);
      int sem_post(sem_t *sem);
+     sem_t* sem_open(const char *name, int oflag, 
+                     ... [mode_t mode, unsigned value]);
+        [complete with its idiotic semantics]
+     int sem_close(sem_t* sem);
 
    Unhandled:
      int sem_trywait(sem_t *sem);
@@ -976,9 +1613,13 @@ PTH_FUNC(int, pthreadZurwlockZuunlock, // pthread_rwlock_unlock
                        const struct timespec *restrict abs_timeout);
 */
 
-/* glibc-2.5 has sem_init@@GLIBC_2.2.5 (amd64-linux)
-             and sem_init@@GLIBC_2.1 (x86-linux): match sem_init@* */
-PTH_FUNC(int, semZuinitZAZa, sem_t* sem, int pshared, unsigned long value)
+//-----------------------------------------------------------
+// glibc:  sem_init@@GLIBC_2.2.5
+// glibc:  sem_init@@GLIBC_2.1
+// glibc:  sem_init@GLIBC_2.0
+// darwin: sem_init
+//
+static int sem_init_WRK(sem_t* sem, int pshared, unsigned long value)
 {
    OrigFn fn;
    int    ret;
@@ -1005,11 +1646,27 @@ PTH_FUNC(int, semZuinitZAZa, sem_t* sem, int pshared, unsigned long value)
 
    return ret;
 }
+#if defined(VGO_linux)
+   PTH_FUNC(int, semZuinitZAZa, // sem_init@*
+                 sem_t* sem, int pshared, unsigned long value) {
+      return sem_init_WRK(sem, pshared, value);
+   }
+#elif defined(VGO_darwin)
+   PTH_FUNC(int, semZuinit, // sem_init
+                 sem_t* sem, int pshared, unsigned long value) {
+      return sem_init_WRK(sem, pshared, value);
+   }
+#else
+#  error "Unsupported OS"
+#endif
 
 
-/* glibc-2.5 has sem_destroy@@GLIBC_2.2.5 (amd64-linux)
-             and sem_destroy@@GLIBC_2.1 (x86-linux); match sem_destroy@* */
-PTH_FUNC(int, semZudestroyZAZa, sem_t* sem)
+//-----------------------------------------------------------
+// glibc:  sem_destroy@GLIBC_2.0
+// glibc:  sem_destroy@@GLIBC_2.1
+// glibc:  sem_destroy@@GLIBC_2.2.5
+// darwin: sem_destroy
+static int sem_destroy_WRK(sem_t* sem)
 {
    OrigFn fn;
    int    ret;
@@ -1035,10 +1692,29 @@ PTH_FUNC(int, semZudestroyZAZa, sem_t* sem)
 
    return ret;
 }
+#if defined(VGO_linux)
+   PTH_FUNC(int, semZudestroyZAZa,  // sem_destroy*
+                 sem_t* sem) {
+      return sem_destroy_WRK(sem);
+   }
+#elif defined(VGO_darwin)
+   PTH_FUNC(int, semZudestroy,  // sem_destroy
+                 sem_t* sem) {
+      return sem_destroy_WRK(sem);
+   }
+#else
+#  error "Unsupported OS"
+#endif
 
 
-/* glibc-2.5 has sem_wait (amd64-linux); match sem_wait
-             and sem_wait@@GLIBC_2.1 (x86-linux); match sem_wait@* */
+//-----------------------------------------------------------
+// glibc:  sem_wait
+// glibc:  sem_wait@GLIBC_2.0
+// glibc:  sem_wait@@GLIBC_2.1
+// darwin: sem_wait
+// darwin: sem_wait$NOCANCEL$UNIX2003
+// darwin: sem_wait$UNIX2003
+//
 /* wait: decrement semaphore - acquire lockage */
 static int sem_wait_WRK(sem_t* sem)
 {
@@ -1066,16 +1742,31 @@ static int sem_wait_WRK(sem_t* sem)
 
    return ret;
 }
-PTH_FUNC(int, semZuwait, sem_t* sem) { /* sem_wait */
-   return sem_wait_WRK(sem);
-}
-PTH_FUNC(int, semZuwaitZAZa, sem_t* sem) { /* sem_wait@* */
-   return sem_wait_WRK(sem);
-}
+#if defined(VGO_linux)
+   PTH_FUNC(int, semZuwait, sem_t* sem) { /* sem_wait */
+      return sem_wait_WRK(sem);
+   }
+   PTH_FUNC(int, semZuwaitZAZa, sem_t* sem) { /* sem_wait@* */
+      return sem_wait_WRK(sem);
+   }
+#elif defined(VGO_darwin)
+   PTH_FUNC(int, semZuwait, sem_t* sem) { /* sem_wait */
+      return sem_wait_WRK(sem);
+   }
+   PTH_FUNC(int, semZuwaitZDZa, sem_t* sem) { /* sem_wait$* */
+      return sem_wait_WRK(sem);
+   }
+#else
+#  error "Unsupported OS"
+#endif
 
 
-/* glibc-2.5 has sem_post (amd64-linux); match sem_post
-             and sem_post@@GLIBC_2.1 (x86-linux); match sem_post@* */
+//-----------------------------------------------------------
+// glibc:  sem_post
+// glibc:  sem_post@GLIBC_2.0
+// glibc:  sem_post@@GLIBC_2.1
+// darwin: sem_post
+//
 /* post: increment semaphore - release lockage */
 static int sem_post_WRK(sem_t* sem)
 {
@@ -1104,47 +1795,183 @@ static int sem_post_WRK(sem_t* sem)
 
    return ret;
 }
-PTH_FUNC(int, semZupost, sem_t* sem) { /* sem_post */
-   return sem_post_WRK(sem);
-}
-PTH_FUNC(int, semZupostZAZa, sem_t* sem) { /* sem_post@* */
-   return sem_post_WRK(sem);
+#if defined(VGO_linux)
+   PTH_FUNC(int, semZupost, sem_t* sem) { /* sem_post */
+      return sem_post_WRK(sem);
+   }
+   PTH_FUNC(int, semZupostZAZa, sem_t* sem) { /* sem_post@* */
+      return sem_post_WRK(sem);
+   }
+#elif defined(VGO_darwin)
+   PTH_FUNC(int, semZupost, sem_t* sem) { /* sem_post */
+      return sem_post_WRK(sem);
+   }
+#else
+#  error "Unsupported OS"
+#endif
+
+
+//-----------------------------------------------------------
+// glibc:  sem_open
+// darwin: sem_open
+//
+PTH_FUNC(sem_t*, semZuopen,
+                 const char* name, long oflag,
+                 long mode, unsigned long value)
+{
+   /* A copy of sem_init_WRK (more or less).  Is this correct? */
+   OrigFn fn;
+   sem_t* ret;
+   VALGRIND_GET_ORIG_FN(fn);
+
+   if (TRACE_SEM_FNS) {
+      fprintf(stderr, "<< sem_open(\"%s\",%ld,%lx,%lu) ",
+                      name,oflag,mode,value);
+      fflush(stderr);
+   }
+
+   CALL_FN_W_WWWW(ret, fn, name,oflag,mode,value);
+
+   if (ret != SEM_FAILED && (oflag & O_CREAT)) {
+      DO_CREQ_v_WW(_VG_USERREQ__HG_POSIX_SEM_INIT_POST,
+                   sem_t*, ret, unsigned long, value);
+   } 
+   if (ret == SEM_FAILED) {
+      DO_PthAPIerror( "sem_open", errno );
+   }
+
+   if (TRACE_SEM_FNS) {
+      fprintf(stderr, " sem_open -> %p >>\n", ret);
+      fflush(stderr);
+   }
+
+   return ret;
 }
 
+
+//-----------------------------------------------------------
+// glibc:  sem_close
+// darwin: sem_close
+PTH_FUNC(int, sem_close, sem_t* sem)
+{
+   OrigFn fn;
+   int    ret;
+   VALGRIND_GET_ORIG_FN(fn);
+
+   if (TRACE_SEM_FNS) {
+      fprintf(stderr, "<< sem_close(%p) ", sem);
+      fflush(stderr);
+   }
+
+   DO_CREQ_v_W(_VG_USERREQ__HG_POSIX_SEM_DESTROY_PRE, sem_t*, sem);
+
+   CALL_FN_W_W(ret, fn, sem);
+
+   if (ret != 0) {
+      DO_PthAPIerror( "sem_close", errno );
+   }
+
+   if (TRACE_SEM_FNS) {
+      fprintf(stderr, " close -> %d >>\n", ret);
+      fflush(stderr);
+   }
+
+   return ret;
+}
 
 
 /*----------------------------------------------------------------*/
 /*--- Qt 4 threading functions (w/ GNU name mangling)          ---*/
 /*----------------------------------------------------------------*/
 
-/* Handled:   QMutex::lock()
-              QMutex::unlock()
-              QMutex::tryLock
-              QReadWriteLock::lockForRead()
-              QReadWriteLock::lockForWrite()
-              QReadWriteLock::unlock()
+/* Handled:
+      QMutex::lock()
+      QMutex::unlock()
+      QMutex::tryLock()
+      QMutex::tryLock(int)
 
-   Unhandled: QMutex::tryLock(int)
-              QReadWriteLock::tryLockForRead(int)
-              QReadWriteLock::tryLockForRead()
-              QReadWriteLock::tryLockForWrite(int)
-              QReadWriteLock::tryLockForWrite()
+      QMutex::QMutex(QMutex::RecursionMode)  _ZN6QMutexC1ENS_13RecursionModeE
+      QMutex::QMutex(QMutex::RecursionMode)  _ZN6QMutexC2ENS_13RecursionModeE
+      QMutex::~QMutex()                      _ZN6QMutexD1Ev
+      QMutex::~QMutex()                      _ZN6QMutexD2Ev
 
-              maybe not the next 3; qt-4.3.1 on Unix merely
-              implements QWaitCondition using pthread_cond_t
-              QWaitCondition::wait(QMutex*, unsigned long)
-              QWaitCondition::wakeAll()
-              QWaitCondition::wakeOne()
+   Unhandled:
+      QReadWriteLock::lockForRead()
+      QReadWriteLock::lockForWrite()
+      QReadWriteLock::unlock()
+      QReadWriteLock::tryLockForRead(int)
+      QReadWriteLock::tryLockForRead()
+      QReadWriteLock::tryLockForWrite(int)
+      QReadWriteLock::tryLockForWrite()
+
+      QWaitCondition::wait(QMutex*, unsigned long)
+      QWaitCondition::wakeAll()
+      QWaitCondition::wakeOne()
+
+      QSemaphore::*
+*/
+/* More comments, 19 Nov 08, based on assessment of qt-4.5.0TP1,
+   at least on Unix:
+
+   It's apparently only necessary to intercept QMutex, since that is
+   not implemented using pthread_mutex_t; instead Qt4 has its own
+   implementation based on atomics (to check the non-contended case)
+   and pthread_cond_wait (to wait in the contended case).
+
+   QReadWriteLock is built on top of QMutex, counters, and a wait
+   queue.  So we don't need to handle it specially once QMutex
+   handling is correct -- presumably the dependencies through QMutex
+   are sufficient to avoid any false race reports.  On the other hand,
+   it is an open question whether too many dependencies are observed
+   -- in which case we may miss races (false negatives).  I suspect
+   this is likely to be the case, unfortunately.
+
+   QWaitCondition is built on pthread_cond_t, pthread_mutex_t, QMutex
+   and QReadWriteLock.  Same compositional-correctness justificiation
+   and limitations as fro QReadWriteLock.
+
+   Ditto QSemaphore (from cursory examination).
+
+   Does it matter that only QMutex is handled directly?  Open
+   question.  From testing with drd/tests/qt4_* and with KDE4 apps, it
+   appears that no false errors are reported; however it is not clear
+   if this is causing false negatives.
+
+   Another problem with Qt4 is thread exiting.  Threads are created
+   with pthread_create (fine); but they detach and simply exit when
+   done.  There is no use of pthread_join, and the provided
+   wait-for-a-thread-to-exit mechanism (QThread::wait, I believe)
+   relies on a system of mutexes and flags.  I suspect this also
+   causes too many dependencies to appear.  Consequently H sometimes
+   fails to detect races at exit in some very short-lived racy
+   programs, because it appears that a thread can exit _and_ have an
+   observed dependency edge back to the main thread (presumably)
+   before the main thread reaps the child (that is, calls
+   QThread::wait).
+
+   This theory is supported by the observation that if all threads are
+   made to wait at a pthread_barrier_t immediately before they exit,
+   then H's detection of races in such programs becomes reliable;
+   without the barrier, it is varies from run to run, depending
+   (according to investigation) on whether aforementioned
+   exit-before-reaping behaviour happens or not.
+
+   Finally, why is it necessary to intercept the QMutex constructors
+   and destructors?  The constructors are intercepted only as a matter
+   of convenience, so H can print accurate "first observed at"
+   clauses.  However, it is actually necessary to intercept the
+   destructors (as it is with pthread_mutex_destroy) in order that
+   locks get removed from LAOG when they are destroyed.
 */
 
 // soname is libQtCore.so.4 ; match against libQtCore.so*
 #define QT4_FUNC(ret_ty, f, args...) \
-   ret_ty I_WRAP_SONAME_FNNAME_ZZ(libQtCoreZdsoZa,f)(args); \
-   ret_ty I_WRAP_SONAME_FNNAME_ZZ(libQtCoreZdsoZa,f)(args)
+   ret_ty I_WRAP_SONAME_FNNAME_ZU(libQtCoreZdsoZa,f)(args); \
+   ret_ty I_WRAP_SONAME_FNNAME_ZU(libQtCoreZdsoZa,f)(args)
 
+//-----------------------------------------------------------
 // QMutex::lock()
-QT4_FUNC(void, ZuZZN6QMutex4lockEv, // _ZN6QMutex4lockEv == QMutex::lock()
-               void* self)
+QT4_FUNC(void, _ZN6QMutex4lockEv, void* self)
 {
    OrigFn fn;
    VALGRIND_GET_ORIG_FN(fn);
@@ -1165,9 +1992,9 @@ QT4_FUNC(void, ZuZZN6QMutex4lockEv, // _ZN6QMutex4lockEv == QMutex::lock()
    }
 }
 
+//-----------------------------------------------------------
 // QMutex::unlock()
-QT4_FUNC(void, ZuZZN6QMutex6unlockEv, // _ZN6QMutex6unlockEv == QMutex::unlock()
-               void* self)
+QT4_FUNC(void, _ZN6QMutex6unlockEv, void* self)
 {
    OrigFn fn;
    VALGRIND_GET_ORIG_FN(fn);
@@ -1189,11 +2016,10 @@ QT4_FUNC(void, ZuZZN6QMutex6unlockEv, // _ZN6QMutex6unlockEv == QMutex::unlock()
    }
 }
 
-// QMutex::tryLock
-// _ZN6QMutex7tryLockEv == bool QMutex::tryLock()
+//-----------------------------------------------------------
+// bool QMutex::tryLock()
 // using 'long' to mimic C++ 'bool'
-QT4_FUNC(long, ZuZZN6QMutex7tryLockEv,
-               void* self)
+QT4_FUNC(long, _ZN6QMutex7tryLockEv, void* self)
 {
    OrigFn fn;
    long   ret;
@@ -1220,86 +2046,329 @@ QT4_FUNC(long, ZuZZN6QMutex7tryLockEv,
    return ret;
 }
 
-
-// QReadWriteLock::lockForRead()
-// _ZN14QReadWriteLock11lockForReadEv == QReadWriteLock::lockForRead()
-QT4_FUNC(void, ZuZZN14QReadWriteLock11lockForReadEv, 
-               // _ZN14QReadWriteLock11lockForReadEv
-               void* self)
+//-----------------------------------------------------------
+// bool QMutex::tryLock(int)
+// using 'long' to mimic C++ 'bool'
+QT4_FUNC(long, _ZN6QMutex7tryLockEi, void* self, long arg2)
 {
    OrigFn fn;
+   long   ret;
    VALGRIND_GET_ORIG_FN(fn);
    if (TRACE_QT4_FNS) {
-      fprintf(stderr, "<< QReadWriteLock::lockForRead %p", self);
+      fprintf(stderr, "<< QMutex::tryLock(int) %p %d", self, (int)arg2);
       fflush(stderr);
    }
 
-   DO_CREQ_v_WWW(_VG_USERREQ__HG_PTHREAD_RWLOCK_LOCK_PRE,
-                 void*,self,
-                 long,0/*!isW*/, long,0/*!isTryLock*/);
+   DO_CREQ_v_WW(_VG_USERREQ__HG_PTHREAD_MUTEX_LOCK_PRE,
+                void*,self, long,1/*isTryLock*/);
 
-   CALL_FN_v_W(fn, self);
+   CALL_FN_W_WW(ret, fn, self,arg2);
 
-   DO_CREQ_v_WW(_VG_USERREQ__HG_PTHREAD_RWLOCK_LOCK_POST,
-                void*,self, long,0/*!isW*/);
+   // assumes that only the low 8 bits of the 'bool' are significant
+   if (ret & 0xFF) {
+      DO_CREQ_v_W(_VG_USERREQ__HG_PTHREAD_MUTEX_LOCK_POST,
+                  void*, self);
+   }
 
    if (TRACE_QT4_FNS) {
-      fprintf(stderr, " :: Q::lockForRead :: done >>\n");
+      fprintf(stderr, " :: Q::tryLock(int) -> %lu >>\n", ret);
    }
+   
+   return ret;
 }
 
-// QReadWriteLock::lockForWrite()
-// _ZN14QReadWriteLock12lockForWriteEv == QReadWriteLock::lockForWrite()
-QT4_FUNC(void, ZuZZN14QReadWriteLock12lockForWriteEv, 
-               // _ZN14QReadWriteLock12lockForWriteEv
-               void* self)
+
+//-----------------------------------------------------------
+// It's not really very clear what the args are here.  But from
+// a bit of dataflow analysis of the generated machine code of
+// the original function, it appears this takes two args, and
+// returns nothing.  Nevertheless preserve return value just in
+// case.  A bit of debug printing indicates that the first arg
+// is that of the mutex and the second is either zero or one,
+// probably being the recursion mode, therefore.
+// QMutex::QMutex(QMutex::RecursionMode)  ("C1ENS" variant)
+QT4_FUNC(void*, _ZN6QMutexC1ENS_13RecursionModeE,
+         void* mutex,
+         long  recmode)
 {
    OrigFn fn;
+   long   ret;
    VALGRIND_GET_ORIG_FN(fn);
-   if (TRACE_QT4_FNS) {
-      fprintf(stderr, "<< QReadWriteLock::lockForWrite %p", self);
-      fflush(stderr);
-   }
-
-   DO_CREQ_v_WWW(_VG_USERREQ__HG_PTHREAD_RWLOCK_LOCK_PRE,
-                 void*,self,
-                 long,1/*isW*/, long,0/*!isTryLock*/);
-
-   CALL_FN_v_W(fn, self);
-
-   DO_CREQ_v_WW(_VG_USERREQ__HG_PTHREAD_RWLOCK_LOCK_POST,
-                void*,self, long,1/*isW*/);
-
-   if (TRACE_QT4_FNS) {
-      fprintf(stderr, " :: Q::lockForWrite :: done >>\n");
-   }
+   CALL_FN_W_WW(ret, fn, mutex, recmode);
+   //   fprintf(stderr, "QMutex constructor 1: %p <- %p %p\n", ret, arg1, arg2);
+   DO_CREQ_v_WW(_VG_USERREQ__HG_PTHREAD_MUTEX_INIT_POST,
+                void*,mutex, long,1/*mbRec*/);
+   return (void*)ret;
 }
 
-// QReadWriteLock::unlock()
-// _ZN14QReadWriteLock6unlockEv == QReadWriteLock::unlock()
-QT4_FUNC(void, ZuZZN14QReadWriteLock6unlockEv,
-               // _ZN14QReadWriteLock6unlockEv
-               void* self)
+//-----------------------------------------------------------
+// QMutex::~QMutex()  ("D1Ev" variant)
+QT4_FUNC(void*, _ZN6QMutexD1Ev, void* mutex)
 {
    OrigFn fn;
+   long   ret;
    VALGRIND_GET_ORIG_FN(fn);
-   if (TRACE_QT4_FNS) {
-      fprintf(stderr, "<< QReadWriteLock::unlock %p", self);
-      fflush(stderr);
-   }
-
-   DO_CREQ_v_W(_VG_USERREQ__HG_PTHREAD_RWLOCK_UNLOCK_PRE,
-               void*,self);
-
-   CALL_FN_v_W(fn, self);
-
-   DO_CREQ_v_W(_VG_USERREQ__HG_PTHREAD_RWLOCK_UNLOCK_POST,
-               void*,self);
-
-   if (TRACE_QT4_FNS) {
-      fprintf(stderr, " :: Q::unlock :: done >>\n");
-   }
+   DO_CREQ_v_W(_VG_USERREQ__HG_PTHREAD_MUTEX_DESTROY_PRE,
+               void*,mutex);
+   CALL_FN_W_W(ret, fn, mutex);
+   return (void*)ret;
 }
+
+
+//-----------------------------------------------------------
+// QMutex::QMutex(QMutex::RecursionMode)  ("C2ENS" variant)
+QT4_FUNC(void*, _ZN6QMutexC2ENS_13RecursionModeE,
+         void* mutex,
+         long  recmode)
+{
+   assert(0);
+}
+
+
+//-----------------------------------------------------------
+// QMutex::~QMutex()  ("D2Ev" variant)
+QT4_FUNC(void*, _ZN6QMutexD2Ev, void* mutex)
+{
+   assert(0);
+}
+
+
+// QReadWriteLock is not intercepted directly.  See comments
+// above.
+
+//// QReadWriteLock::lockForRead()
+//// _ZN14QReadWriteLock11lockForReadEv == QReadWriteLock::lockForRead()
+//QT4_FUNC(void, ZuZZN14QReadWriteLock11lockForReadEv, 
+//               // _ZN14QReadWriteLock11lockForReadEv
+//               void* self)
+//{
+//   OrigFn fn;
+//   VALGRIND_GET_ORIG_FN(fn);
+//   if (TRACE_QT4_FNS) {
+//      fprintf(stderr, "<< QReadWriteLock::lockForRead %p", self);
+//      fflush(stderr);
+//   }
+//
+//   DO_CREQ_v_WWW(_VG_USERREQ__HG_PTHREAD_RWLOCK_LOCK_PRE,
+//                 void*,self,
+//                 long,0/*!isW*/, long,0/*!isTryLock*/);
+//
+//   CALL_FN_v_W(fn, self);
+//
+//   DO_CREQ_v_WW(_VG_USERREQ__HG_PTHREAD_RWLOCK_LOCK_POST,
+//                void*,self, long,0/*!isW*/);
+//
+//   if (TRACE_QT4_FNS) {
+//      fprintf(stderr, " :: Q::lockForRead :: done >>\n");
+//   }
+//}
+//
+//// QReadWriteLock::lockForWrite()
+//// _ZN14QReadWriteLock12lockForWriteEv == QReadWriteLock::lockForWrite()
+//QT4_FUNC(void, ZuZZN14QReadWriteLock12lockForWriteEv, 
+//               // _ZN14QReadWriteLock12lockForWriteEv
+//               void* self)
+//{
+//   OrigFn fn;
+//   VALGRIND_GET_ORIG_FN(fn);
+//   if (TRACE_QT4_FNS) {
+//      fprintf(stderr, "<< QReadWriteLock::lockForWrite %p", self);
+//      fflush(stderr);
+//   }
+//
+//   DO_CREQ_v_WWW(_VG_USERREQ__HG_PTHREAD_RWLOCK_LOCK_PRE,
+//                 void*,self,
+//                 long,1/*isW*/, long,0/*!isTryLock*/);
+//
+//   CALL_FN_v_W(fn, self);
+//
+//   DO_CREQ_v_WW(_VG_USERREQ__HG_PTHREAD_RWLOCK_LOCK_POST,
+//                void*,self, long,1/*isW*/);
+//
+//   if (TRACE_QT4_FNS) {
+//      fprintf(stderr, " :: Q::lockForWrite :: done >>\n");
+//   }
+//}
+//
+//// QReadWriteLock::unlock()
+//// _ZN14QReadWriteLock6unlockEv == QReadWriteLock::unlock()
+//QT4_FUNC(void, ZuZZN14QReadWriteLock6unlockEv,
+//               // _ZN14QReadWriteLock6unlockEv
+//               void* self)
+//{
+//   OrigFn fn;
+//   VALGRIND_GET_ORIG_FN(fn);
+//   if (TRACE_QT4_FNS) {
+//      fprintf(stderr, "<< QReadWriteLock::unlock %p", self);
+//      fflush(stderr);
+//   }
+//
+//   DO_CREQ_v_W(_VG_USERREQ__HG_PTHREAD_RWLOCK_UNLOCK_PRE,
+//               void*,self);
+//
+//   CALL_FN_v_W(fn, self);
+//
+//   DO_CREQ_v_W(_VG_USERREQ__HG_PTHREAD_RWLOCK_UNLOCK_POST,
+//               void*,self);
+//
+//   if (TRACE_QT4_FNS) {
+//      fprintf(stderr, " :: Q::unlock :: done >>\n");
+//   }
+//}
+
+
+/*----------------------------------------------------------------*/
+/*--- Replacements for basic string functions, that don't      ---*/
+/*--- overrun the input arrays.                                ---*/
+/*----------------------------------------------------------------*/
+
+/* Copied verbatim from memcheck/mc_replace_strmem.c.  When copying
+   new functions, please keep them in the same order as they appear in
+   mc_replace_strmem.c. */
+
+
+#define STRCHR(soname, fnname) \
+   char* VG_REPLACE_FUNCTION_ZU(soname,fnname) ( const char* s, int c ); \
+   char* VG_REPLACE_FUNCTION_ZU(soname,fnname) ( const char* s, int c ) \
+   { \
+      UChar  ch = (UChar)((UInt)c); \
+      UChar* p  = (UChar*)s; \
+      while (True) { \
+         if (*p == ch) return p; \
+         if (*p == 0) return NULL; \
+         p++; \
+      } \
+   }
+
+// Apparently index() is the same thing as strchr()
+STRCHR(VG_Z_LIBC_SONAME,          strchr)
+STRCHR(VG_Z_LIBC_SONAME,          index)
+#if defined(VGO_linux)
+STRCHR(VG_Z_LD_LINUX_SO_2,        strchr)
+STRCHR(VG_Z_LD_LINUX_SO_2,        index)
+STRCHR(VG_Z_LD_LINUX_X86_64_SO_2, strchr)
+STRCHR(VG_Z_LD_LINUX_X86_64_SO_2, index)
+#endif
+
+
+// Note that this replacement often doesn't get used because gcc inlines
+// calls to strlen() with its own built-in version.  This can be very
+// confusing if you aren't expecting it.  Other small functions in this file
+// may also be inline by gcc.
+#define STRLEN(soname, fnname) \
+   SizeT VG_REPLACE_FUNCTION_ZU(soname,fnname)( const char* str ); \
+   SizeT VG_REPLACE_FUNCTION_ZU(soname,fnname)( const char* str ) \
+   { \
+      SizeT i = 0; \
+      while (str[i] != 0) i++; \
+      return i; \
+   }
+
+STRLEN(VG_Z_LIBC_SONAME,          strlen)
+#if defined(VGO_linux)
+STRLEN(VG_Z_LD_LINUX_SO_2,        strlen)
+STRLEN(VG_Z_LD_LINUX_X86_64_SO_2, strlen)
+#endif
+
+
+#define STRCPY(soname, fnname) \
+   char* VG_REPLACE_FUNCTION_ZU(soname, fnname) ( char* dst, const char* src ); \
+   char* VG_REPLACE_FUNCTION_ZU(soname, fnname) ( char* dst, const char* src ) \
+   { \
+      const Char* dst_orig = dst; \
+      \
+      while (*src) *dst++ = *src++; \
+      *dst = 0; \
+      \
+      return (char*)dst_orig; \
+   }
+
+STRCPY(VG_Z_LIBC_SONAME, strcpy)
+
+
+#define STRCMP(soname, fnname) \
+   int VG_REPLACE_FUNCTION_ZU(soname,fnname) \
+          ( const char* s1, const char* s2 ); \
+   int VG_REPLACE_FUNCTION_ZU(soname,fnname) \
+          ( const char* s1, const char* s2 ) \
+   { \
+      register unsigned char c1; \
+      register unsigned char c2; \
+      while (True) { \
+         c1 = *(unsigned char *)s1; \
+         c2 = *(unsigned char *)s2; \
+         if (c1 != c2) break; \
+         if (c1 == 0) break; \
+         s1++; s2++; \
+      } \
+      if ((unsigned char)c1 < (unsigned char)c2) return -1; \
+      if ((unsigned char)c1 > (unsigned char)c2) return 1; \
+      return 0; \
+   }
+
+STRCMP(VG_Z_LIBC_SONAME,          strcmp)
+#if defined(VGO_linux)
+STRCMP(VG_Z_LD_LINUX_X86_64_SO_2, strcmp)
+STRCMP(VG_Z_LD64_SO_1,            strcmp)
+#endif
+
+
+#define MEMCPY(soname, fnname) \
+   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) \
+            ( void *dst, const void *src, SizeT len ); \
+   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) \
+            ( void *dst, const void *src, SizeT len ) \
+   { \
+      register char *d; \
+      register char *s; \
+      \
+      if (len == 0) \
+         return dst; \
+      \
+      if ( dst > src ) { \
+         d = (char *)dst + len - 1; \
+         s = (char *)src + len - 1; \
+         while ( len >= 4 ) { \
+            *d-- = *s--; \
+            *d-- = *s--; \
+            *d-- = *s--; \
+            *d-- = *s--; \
+            len -= 4; \
+         } \
+         while ( len-- ) { \
+            *d-- = *s--; \
+         } \
+      } else if ( dst < src ) { \
+         d = (char *)dst; \
+         s = (char *)src; \
+         while ( len >= 4 ) { \
+            *d++ = *s++; \
+            *d++ = *s++; \
+            *d++ = *s++; \
+            *d++ = *s++; \
+            len -= 4; \
+         } \
+         while ( len-- ) { \
+            *d++ = *s++; \
+         } \
+      } \
+      return dst; \
+   }
+
+MEMCPY(VG_Z_LIBC_SONAME,    memcpy)
+#if defined(VGO_linux)
+MEMCPY(VG_Z_LD_SO_1,        memcpy) /* ld.so.1 */
+MEMCPY(VG_Z_LD64_SO_1,      memcpy) /* ld64.so.1 */
+#endif
+/* icc9 blats these around all over the place.  Not only in the main
+   executable but various .so's.  They are highly tuned and read
+   memory beyond the source boundary (although work correctly and
+   never go across page boundaries), so give errors when run natively,
+   at least for misaligned source arg.  Just intercepting in the exe
+   only until we understand more about the problem.  See
+   http://bugs.kde.org/show_bug.cgi?id=139776
+ */
+MEMCPY(NONE, _intel_fast_memcpy)
 
 
 /*--------------------------------------------------------------------*/

@@ -3,14 +3,14 @@
 /*--- The address space manager: segment initialisation and        ---*/
 /*--- tracking, stack operations                                   ---*/
 /*---                                                              ---*/
-/*--- Implementation for Linux                 m_aspacemgr-linux.c ---*/
+/*--- Implementation for Linux (and Darwin!)   m_aspacemgr-linux.c ---*/
 /*--------------------------------------------------------------------*/
 
 /*
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -30,6 +30,8 @@
 
    The GNU General Public License is contained in the file COPYING.
 */
+
+#if defined(VGO_linux) || defined(VGO_darwin)
 
 /* *************************************************************
    DO NOT INCLUDE ANY OTHER FILES HERE.
@@ -325,47 +327,15 @@ static Addr aspacem_vStart = 0;
 /* ------ end of STATE for the address-space manager ------ */
 
 /* ------ Forwards decls ------ */
+inline
 static Int  find_nsegment_idx ( Addr a );
 
 static void parse_procselfmaps (
       void (*record_mapping)( Addr addr, SizeT len, UInt prot,
-                              ULong dev, ULong ino, ULong offset, 
+                              ULong dev, ULong ino, Off64T offset, 
                               const UChar* filename ),
       void (*record_gap)( Addr addr, SizeT len )
    );
-
-
-/*-----------------------------------------------------------------*/
-/*---                                                           ---*/
-/*--- Functions for finding information about file descriptors. ---*/
-/*---                                                           ---*/
-/*-----------------------------------------------------------------*/
-
-/* Extract the device, inode and mode numbers for a fd. */
-static 
-Bool get_inode_for_fd ( Int fd, /*OUT*/ULong* dev, 
-                                /*OUT*/ULong* ino, /*OUT*/UInt* mode )
-{
-   return ML_(am_get_fd_d_i_m)(fd, dev, ino, mode);
-}
-
-/* Given a file descriptor, attempt to deduce its filename.  To do
-   this, we use /proc/self/fd/<FD>.  If this doesn't point to a file,
-   or if it doesn't exist, we return False. */
-static
-Bool get_name_for_fd ( Int fd, /*OUT*/HChar* buf, Int nbuf )
-{
-   Int   i;
-   HChar tmp[64];
-
-   ML_(am_sprintf)(tmp, "/proc/self/fd/%d", fd);
-   for (i = 0; i < nbuf; i++) buf[i] = 0;
-   
-   if (ML_(am_readlink)(tmp, buf, nbuf) > 0 && buf[0] == '/')
-      return True;
-   else
-      return False;
-}
 
 
 /*-----------------------------------------------------------------*/
@@ -456,57 +426,61 @@ static HChar* show_ShrinkMode ( ShrinkMode sm )
    }
 }
 
-static void show_Addr_concisely ( /*OUT*/HChar* buf, Addr aA )
+static void show_len_concisely ( /*OUT*/HChar* buf, Addr start, Addr end )
 {
    HChar* fmt;
-   ULong a = (ULong)aA;
+   ULong len = ((ULong)end) - ((ULong)start) + 1;
 
-   if (a < 10*1000*1000ULL) {
+   if (len < 10*1000*1000ULL) {
       fmt = "%7llu";
    } 
-   else if (a < 999999ULL * (1ULL<<20)) {
+   else if (len < 999999ULL * (1ULL<<20)) {
       fmt = "%6llum";
-      a >>= 20;
+      len >>= 20;
    }
-   else if (a < 999999ULL * (1ULL<<30)) {
+   else if (len < 999999ULL * (1ULL<<30)) {
       fmt = "%6llug";
-      a >>= 30;
+      len >>= 30;
    }
-   else if (a < 999999ULL * (1ULL<<40)) {
+   else if (len < 999999ULL * (1ULL<<40)) {
       fmt = "%6llut";
-      a >>= 40;
+      len >>= 40;
    }
    else {
       fmt = "%6llue";
-      a >>= 50;
+      len >>= 50;
    }
-   ML_(am_sprintf)(buf, fmt, a);
+   ML_(am_sprintf)(buf, fmt, len);
 }
 
 
 /* Show full details of an NSegment */
 
 static void __attribute__ ((unused))
-            show_nsegment_full ( Int logLevel, NSegment* seg )
+            show_nsegment_full ( Int logLevel, Int segNo, NSegment* seg )
 {
+   HChar len_buf[20];
    HChar* name = "(none)";
+
    if (seg->fnIdx >= 0 && seg->fnIdx < segnames_used
                        && segnames[seg->fnIdx].inUse
                        && segnames[seg->fnIdx].fname[0] != 0)
       name = segnames[seg->fnIdx].fname;
 
-   VG_(debugLog)(logLevel, "aspacem",
-      "NSegment{%s, start=0x%llx, end=0x%llx, smode=%s, dev=%llu, "
-      "ino=%llu, offset=%llu, fnIdx=%d, hasR=%d, hasW=%d, hasX=%d, "
-      "hasT=%d, mark=%d, name=\"%s\"}\n",
-      show_SegKind(seg->kind),
-      (ULong)seg->start,
-      (ULong)seg->end,
+   show_len_concisely(len_buf, seg->start, seg->end);
+
+   VG_(debugLog)(
+      logLevel, "aspacem",
+      "%3d: %s %010llx-%010llx %s %c%c%c%c%c %s "
+      "d=0x%03llx i=%-7lld o=%-7lld (%d) m=%d %s\n",
+      segNo, show_SegKind(seg->kind),
+      (ULong)seg->start, (ULong)seg->end, len_buf,
+      seg->hasR ? 'r' : '-', seg->hasW ? 'w' : '-', 
+      seg->hasX ? 'x' : '-', seg->hasT ? 'T' : '-',
+      seg->isCH ? 'H' : '-',
       show_ShrinkMode(seg->smode),
       seg->dev, seg->ino, seg->offset, seg->fnIdx,
-      (Int)seg->hasR, (Int)seg->hasW, (Int)seg->hasX, (Int)seg->hasT,
-      (Int)seg->mark, 
-      name
+      (Int)seg->mark, name
    );
 }
 
@@ -516,8 +490,7 @@ static void __attribute__ ((unused))
 static void show_nsegment ( Int logLevel, Int segNo, NSegment* seg )
 {
    HChar len_buf[20];
-   ULong len = ((ULong)seg->end) - ((ULong)seg->start) + 1;
-   show_Addr_concisely(len_buf, len);
+   show_len_concisely(len_buf, seg->start, seg->end);
 
    switch (seg->kind) {
 
@@ -552,7 +525,7 @@ static void show_nsegment ( Int logLevel, Int segNo, NSegment* seg )
             seg->hasR ? 'r' : '-', seg->hasW ? 'w' : '-', 
             seg->hasX ? 'x' : '-', seg->hasT ? 'T' : '-', 
             seg->isCH ? 'H' : '-',
-            seg->dev, seg->ino, (Long)seg->offset, seg->fnIdx
+            seg->dev, seg->ino, seg->offset, seg->fnIdx
          );
          break;
 
@@ -871,7 +844,7 @@ static Bool preen_nsegments ( void )
 static Bool sync_check_ok = False;
 
 static void sync_check_mapping_callback ( Addr addr, SizeT len, UInt prot,
-                                          ULong dev, ULong ino, ULong offset, 
+                                          ULong dev, ULong ino, Off64T offset, 
                                           const UChar* filename )
 {
    Int  iLo, iHi, i;
@@ -880,9 +853,11 @@ static void sync_check_mapping_callback ( Addr addr, SizeT len, UInt prot,
    /* If a problem has already been detected, don't continue comparing
       segments, so as to avoid flooding the output with error
       messages. */
+#if !defined(VGO_darwin)
+   /* GrP fixme not */
    if (!sync_check_ok)
       return;
-
+#endif
    if (len == 0)
       return;
 
@@ -911,9 +886,10 @@ static void sync_check_mapping_callback ( Addr addr, SizeT len, UInt prot,
       have a sloppyXcheck mode which we enable on x86 - in this mode we
       allow the kernel to report execute permission when we weren't
       expecting it but not vice versa. */
-   sloppyXcheck = False;
 #  if defined(VGA_x86)
    sloppyXcheck = True;
+#  else
+   sloppyXcheck = False;
 #  endif
 
    /* NSegments iLo .. iHi inclusive should agree with the presented
@@ -942,7 +918,7 @@ static void sync_check_mapping_callback ( Addr addr, SizeT len, UInt prot,
          = nsegments[i].dev != 0 || nsegments[i].ino != 0;
 
       /* Consider other reasons to not compare dev/inode */
-
+#if defined(VGO_linux)
       /* bproc does some godawful hack on /dev/zero at process
          migration, which changes the name of it, and its dev & ino */
       if (filename && 0==VG_(strcmp)(filename, "/dev/zero (deleted)"))
@@ -951,7 +927,16 @@ static void sync_check_mapping_callback ( Addr addr, SizeT len, UInt prot,
       /* hack apparently needed on MontaVista Linux */
       if (filename && VG_(strstr)(filename, "/.lib-ro/"))
          cmp_devino = False;
+#endif
 
+#if defined(VGO_darwin)
+      // GrP fixme kernel info doesn't have dev/inode
+      cmp_devino = False;
+      
+      // GrP fixme V and kernel don't agree on offsets
+      cmp_offsets = False;
+#endif
+      
       /* If we are doing sloppy execute permission checks then we
          allow segment to have X permission when we weren't expecting
          it (but not vice versa) so if the kernel reported execute
@@ -970,28 +955,31 @@ static void sync_check_mapping_callback ( Addr addr, SizeT len, UInt prot,
                    ? nsegments[i].start-nsegments[i].offset == addr-offset
                    : True);
       if (!same) {
+         Addr start = addr;
+         Addr end = start + len - 1;
+         HChar len_buf[20];
+         show_len_concisely(len_buf, start, end);
+
          sync_check_ok = False;
+
          VG_(debugLog)(
             0,"aspacem",
-              "sync_check_mapping_callback: segment mismatch: V's seg:\n");
-         show_nsegment_full( 0, &nsegments[i] );
-         goto show_kern_seg;
+              "segment mismatch: V's seg 1st, kernel's 2nd:\n");
+         show_nsegment_full( 0, i, &nsegments[i] );
+         VG_(debugLog)(0,"aspacem", 
+            "...: .... %010llx-%010llx %s %c%c%c.. ....... "
+            "d=0x%03llx i=%-7lld o=%-7lld (.) m=. %s\n",
+            (ULong)start, (ULong)end, len_buf,
+            prot & VKI_PROT_READ  ? 'r' : '-',
+            prot & VKI_PROT_WRITE ? 'w' : '-',
+            prot & VKI_PROT_EXEC  ? 'x' : '-',
+            dev, ino, offset, filename ? (HChar*)filename : "(none)" );
+
+         return;
       }
    }
 
    /* Looks harmless.  Keep going. */
-   return;
-
-  show_kern_seg:
-   VG_(debugLog)(0,"aspacem",
-                   "sync_check_mapping_callback: "
-                   "segment mismatch: kernel's seg:\n");
-   VG_(debugLog)(0,"aspacem", 
-                   "start=0x%llx end=0x%llx prot=%u "
-                   "dev=%llu ino=%llu offset=%lld name=\"%s\"\n",
-                   (ULong)addr, ((ULong)addr) + ((ULong)len) - 1,
-                   prot, dev, ino, offset, 
-                   filename ? (HChar*)filename : "(none)" );
    return;
 }
 
@@ -1002,9 +990,11 @@ static void sync_check_gap_callback ( Addr addr, SizeT len )
    /* If a problem has already been detected, don't continue comparing
       segments, so as to avoid flooding the output with error
       messages. */
+#if !defined(VGO_darwin)
+   /* GrP fixme not */
    if (!sync_check_ok)
       return;
-
+#endif 
    if (len == 0)
       return;
 
@@ -1032,24 +1022,25 @@ static void sync_check_gap_callback ( Addr addr, SizeT len )
              || nsegments[i].kind == SkResvn;
 
       if (!same) {
+         Addr start = addr;
+         Addr end = start + len - 1;
+         HChar len_buf[20];
+         show_len_concisely(len_buf, start, end);
+
          sync_check_ok = False;
+
          VG_(debugLog)(
             0,"aspacem",
-              "sync_check_mapping_callback: segment mismatch: V's gap:\n");
-         show_nsegment_full( 0, &nsegments[i] );
-         goto show_kern_gap;
+              "segment mismatch: V's gap 1st, kernel's 2nd:\n");
+         show_nsegment_full( 0, i, &nsegments[i] );
+         VG_(debugLog)(0,"aspacem", 
+            "   : .... %010llx-%010llx %s",
+            (ULong)start, (ULong)end, len_buf);
+         return;
       }
    }
 
    /* Looks harmless.  Keep going. */
-   return;
-
-  show_kern_gap:
-   VG_(debugLog)(0,"aspacem",
-                   "sync_check_gap_callback: segment mismatch: kernel's gap:\n");
-   VG_(debugLog)(0,"aspacem", 
-                   "start=0x%llx end=0x%llx\n",
-                   (ULong)addr, ((ULong)addr) + ((ULong)len) - 1 );
    return;
 }
 
@@ -1100,8 +1091,19 @@ void ML_(am_do_sanity_check)( void )
 /*-----------------------------------------------------------------*/
 
 /* Binary search the interval array for a given address.  Since the
-   array covers the entire address space the search cannot fail. */
-static Int find_nsegment_idx ( Addr a )
+   array covers the entire address space the search cannot fail.  The
+   _WRK function does the real work.  Its caller (just below) caches
+   the results thereof, to save time.  With N_CACHE of 63 we get a hit
+   rate exceeding 90% when running OpenOffice.
+
+   Re ">> 12", it doesn't matter that the page size of some targets
+   might be different from 12.  Really "(a >> 12) % N_CACHE" is merely
+   a hash function, and the actual cache entry is always validated
+   correctly against the selected cache entry before use.
+*/
+/* Don't call find_nsegment_idx_WRK; use find_nsegment_idx instead. */
+__attribute__((noinline))
+static Int find_nsegment_idx_WRK ( Addr a )
 {
    Addr a_mid_lo, a_mid_hi;
    Int  mid,
@@ -1124,6 +1126,52 @@ static Int find_nsegment_idx ( Addr a )
       return mid;
    }
 }
+
+inline static Int find_nsegment_idx ( Addr a )
+{
+#  define N_CACHE 63
+   static Addr cache_pageno[N_CACHE];
+   static Int  cache_segidx[N_CACHE];
+   static Bool cache_inited = False;
+
+   static UWord n_q = 0;
+   static UWord n_m = 0;
+
+   UWord ix;
+
+   if (LIKELY(cache_inited)) {
+      /* do nothing */
+   } else {
+      for (ix = 0; ix < N_CACHE; ix++) {
+         cache_pageno[ix] = 0;
+         cache_segidx[ix] = -1;
+      }
+      cache_inited = True;
+   }
+
+   ix = (a >> 12) % N_CACHE;
+
+   n_q++;
+   if (0 && 0 == (n_q & 0xFFFF))
+      VG_(debugLog)(0,"xxx","find_nsegment_idx: %lu %lu\n", n_q, n_m);
+
+   if ((a >> 12) == cache_pageno[ix]
+       && cache_segidx[ix] >= 0
+       && cache_segidx[ix] < nsegments_used
+       && nsegments[cache_segidx[ix]].start <= a
+       && a <= nsegments[cache_segidx[ix]].end) {
+      /* hit */
+      /* aspacem_assert( cache_segidx[ix] == find_nsegment_idx_WRK(a) ); */
+      return cache_segidx[ix];
+   }
+   /* miss */
+   n_m++;
+   cache_segidx[ix] = find_nsegment_idx_WRK(a);
+   cache_pageno[ix] = a >> 12;
+   return cache_segidx[ix];
+#  undef N_CACHE
+}
+
 
 
 /* Finds the segment containing 'a'.  Only returns file/anon/resvn
@@ -1408,7 +1456,7 @@ static void add_segment ( NSegment* seg )
    aspacem_assert(VG_IS_PAGE_ALIGNED(sEnd+1));
 
    segment_is_sane = sane_NSegment(seg);
-   if (!segment_is_sane) show_nsegment_full(0,seg);
+   if (!segment_is_sane) show_nsegment_full(0,-1,seg);
    aspacem_assert(segment_is_sane);
 
    split_nsegments_lo_and_hi( sStart, sEnd, &iLo, &iHi );
@@ -1469,7 +1517,7 @@ static void init_resvn ( /*OUT*/NSegment* seg, Addr start, Addr end )
 /*-----------------------------------------------------------------*/
 
 static void read_maps_callback ( Addr addr, SizeT len, UInt prot,
-                                 ULong dev, ULong ino, ULong offset, 
+                                 ULong dev, ULong ino, Off64T offset, 
                                  const UChar* filename )
 {
    NSegment seg;
@@ -1491,6 +1539,11 @@ static void read_maps_callback ( Addr addr, SizeT len, UInt prot,
    seg.kind = SkAnonV;
    if (dev != 0 && ino != 0) 
       seg.kind = SkFileV;
+#if defined(VGO_darwin)
+   // GrP fixme no dev/ino on darwin
+   if (offset != 0) 
+       seg.kind = SkFileV;
+#endif
    if (filename)
       seg.fnIdx = allocate_segname( filename );
 
@@ -1532,6 +1585,27 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
    nsegments[0]    = seg;
    nsegments_used  = 1;
 
+#if defined(VGO_darwin)
+
+# if VG_WORDSIZE == 4
+   aspacem_minAddr = (Addr) 0x00001000;
+   aspacem_maxAddr = (Addr) 0xffffffff;
+
+   aspacem_cStart = aspacem_minAddr;
+   aspacem_vStart = 0xf0000000;  // 0xc0000000..0xf0000000 available
+# else
+   aspacem_minAddr = (Addr) 0x100000000;  // 4GB page zero
+   aspacem_maxAddr = (Addr) 0x7fffffffffff;
+
+   aspacem_cStart = aspacem_minAddr;
+   aspacem_vStart = 0x700000000000; // 0x7000:00000000..0x7fff:5c000000 avail
+   // 0x7fff:5c000000..0x7fff:ffe00000? is stack, dyld, shared cache
+# endif
+
+   suggested_clstack_top = -1; // ignored; Mach-O specifies its stack
+
+#else
+
    /* Establish address limits and block out unusable parts
       accordingly. */
 
@@ -1561,6 +1635,8 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
 
    suggested_clstack_top = aspacem_maxAddr - 16*1024*1024ULL
                                            + VKI_PAGE_SIZE;
+
+#endif
 
    aspacem_assert(VG_IS_PAGE_ALIGNED(aspacem_minAddr));
    aspacem_assert(VG_IS_PAGE_ALIGNED(aspacem_maxAddr + 1));
@@ -1900,12 +1976,12 @@ VG_(am_notify_client_mmap)( Addr a, SizeT len, UInt prot, UInt flags,
    if (!(flags & VKI_MAP_ANONYMOUS)) {
       // Nb: We ignore offset requests in anonymous mmaps (see bug #126722)
       seg.offset = offset;
-      if (get_inode_for_fd(fd, &dev, &ino, &mode)) {
+      if (ML_(am_get_fd_d_i_m)(fd, &dev, &ino, &mode)) {
          seg.dev = dev;
          seg.ino = ino;
          seg.mode = mode;
       }
-      if (get_name_for_fd(fd, buf, VKI_PATH_MAX)) {
+      if (ML_(am_resolve_filename)(fd, buf, VKI_PATH_MAX)) {
          seg.fnIdx = allocate_segname( buf );
       }
    }
@@ -2064,6 +2140,12 @@ Bool VG_(am_notify_munmap)( Addr start, SizeT len )
 SysRes VG_(am_mmap_file_fixed_client)
      ( Addr start, SizeT length, UInt prot, Int fd, Off64T offset )
 {
+   return VG_(am_mmap_named_file_fixed_client)(start, length, prot, fd, offset, NULL);
+}
+
+SysRes VG_(am_mmap_named_file_fixed_client)
+     ( Addr start, SizeT length, UInt prot, Int fd, Off64T offset, const HChar *name )
+{
    SysRes     sres;
    NSegment   seg;
    Addr       advised;
@@ -2090,19 +2172,20 @@ SysRes VG_(am_mmap_file_fixed_client)
    /* We have been advised that the mapping is allowable at the
       specified address.  So hand it off to the kernel, and propagate
       any resulting failure immediately. */
+   // DDD: #warning GrP fixme MAP_FIXED can clobber memory!
    sres = VG_(am_do_mmap_NO_NOTIFY)( 
              start, length, prot, 
              VKI_MAP_FIXED|VKI_MAP_PRIVATE, 
              fd, offset 
           );
-   if (sres.isError)
+   if (sr_isError(sres))
       return sres;
 
-   if (sres.res != start) {
+   if (sr_Res(sres) != start) {
       /* I don't think this can happen.  It means the kernel made a
          fixed map succeed but not at the requested location.  Try to
          repair the damage, then return saying the mapping failed. */
-      (void)ML_(am_do_munmap_NO_NOTIFY)( sres.res, length );
+      (void)ML_(am_do_munmap_NO_NOTIFY)( sr_Res(sres), length );
       return VG_(mk_SysRes_Error)( VKI_EINVAL );
    }
 
@@ -2115,12 +2198,14 @@ SysRes VG_(am_mmap_file_fixed_client)
    seg.hasR   = toBool(prot & VKI_PROT_READ);
    seg.hasW   = toBool(prot & VKI_PROT_WRITE);
    seg.hasX   = toBool(prot & VKI_PROT_EXEC);
-   if (get_inode_for_fd(fd, &dev, &ino, &mode)) {
+   if (ML_(am_get_fd_d_i_m)(fd, &dev, &ino, &mode)) {
       seg.dev = dev;
       seg.ino = ino;
       seg.mode = mode;
    }
-   if (get_name_for_fd(fd, buf, VKI_PATH_MAX)) {
+   if (name) {
+      seg.fnIdx = allocate_segname( name );
+   } else if (ML_(am_resolve_filename)(fd, buf, VKI_PATH_MAX)) {
       seg.fnIdx = allocate_segname( buf );
    }
    add_segment( &seg );
@@ -2156,19 +2241,20 @@ SysRes VG_(am_mmap_anon_fixed_client) ( Addr start, SizeT length, UInt prot )
    /* We have been advised that the mapping is allowable at the
       specified address.  So hand it off to the kernel, and propagate
       any resulting failure immediately. */
+   // DDD: #warning GrP fixme MAP_FIXED can clobber memory!
    sres = VG_(am_do_mmap_NO_NOTIFY)( 
              start, length, prot, 
              VKI_MAP_FIXED|VKI_MAP_PRIVATE|VKI_MAP_ANONYMOUS, 
              0, 0 
           );
-   if (sres.isError)
+   if (sr_isError(sres))
       return sres;
 
-   if (sres.res != start) {
+   if (sr_Res(sres) != start) {
       /* I don't think this can happen.  It means the kernel made a
          fixed map succeed but not at the requested location.  Try to
          repair the damage, then return saying the mapping failed. */
-      (void)ML_(am_do_munmap_NO_NOTIFY)( sres.res, length );
+      (void)ML_(am_do_munmap_NO_NOTIFY)( sr_Res(sres), length );
       return VG_(mk_SysRes_Error)( VKI_EINVAL );
    }
 
@@ -2213,19 +2299,20 @@ SysRes VG_(am_mmap_anon_float_client) ( SizeT length, Int prot )
    /* We have been advised that the mapping is allowable at the
       advised address.  So hand it off to the kernel, and propagate
       any resulting failure immediately. */
+   // DDD: #warning GrP fixme MAP_FIXED can clobber memory!
    sres = VG_(am_do_mmap_NO_NOTIFY)( 
              advised, length, prot, 
              VKI_MAP_FIXED|VKI_MAP_PRIVATE|VKI_MAP_ANONYMOUS, 
              0, 0 
           );
-   if (sres.isError)
+   if (sr_isError(sres))
       return sres;
 
-   if (sres.res != advised) {
+   if (sr_Res(sres) != advised) {
       /* I don't think this can happen.  It means the kernel made a
          fixed map succeed but not at the requested location.  Try to
          repair the damage, then return saying the mapping failed. */
-      (void)ML_(am_do_munmap_NO_NOTIFY)( sres.res, length );
+      (void)ML_(am_do_munmap_NO_NOTIFY)( sr_Res(sres), length );
       return VG_(mk_SysRes_Error)( VKI_EINVAL );
    }
 
@@ -2283,30 +2370,54 @@ SysRes VG_(am_mmap_anon_float_valgrind)( SizeT length )
    if (!ok)
       return VG_(mk_SysRes_Error)( VKI_EINVAL );
 
+// On Darwin, for anonymous maps you can pass in a tag which is used by
+// programs like vmmap for statistical purposes.
+#ifndef VM_TAG_VALGRIND
+#  define VM_TAG_VALGRIND 0
+#endif
+
    /* We have been advised that the mapping is allowable at the
       specified address.  So hand it off to the kernel, and propagate
       any resulting failure immediately. */
+   /* GrP fixme darwin: use advisory as a hint only, otherwise syscall in 
+      another thread can pre-empt our spot.  [At one point on the DARWIN
+      branch the VKI_MAP_FIXED was commented out;  unclear if this is
+      necessary or not given the second Darwin-only call that immediately
+      follows if this one fails.  --njn] */
    sres = VG_(am_do_mmap_NO_NOTIFY)( 
              advised, length, 
              VKI_PROT_READ|VKI_PROT_WRITE|VKI_PROT_EXEC, 
              VKI_MAP_FIXED|VKI_MAP_PRIVATE|VKI_MAP_ANONYMOUS, 
-             0, 0 
+             VM_TAG_VALGRIND, 0
           );
-   if (sres.isError)
+#if defined(VGO_darwin)
+   if (sr_isError(sres)) {
+       /* try again, ignoring the advisory */
+       sres = VG_(am_do_mmap_NO_NOTIFY)( 
+             0, length, 
+             VKI_PROT_READ|VKI_PROT_WRITE|VKI_PROT_EXEC, 
+             /*VKI_MAP_FIXED|*/VKI_MAP_PRIVATE|VKI_MAP_ANONYMOUS, 
+             VM_TAG_VALGRIND, 0
+          );
+   }
+#endif
+   if (sr_isError(sres))
       return sres;
 
-   if (sres.res != advised) {
+#if defined(VGO_linux)
+   if (sr_Res(sres) != advised) {
       /* I don't think this can happen.  It means the kernel made a
          fixed map succeed but not at the requested location.  Try to
          repair the damage, then return saying the mapping failed. */
-      (void)ML_(am_do_munmap_NO_NOTIFY)( sres.res, length );
+      (void)ML_(am_do_munmap_NO_NOTIFY)( sr_Res(sres), length );
       return VG_(mk_SysRes_Error)( VKI_EINVAL );
    }
+#endif
 
    /* Ok, the mapping succeeded.  Now notify the interval map. */
    init_nsegment( &seg );
    seg.kind  = SkAnonV;
-   seg.start = advised;
+   seg.start = sr_Res(sres);
    seg.end   = seg.start + VG_PGROUNDUP(length) - 1;
    seg.hasR  = True;
    seg.hasW  = True;
@@ -2322,7 +2433,7 @@ SysRes VG_(am_mmap_anon_float_valgrind)( SizeT length )
 void* VG_(am_shadow_alloc)(SizeT size)
 {
    SysRes sres = VG_(am_mmap_anon_float_valgrind)( size );
-   return sres.isError ? NULL : (void*)sres.res;
+   return sr_isError(sres) ? NULL : (void*)sr_Res(sres);
 }
 
 /* Same comments apply as per VG_(am_sbrk_anon_float_client).  On
@@ -2370,32 +2481,32 @@ SysRes VG_(am_mmap_file_float_valgrind) ( SizeT length, UInt prot,
              VKI_MAP_FIXED|VKI_MAP_PRIVATE, 
              fd, offset 
           );
-   if (sres.isError)
+   if (sr_isError(sres))
       return sres;
 
-   if (sres.res != advised) {
+   if (sr_Res(sres) != advised) {
       /* I don't think this can happen.  It means the kernel made a
          fixed map succeed but not at the requested location.  Try to
          repair the damage, then return saying the mapping failed. */
-      (void)ML_(am_do_munmap_NO_NOTIFY)( sres.res, length );
+      (void)ML_(am_do_munmap_NO_NOTIFY)( sr_Res(sres), length );
       return VG_(mk_SysRes_Error)( VKI_EINVAL );
    }
 
    /* Ok, the mapping succeeded.  Now notify the interval map. */
    init_nsegment( &seg );
    seg.kind   = SkFileV;
-   seg.start  = sres.res;
+   seg.start  = sr_Res(sres);
    seg.end    = seg.start + VG_PGROUNDUP(length) - 1;
    seg.offset = offset;
    seg.hasR   = toBool(prot & VKI_PROT_READ);
    seg.hasW   = toBool(prot & VKI_PROT_WRITE);
    seg.hasX   = toBool(prot & VKI_PROT_EXEC);
-   if (get_inode_for_fd(fd, &dev, &ino, &mode)) {
+   if (ML_(am_get_fd_d_i_m)(fd, &dev, &ino, &mode)) {
       seg.dev  = dev;
       seg.ino  = ino;
       seg.mode = mode;
    }
-   if (get_name_for_fd(fd, buf, VKI_PATH_MAX)) {
+   if (ML_(am_resolve_filename)(fd, buf, VKI_PATH_MAX)) {
       seg.fnIdx = allocate_segname( buf );
    }
    add_segment( &seg );
@@ -2441,7 +2552,7 @@ SysRes am_munmap_both_wrk ( /*OUT*/Bool* need_discard,
    d = any_Ts_in_range( start, len );
 
    sres = ML_(am_do_munmap_NO_NOTIFY)( start, len );
-   if (sres.isError)
+   if (sr_isError(sres))
       return sres;
 
    VG_(am_notify_munmap)( start, len );
@@ -2475,7 +2586,7 @@ SysRes VG_(am_munmap_valgrind)( Addr start, SizeT len )
                                   start, len, False/*valgrind*/ );
    /* If this assertion fails, it means we allowed translations to be
       made from a V-owned section.  Which shouldn't happen. */
-   if (!r.isError)
+   if (!sr_isError(r))
       aspacem_assert(!need_discard);
    return r;
 }
@@ -2661,17 +2772,18 @@ Bool VG_(am_extend_into_adjacent_reservation_client) ( NSegment* seg,
         return False;
         
       /* Extend the kernel's mapping. */
+      // DDD: #warning GrP fixme MAP_FIXED can clobber memory!
       sres = VG_(am_do_mmap_NO_NOTIFY)( 
                 nsegments[segR].start, delta,
                 prot,
                 VKI_MAP_FIXED|VKI_MAP_PRIVATE|VKI_MAP_ANONYMOUS, 
                 0, 0 
              );
-      if (sres.isError)
+      if (sr_isError(sres))
          return False; /* kernel bug if this happens? */
-      if (sres.res != nsegments[segR].start) {
+      if (sr_Res(sres) != nsegments[segR].start) {
          /* kernel bug if this happens? */
-        (void)ML_(am_do_munmap_NO_NOTIFY)( sres.res, delta );
+        (void)ML_(am_do_munmap_NO_NOTIFY)( sr_Res(sres), delta );
         return False;
       }
 
@@ -2696,17 +2808,18 @@ Bool VG_(am_extend_into_adjacent_reservation_client) ( NSegment* seg,
         return False;
         
       /* Extend the kernel's mapping. */
+      // DDD: #warning GrP fixme MAP_FIXED can clobber memory!
       sres = VG_(am_do_mmap_NO_NOTIFY)( 
                 nsegments[segA].start-delta, delta,
                 prot,
                 VKI_MAP_FIXED|VKI_MAP_PRIVATE|VKI_MAP_ANONYMOUS, 
                 0, 0 
              );
-      if (sres.isError)
+      if (sr_isError(sres))
          return False; /* kernel bug if this happens? */
-      if (sres.res != nsegments[segA].start-delta) {
+      if (sr_Res(sres) != nsegments[segA].start-delta) {
          /* kernel bug if this happens? */
-        (void)ML_(am_do_munmap_NO_NOTIFY)( sres.res, delta );
+        (void)ML_(am_do_munmap_NO_NOTIFY)( sr_Res(sres), delta );
         return False;
       }
 
@@ -2723,6 +2836,8 @@ Bool VG_(am_extend_into_adjacent_reservation_client) ( NSegment* seg,
 
 
 /* --- --- --- resizing/move a mapping --- --- --- */
+
+#if HAVE_MREMAP
 
 /* Let SEG be a client mapping (anonymous or file).  This fn extends
    the mapping forwards only by DELTA bytes, and trashes whatever was
@@ -2761,12 +2876,12 @@ Bool VG_(am_extend_map_client)( /*OUT*/Bool* need_discard,
    sres = ML_(am_do_extend_mapping_NO_NOTIFY)( seg->start, 
                                                seg_old_len,
                                                seg_old_len + delta );
-   if (sres.isError) {
+   if (sr_isError(sres)) {
       AM_SANITY_CHECK;
       return False;
    } else {
       /* the area must not have moved */
-      aspacem_assert(sres.res == seg->start);
+      aspacem_assert(sr_Res(sres) == seg->start);
    }
 
    *need_discard = any_Ts_in_range( seg_copy.end+1, delta );
@@ -2826,11 +2941,11 @@ Bool VG_(am_relocate_nooverlap_client)( /*OUT*/Bool* need_discard,
 
    sres = ML_(am_do_relocate_nooverlap_mapping_NO_NOTIFY)
              ( old_addr, old_len, new_addr, new_len );
-   if (sres.isError) {
+   if (sr_isError(sres)) {
       AM_SANITY_CHECK;
       return False;
    } else {
-      aspacem_assert(sres.res == new_addr);
+      aspacem_assert(sr_Res(sres) == new_addr);
    }
 
    *need_discard = any_Ts_in_range( old_addr, old_len )
@@ -2868,6 +2983,10 @@ Bool VG_(am_relocate_nooverlap_client)( /*OUT*/Bool* need_discard,
    return True;
 }
 
+#endif // HAVE_MREMAP
+
+
+#if HAVE_PROC
 
 /*-----------------------------------------------------------------*/
 /*---                                                           ---*/
@@ -2957,18 +3076,18 @@ static void read_procselfmaps_into_buf ( void )
    
    /* Read the initial memory mapping from the /proc filesystem. */
    fd = ML_(am_open)( "/proc/self/maps", VKI_O_RDONLY, 0 );
-   if (fd.isError)
+   if (sr_isError(fd))
       ML_(am_barf)("can't open /proc/self/maps");
 
    buf_n_tot = 0;
    do {
-      n_chunk = ML_(am_read)( fd.res, &procmap_buf[buf_n_tot],
+      n_chunk = ML_(am_read)( sr_Res(fd), &procmap_buf[buf_n_tot],
                               M_PROCMAP_BUF - buf_n_tot );
       if (n_chunk >= 0)
          buf_n_tot += n_chunk;
    } while ( n_chunk > 0 && buf_n_tot < M_PROCMAP_BUF );
 
-   ML_(am_close)(fd.res);
+   ML_(am_close)(sr_Res(fd));
 
    if (buf_n_tot >= M_PROCMAP_BUF-5)
       ML_(am_barf_toolow)("M_PROCMAP_BUF");
@@ -3002,7 +3121,7 @@ static void read_procselfmaps_into_buf ( void )
 */
 static void parse_procselfmaps (
       void (*record_mapping)( Addr addr, SizeT len, UInt prot,
-                              ULong dev, ULong ino, ULong offset, 
+                              ULong dev, ULong ino, Off64T offset, 
                               const UChar* filename ),
       void (*record_gap)( Addr addr, SizeT len )
    )
@@ -3165,6 +3284,219 @@ static void parse_procselfmaps (
    if (record_gap && gapStart < Addr_MAX)
       (*record_gap) ( gapStart, Addr_MAX - gapStart + 1 );
 }
+
+#elif defined(VGO_darwin)
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
+
+static unsigned int mach2vki(unsigned int vm_prot)
+{
+   return
+      ((vm_prot & VM_PROT_READ)    ? VKI_PROT_READ    : 0) |
+      ((vm_prot & VM_PROT_WRITE)   ? VKI_PROT_WRITE   : 0) |
+      ((vm_prot & VM_PROT_EXECUTE) ? VKI_PROT_EXEC    : 0) ;
+}
+
+static UInt stats_machcalls = 0;
+
+static void parse_procselfmaps (
+      void (*record_mapping)( Addr addr, SizeT len, UInt prot,
+                              ULong dev, ULong ino, Off64T offset, 
+                              const UChar* filename ),
+      void (*record_gap)( Addr addr, SizeT len )
+   )
+{
+   vm_address_t iter;
+   unsigned int depth;
+   vm_address_t last;
+
+   iter = 0;
+   depth = 0;
+   last = 0;
+   while (1) {
+      mach_vm_address_t addr = iter;
+      mach_vm_size_t size;
+      vm_region_submap_short_info_data_64_t info;
+      kern_return_t kr;
+
+      while (1) {
+         mach_msg_type_number_t info_count
+            = VM_REGION_SUBMAP_SHORT_INFO_COUNT_64;
+         stats_machcalls++;
+         kr = mach_vm_region_recurse(mach_task_self(), &addr, &size, &depth,
+                                     (vm_region_info_t)&info, &info_count);
+         if (kr) 
+            return;
+         if (info.is_submap) {
+            depth++;
+            continue;
+         }
+         break;
+      }
+      iter = addr + size;
+
+      if (addr > last  &&  record_gap) {
+         (*record_gap)(last, addr - last);
+      }
+      if (record_mapping) {
+         (*record_mapping)(addr, size, mach2vki(info.protection),
+                           0, 0, info.offset, NULL);
+      }
+      last = addr + size;
+   }
+
+   if ((Addr)-1 > last  &&  record_gap)
+      (*record_gap)(last, (Addr)-1 - last);
+}
+
+Bool        css_overflowed;
+ChangedSeg* css_local;
+Int         css_size_local;
+Int         css_used_local;
+
+static void add_mapping_callback(Addr addr, SizeT len, UInt prot, 
+                                 ULong dev, ULong ino, Off64T offset, 
+                                 const UChar *filename)
+{
+   // derived from sync_check_mapping_callback()
+
+   Int iLo, iHi, i;
+
+   if (len == 0) return;
+
+   /* The kernel should not give us wraparounds. */
+   aspacem_assert(addr <= addr + len - 1); 
+
+   iLo = find_nsegment_idx( addr );
+   iHi = find_nsegment_idx( addr + len - 1 );
+
+
+   /* NSegments iLo .. iHi inclusive should agree with the presented
+      data. */
+   for (i = iLo; i <= iHi; i++) {
+
+      UInt seg_prot;
+
+      if (nsegments[i].kind == SkAnonV  ||  nsegments[i].kind == SkFileV) {
+         /* Ignore V regions */
+         continue;
+      } 
+      else if (nsegments[i].kind == SkFree || nsegments[i].kind == SkResvn) {
+          /* Add mapping for SkResvn regions */
+         ChangedSeg* cs = &css_local[css_used_local];
+         if (css_used_local < css_size_local) {
+            cs->is_added = True;
+            cs->start    = addr;
+            cs->end      = addr + len - 1;
+            cs->prot     = prot;
+            cs->offset   = offset;
+            css_used_local++;
+         } else {
+            css_overflowed = True;
+         }
+         return;
+
+      } else if (nsegments[i].kind == SkAnonC ||
+                 nsegments[i].kind == SkFileC ||
+                 nsegments[i].kind == SkShmC)
+      {
+         /* Check permissions on client regions */
+         // GrP fixme
+         seg_prot = 0;
+         if (nsegments[i].hasR) seg_prot |= VKI_PROT_READ;
+         if (nsegments[i].hasW) seg_prot |= VKI_PROT_WRITE;
+#        if defined(VGA_x86)
+         // GrP fixme sloppyXcheck 
+         // darwin: kernel X ignored and spuriously changes? (vm_copy)
+         seg_prot |= (prot & VKI_PROT_EXEC);
+#        else
+         if (nsegments[i].hasX) seg_prot |= VKI_PROT_EXEC;
+#        endif
+         if (seg_prot != prot) {
+             if (VG_(clo_trace_syscalls)) 
+                 VG_(debugLog)(0,"aspacem","\nregion %p..%p permission "
+                                 "mismatch (kernel %x, V %x)", 
+                                 (void*)nsegments[i].start,
+                                 (void*)(nsegments[i].end+1), prot, seg_prot);
+         }
+
+      } else {
+         aspacem_assert(0);
+      }
+   }
+}
+
+static void remove_mapping_callback(Addr addr, SizeT len)
+{
+   // derived from sync_check_gap_callback()
+
+   Int iLo, iHi, i;
+
+   if (len == 0)
+      return;
+
+   /* The kernel should not give us wraparounds. */
+   aspacem_assert(addr <= addr + len - 1); 
+
+   iLo = find_nsegment_idx( addr );
+   iHi = find_nsegment_idx( addr + len - 1 );
+
+   /* NSegments iLo .. iHi inclusive should agree with the presented data. */
+   for (i = iLo; i <= iHi; i++) {
+      if (nsegments[i].kind != SkFree  &&  nsegments[i].kind != SkResvn) {
+         // V has a mapping, kernel doesn't
+         ChangedSeg* cs = &css_local[css_used_local];
+         if (css_used_local < css_size_local) {
+            cs->is_added = False;
+            cs->start    = nsegments[i].start;
+            cs->end      = nsegments[i].end;
+            cs->prot     = 0;
+            cs->offset   = 0;
+            css_used_local++;
+         } else {
+            css_overflowed = True;
+         }
+         return;
+      }
+   }
+}
+
+
+// Returns False if 'css' wasn't big enough.
+Bool VG_(get_changed_segments)(
+      const HChar* when, const HChar* where, /*OUT*/ChangedSeg* css,
+      Int css_size, /*OUT*/Int* css_used)
+{
+   static UInt stats_synccalls = 1;
+   aspacem_assert(when && where);
+
+   if (0)
+      VG_(debugLog)(0,"aspacem",
+         "[%u,%u] VG_(get_changed_segments)(%s, %s)\n",
+         stats_synccalls++, stats_machcalls, when, where
+      );
+
+   css_overflowed = False;
+   css_local = css;
+   css_size_local = css_size;
+   css_used_local = 0;
+
+   // Get the list of segs that need to be added/removed.
+   parse_procselfmaps(&add_mapping_callback, &remove_mapping_callback);
+
+   *css_used = css_used_local;
+
+   if (css_overflowed) {
+      aspacem_assert(css_used_local == css_size_local);
+   }
+
+   return !css_overflowed;
+}
+
+#endif // HAVE_PROC
+
+
+#endif // defined(VGO_linux) || defined(VGO_darwin)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

@@ -7,7 +7,7 @@
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2000-2008 Julian Seward 
+  Copyright (C) 2000-2009 Julian Seward 
      jseward@acm.org
 
   This program is free software; you can redistribute it and/or
@@ -28,8 +28,10 @@
   The GNU General Public License is contained in the file COPYING.
 */
 
+#if defined(VGP_amd64_linux)
+
 #include "pub_core_basics_asm.h"
-#include "pub_core_vkiscnums.h"
+#include "pub_core_vkiscnums_asm.h"
 #include "libvex_guest_offsets.h"
 
 
@@ -66,7 +68,7 @@
 				  void* guest_state,		// rsi
 				  const vki_sigset_t *sysmask,	// rdx
 				  const vki_sigset_t *postmask,	// rcx
-				  Int nsigwords)		// r8
+				  Int sigsetSzB)		// r8
 				   
 */
 
@@ -113,7 +115,7 @@ ML_(do_syscall_for_client_WRK):
 	movq	$VKI_SIG_SETMASK, %rdi		// how
 	movq	%rdx, %rsi			// sysmask
 	movq	%rcx, %rdx			// postmask
-	movq	%r8, %r10			// nsigwords
+	movq	%r8, %r10			// sigsetSzB
 	syscall
 
 	POP_di_si_dx_cx_8
@@ -155,7 +157,7 @@ ML_(do_syscall_for_client_WRK):
 	movq	$VKI_SIG_SETMASK, %rdi		// how
 	movq	%rcx, %rsi			// postmask
 	xorq	%rdx, %rdx			// NULL
-	movq	%r8, %r10			// nsigwords
+	movq	%r8, %r10			// sigsetSzB
 	syscall
 
 	POP_di_si_dx_cx_8
@@ -205,6 +207,8 @@ ML_(blksys_finished):	.quad 5b
 
 /* Let the linker know we don't need an executable stack */
 .section .note.GNU-stack,"",@progbits
+
+#endif // defined(VGP_amd64_linux)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

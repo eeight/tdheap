@@ -11,7 +11,7 @@
   <releaseinfo>&rel-type; &rel-version; &rel-date;</releaseinfo>
   <copyright>
     <year>&vg-lifespan;</year>
-    <holder><ulink url="&vg-developers;">Valgrind Developers</ulink></holder>
+    <holder><ulink url="&vg-devs-url;">Valgrind Developers</ulink></holder>
   </copyright>
   <legalnotice>
     <para>Email: <ulink url="mailto:&vg-vemail;">&vg-vemail;</ulink></para>
@@ -21,27 +21,11 @@
   <!-- Nb: because these are all text files, we have to wrap -->
   <!-- them in suitable XML.  Hence the chapter/title stuff  -->
 
-  <chapter id="dist.acknowledge" xreflabel="Acknowledgements">
-    <title>ACKNOWLEDGEMENTS</title>
-    <literallayout>
-      <xi:include href="../../ACKNOWLEDGEMENTS" parse="text"  
-          xmlns:xi="http://www.w3.org/2001/XInclude" />
-    </literallayout>
-    </chapter>
-
   <chapter id="dist.authors" xreflabel="Valgrind Developers">
     <title id="dist.authors.title">AUTHORS</title>
     <literallayout>
         <xi:include href="../../AUTHORS" parse="text"  
             xmlns:xi="http://www.w3.org/2001/XInclude" />
-    </literallayout>
-    </chapter>
-
-  <chapter id="dist.install" xreflabel="Install">
-    <title>INSTALL</title>
-    <literallayout>
-      <xi:include href="../../INSTALL" parse="text"  
-          xmlns:xi="http://www.w3.org/2001/XInclude" />
     </literallayout>
     </chapter>
 

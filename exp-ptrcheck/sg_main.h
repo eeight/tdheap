@@ -9,7 +9,7 @@
    This file is part of Ptrcheck, a Valgrind tool for checking pointer
    use in programs.
 
-   Copyright (C) 2008-2008 OpenWorks Ltd
+   Copyright (C) 2008-2009 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -54,7 +54,8 @@ void sg_die_mem_munmap ( Addr a, SizeT len );
 
 struct _SGEnv;  /* abstract export */
 
-struct _SGEnv *  sg_instrument_init ( void );
+struct _SGEnv* sg_instrument_init ( IRTemp (*newIRTemp_cb)(IRType,void*),
+                                    void* newIRTemp_opaque );
 
 void sg_instrument_fini ( struct _SGEnv * env );
 

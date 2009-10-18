@@ -1,0 +1,59 @@
+K 25
+svn:wc:ra_dav:version-url
+V 75
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/resize_policy
+END
+sample_size_policy.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/resize_policy/sample_size_policy.hpp
+END
+hash_prime_size_policy_imp.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/resize_policy/hash_prime_size_policy_imp.hpp
+END
+cc_hash_max_collision_check_resize_trigger_imp.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 126
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/resize_policy/cc_hash_max_collision_check_resize_trigger_imp.hpp
+END
+sample_resize_policy.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/resize_policy/sample_resize_policy.hpp
+END
+sample_resize_trigger.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/resize_policy/sample_resize_trigger.hpp
+END
+hash_exponential_size_policy_imp.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 112
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/resize_policy/hash_exponential_size_policy_imp.hpp
+END
+hash_load_check_resize_trigger_size_base.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 120
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/resize_policy/hash_load_check_resize_trigger_size_base.hpp
+END
+hash_standard_resize_policy_imp.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 111
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/resize_policy/hash_standard_resize_policy_imp.hpp
+END
+hash_load_check_resize_trigger_imp.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 114
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/ext/pb_ds/detail/resize_policy/hash_load_check_resize_trigger_imp.hpp
+END

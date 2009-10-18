@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2008 OpenWorks LLP
+   Copyright (C) 2006-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -59,7 +59,6 @@ IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo );
    VG_(ii_create_image). */
 extern 
 void VG_(ii_finalise_image)( IIFinaliseImageInfo );
-
 
 /* Note that both IICreateImageInfo and IIFinaliseImageInfo are
    OS-specific.  We now go on to give instantiations of them
@@ -168,6 +167,37 @@ struct _IIFinaliseImageInfo {
    /* Adler32 checksum of uncompressed data of said page. */
    UInt adler32_exp;
 };
+
+
+/* ------------------------- Darwin ------------------------- */
+
+#elif defined(VGO_darwin)
+
+struct _IICreateImageInfo {
+   /* ------ Mandatory fields ------ */
+   HChar*  toolname;
+   Addr    sp_at_startup;
+   Addr    clstack_top;
+   /* ------ Per-OS fields ------ */
+   HChar** argv;
+   HChar** envp;
+   Addr    entry;            /* &_start */
+   Addr    init_ip;          /* &__dyld_start, or copy of entry */
+   Addr    stack_start;      /* stack segment hot */
+   Addr    stack_end;        /* stack segment cold */
+   Addr    text;             /* executable's Mach header */
+   Bool    dynamic;          /* False iff executable is static */
+   HChar*  executable_path;  /* path passed to execve() */
+};
+
+struct _IIFinaliseImageInfo {
+   /* ------ Mandatory fields ------ */
+   SizeT clstack_max_size;
+   Addr  initial_client_SP;
+   /* ------ Per-OS fields ------ */
+   Addr  initial_client_IP;
+};
+
 
 #else
 #  error "Unknown OS"

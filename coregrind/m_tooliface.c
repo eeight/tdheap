@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Nicholas Nethercote
+   Copyright (C) 2000-2009 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -214,7 +214,6 @@ Bool VG_(sanity_check_needs)(Char** failmsg)
 NEEDS(libc_freeres)
 NEEDS(core_errors)
 NEEDS(var_info)
-NEEDS(xml_output)
 
 void VG_(needs_superblock_discards)(
    void (*discard)(Addr64, VexGuestExtents)
@@ -226,18 +225,20 @@ void VG_(needs_superblock_discards)(
 
 void VG_(needs_tool_errors)(
    Bool (*eq)         (VgRes, Error*, Error*),
+   void (*before_pp)  (Error*),
    void (*pp)         (Error*),
    Bool show_TIDs,
    UInt (*update)     (Error*),
    Bool (*recog)      (Char*, Supp*),
-   Bool (*read_extra) (Int, Char*, Int, Supp*),
+   Bool (*read_extra) (Int, Char**, SizeT*, Supp*),
    Bool (*matches)    (Error*, Supp*),
    Char* (*name)      (Error*),
-   void (*print_extra)(Error*)
+   Bool (*get_xtra_si)(Error*,/*OUT*/Char*,Int)
 )
 {
    VG_(needs).tool_errors = True;
    VG_(tdict).tool_eq_Error                     = eq;
+   VG_(tdict).tool_before_pp_Error              = before_pp;
    VG_(tdict).tool_pp_Error                     = pp;
    VG_(tdict).tool_show_ThreadIDs_for_errors    = show_TIDs;
    VG_(tdict).tool_update_extra                 = update;
@@ -245,7 +246,7 @@ void VG_(needs_tool_errors)(
    VG_(tdict).tool_read_extra_suppression_info  = read_extra;
    VG_(tdict).tool_error_matches_suppression    = matches;
    VG_(tdict).tool_get_error_name               = name;
-   VG_(tdict).tool_print_extra_suppression_info = print_extra;
+   VG_(tdict).tool_get_extra_suppression_info   = get_xtra_si;
 }
 
 void VG_(needs_command_line_options)(
@@ -269,8 +270,8 @@ void VG_(needs_client_requests)(
 }
 
 void VG_(needs_syscall_wrapper)(
-   void(*pre) (ThreadId, UInt),
-   void(*post)(ThreadId, UInt, SysRes res)
+   void(*pre) (ThreadId, UInt, UWord*, UInt),
+   void(*post)(ThreadId, UInt, UWord*, UInt, SysRes res)
 )
 {
    VG_(needs).syscall_wrapper = True;
@@ -298,6 +299,7 @@ void VG_(needs_malloc_replacement)(
    void  (*__builtin_delete)     ( ThreadId, void* ),
    void  (*__builtin_vec_delete) ( ThreadId, void* ),
    void* (*realloc)              ( ThreadId, void*, SizeT ),
+   SizeT (*malloc_usable_size)   ( ThreadId, void* ), 
    SizeT client_malloc_redzone_szB
 )
 {
@@ -311,7 +313,13 @@ void VG_(needs_malloc_replacement)(
    VG_(tdict).tool___builtin_delete     = __builtin_delete;
    VG_(tdict).tool___builtin_vec_delete = __builtin_vec_delete;
    VG_(tdict).tool_realloc              = realloc;
+   VG_(tdict).tool_malloc_usable_size   = malloc_usable_size;
    VG_(tdict).tool_client_redzone_szB   = client_malloc_redzone_szB;
+}
+
+void VG_(needs_xml_output)( void )
+{
+   VG_(needs).xml_output = True;
 }
 
 void VG_(needs_final_IR_tidy_pass)( 
@@ -391,10 +399,10 @@ DEF0(track_pre_mem_read_asciiz,   CorePart, ThreadId, Char*, Addr)
 DEF0(track_pre_mem_write,         CorePart, ThreadId, Char*, Addr, SizeT)
 DEF0(track_post_mem_write,        CorePart, ThreadId, Addr, SizeT)
 
-DEF0(track_pre_reg_read,          CorePart, ThreadId, Char*, OffT, SizeT)
-DEF0(track_post_reg_write,        CorePart, ThreadId,        OffT, SizeT)
+DEF0(track_pre_reg_read,          CorePart, ThreadId, Char*, PtrdiffT, SizeT)
+DEF0(track_post_reg_write,        CorePart, ThreadId,        PtrdiffT, SizeT)
 
-DEF0(track_post_reg_write_clientcall_return, ThreadId, OffT, SizeT, Addr)
+DEF0(track_post_reg_write_clientcall_return, ThreadId, PtrdiffT, SizeT, Addr)
 
 DEF0(track_start_client_code,     ThreadId, ULong)
 DEF0(track_stop_client_code,      ThreadId, ULong)

@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -74,17 +74,17 @@ void VG_(print_translation_stats) ( void )
                                          + n_SP_updates_generic_unknown;
    VG_(percentify)(n_SP_updates_fast, n_SP_updates, 1, 6, buf);
    VG_(message)(Vg_DebugMsg,
-      "translate:            fast SP updates identified: %'u (%s)",
+      "translate:            fast SP updates identified: %'u (%s)\n",
       n_SP_updates_fast, buf );
 
    VG_(percentify)(n_SP_updates_generic_known, n_SP_updates, 1, 6, buf);
    VG_(message)(Vg_DebugMsg,
-      "translate:   generic_known SP updates identified: %'u (%s)",
+      "translate:   generic_known SP updates identified: %'u (%s)\n",
       n_SP_updates_generic_known, buf );
 
    VG_(percentify)(n_SP_updates_generic_unknown, n_SP_updates, 1, 6, buf);
    VG_(message)(Vg_DebugMsg,
-      "translate: generic_unknown SP updates identified: %'u (%s)",
+      "translate: generic_unknown SP updates identified: %'u (%s)\n",
       n_SP_updates_generic_unknown, buf );
 }
 
@@ -708,6 +708,14 @@ static Bool translations_allowable_from_seg ( NSegment const* seg )
 
 static Bool self_check_required ( NSegment const* seg, ThreadId tid )
 {
+#if defined(VGO_darwin)
+   // GrP fixme hack - dyld i386 IMPORT gets rewritten
+   // to really do this correctly, we'd need to flush the 
+   // translation cache whenever a segment became +WX
+   if (seg->hasX  && seg->hasW) {
+      return True;
+   }
+#endif
    switch (VG_(clo_smc_check)) {
       case Vg_SmcNone:  return False;
       case Vg_SmcAll:   return True;
@@ -1312,7 +1320,7 @@ Bool VG_(translate) ( ThreadId tid,
       ok = VG_(get_fnname_w_offset)(addr, name2, 64);
       if (!ok) VG_(strcpy)(name2, "???");
       VG_(message)(Vg_DebugMsg, 
-                   "REDIR: 0x%llx (%s) redirected to 0x%llx (%s)",
+                   "REDIR: 0x%llx (%s) redirected to 0x%llx (%s)\n",
                    nraddr, name1,
                    addr, name2 );
    }
@@ -1349,7 +1357,7 @@ Bool VG_(translate) ( ThreadId tid,
         || addr == TRANSTAB_BOGUS_GUEST_ADDR ) {
       if (VG_(clo_trace_signals))
          VG_(message)(Vg_DebugMsg, "translations not allowed here (0x%llx)"
-                                   " - throwing SEGV", addr);
+                                   " - throwing SEGV\n", addr);
       /* U R busted, sonny.  Place your hands on your head and step
          away from the orig_addr. */
       /* Code address is bad - deliver a signal instead */
@@ -1414,6 +1422,12 @@ Bool VG_(translate) ( ThreadId tid,
    LibVEX_default_VexAbiInfo( &vex_abiinfo );
    vex_abiinfo.guest_stack_redzone_size = VG_STACK_REDZONE_SZB;
 
+#  if defined(VGP_amd64_linux)
+   vex_abiinfo.guest_amd64_assume_fs_is_zero  = True;
+#  endif
+#  if defined(VGP_amd64_darwin)
+   vex_abiinfo.guest_amd64_assume_gs_is_0x60  = True;
+#  endif
 #  if defined(VGP_ppc32_linux)
    vex_abiinfo.guest_ppc_zap_RZ_at_blr        = False;
    vex_abiinfo.guest_ppc_zap_RZ_at_bl         = NULL;
@@ -1544,8 +1558,7 @@ Bool VG_(translate) ( ThreadId tid,
           VG_(add_to_unredir_transtab)( &vge,
                                         nraddr,
                                         (Addr)(&tmpbuf[0]), 
-                                        tmpbuf_used,
-                                        do_self_check );
+                                        tmpbuf_used );
       }
    }
 

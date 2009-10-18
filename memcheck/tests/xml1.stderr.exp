@@ -2,11 +2,10 @@
 
 <valgrindoutput>
 
-<protocolversion>3</protocolversion>
+<protocolversion>4</protocolversion>
+<protocoltool>memcheck</protocoltool>
 
 <preamble>
-  <line>...</line>
-  <line>...</line>
   <line>...</line>
   <line>...</line>
   <line>...</line>
@@ -33,7 +32,7 @@
   <unique>0x........</unique>
   <tid>...</tid>
   <kind>InvalidRead</kind>
-  <what>Invalid read of size 4</what>
+  <what>Invalid read of size N</what>
   <stack>
     <frame>
       <ip>0x........</ip>
@@ -158,7 +157,7 @@
   <unique>0x........</unique>
   <tid>...</tid>
   <kind>UninitValue</kind>
-  <what>Use of uninitialised value of size 4</what>
+  <what>Use of uninitialised value of size N</what>
   <stack>
     <frame>
       <ip>0x........</ip>
@@ -341,62 +340,24 @@
   <unique>0x........</unique>
   <tid>...</tid>
   <kind>SyscallParam</kind>
-  <what>Syscall param exit_group(exit_code) contains uninitialised byte(s)</what>
-  <stack>
-    <frame>
-      <ip>0x........</ip>
-      <obj>...</obj>
-      <fn>_Exit</fn>
-    </frame>
-    <frame>
-      <ip>0x........</ip>
-      <obj>...</obj>
-      <fn>(below main)</fn>
-    </frame>
-  </stack>
+  <what>Syscall param exit(status) contains uninitialised byte(s)</what>
 </error>
 
-<errorcounts>
-  <pair>
-    <count>...</count>
-    <unique>0x........</unique>
-  </pair>
-  <pair>
-    <count>...</count>
-    <unique>0x........</unique>
-  </pair>
-  <pair>
-    <count>...</count>
-    <unique>0x........</unique>
-  </pair>
-  <pair>
-    <count>...</count>
-    <unique>0x........</unique>
-  </pair>
-  <pair>
-    <count>...</count>
-    <unique>0x........</unique>
-  </pair>
-  <pair>
-    <count>...</count>
-    <unique>0x........</unique>
-  </pair>
-</errorcounts>
 
 <status>
   <state>FINISHED</state>
   <time>...</time>
 </status>
 
-<suppcounts>...</suppcounts>
-
 <error>
   <unique>0x........</unique>
   <tid>...</tid>
   <kind>Leak_DefinitelyLost</kind>
-  <what>396 bytes in 1 blocks are definitely lost in loss record 1 of 1</what>
-  <leakedbytes>396</leakedbytes>
-  <leakedblocks>1</leakedblocks>
+  <xwhat>
+    <text>396 bytes in 1 blocks are definitely lost in loss record ... of ...</text>
+    <leakedbytes>396</leakedbytes>
+    <leakedblocks>1</leakedblocks>
+  </xwhat>
   <stack>
     <frame>
       <ip>0x........</ip>
@@ -440,6 +401,35 @@
     </frame>
   </stack>
 </error>
+
+<errorcounts>
+  <pair>
+    <count>...</count>
+    <unique>0x........</unique>
+  </pair>
+  <pair>
+    <count>...</count>
+    <unique>0x........</unique>
+  </pair>
+  <pair>
+    <count>...</count>
+    <unique>0x........</unique>
+  </pair>
+  <pair>
+    <count>...</count>
+    <unique>0x........</unique>
+  </pair>
+  <pair>
+    <count>...</count>
+    <unique>0x........</unique>
+  </pair>
+  <pair>
+    <count>...</count>
+    <unique>0x........</unique>
+  </pair>
+</errorcounts>
+
+<suppcounts>...</suppcounts>
 
 </valgrindoutput>
 

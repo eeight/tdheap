@@ -1,0 +1,263 @@
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel
+END
+iterator.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/iterator.h
+END
+multiway_merge.h
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/multiway_merge.h
+END
+parallel.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/parallel.h
+END
+algorithm
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/algorithm
+END
+find_selectors.h
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/find_selectors.h
+END
+types.h
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/types.h
+END
+losertree.h
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/losertree.h
+END
+list_partition.h
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/list_partition.h
+END
+for_each.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/for_each.h
+END
+multiseq_selection.h
+K 25
+svn:wc:ra_dav:version-url
+V 74
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/multiseq_selection.h
+END
+workstealing.h
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/workstealing.h
+END
+base.h
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/base.h
+END
+par_loop.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/par_loop.h
+END
+numeric
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/numeric
+END
+features.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/features.h
+END
+quicksort.h
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/quicksort.h
+END
+equally_split.h
+K 25
+svn:wc:ra_dav:version-url
+V 69
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/equally_split.h
+END
+compiletime_settings.h
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/compiletime_settings.h
+END
+algorithmfwd.h
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/algorithmfwd.h
+END
+for_each_selectors.h
+K 25
+svn:wc:ra_dav:version-url
+V 74
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/for_each_selectors.h
+END
+basic_iterator.h
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/basic_iterator.h
+END
+omp_loop_static.h
+K 25
+svn:wc:ra_dav:version-url
+V 71
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/omp_loop_static.h
+END
+random_shuffle.h
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/random_shuffle.h
+END
+balanced_quicksort.h
+K 25
+svn:wc:ra_dav:version-url
+V 74
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/balanced_quicksort.h
+END
+tags.h
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/tags.h
+END
+set_operations.h
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/set_operations.h
+END
+merge.h
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/merge.h
+END
+unique_copy.h
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/unique_copy.h
+END
+settings.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/settings.h
+END
+multiway_mergesort.h
+K 25
+svn:wc:ra_dav:version-url
+V 74
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/multiway_mergesort.h
+END
+numericfwd.h
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/numericfwd.h
+END
+search.h
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/search.h
+END
+compatibility.h
+K 25
+svn:wc:ra_dav:version-url
+V 69
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/compatibility.h
+END
+partition.h
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/partition.h
+END
+algobase.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/algobase.h
+END
+partial_sum.h
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/partial_sum.h
+END
+find.h
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/find.h
+END
+algo.h
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/algo.h
+END
+queue.h
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/queue.h
+END
+omp_loop.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/omp_loop.h
+END
+checkers.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/checkers.h
+END
+sort.h
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/sort.h
+END
+random_number.h
+K 25
+svn:wc:ra_dav:version-url
+V 69
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/parallel/random_number.h
+END

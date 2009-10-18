@@ -1,9 +1,789 @@
 
-Release 3.4.0 (???)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Changes include:
-- SSE3 insns now supported.  Changed CPUID output to be Core-2, so now it
-  claims to be a Core 2 E6600.
+Release 3.5.0 (19 August 2009)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+3.5.0 is a feature release with many significant improvements and the
+usual collection of bug fixes.  The main improvement is that Valgrind
+now works on Mac OS X.
+
+This release supports X86/Linux, AMD64/Linux, PPC32/Linux, PPC64/Linux
+and X86/Darwin.  Support for recent distros and toolchain components
+(glibc 2.10, gcc 4.5) has been added.
+
+                    -------------------------
+
+Here is a short summary of the changes.  Details are shown further
+down:
+
+* Support for Mac OS X (10.5.x).
+
+* Improvements and simplifications to Memcheck's leak checker.
+
+* Clarification and simplifications in various aspects of Valgrind's
+  text output.
+
+* XML output for Helgrind and Ptrcheck.
+
+* Performance and stability improvements for Helgrind and DRD.
+
+* Genuinely atomic support for x86/amd64/ppc atomic instructions.
+
+* A new experimental tool, BBV, useful for computer architecture
+  research.
+
+* Improved Wine support, including ability to read Windows PDB
+  debuginfo.
+
+                    -------------------------
+
+Here are details of the above changes, followed by descriptions of
+many other minor changes, and a list of fixed bugs.
+
+
+* Valgrind now runs on Mac OS X.  (Note that Mac OS X is sometimes
+  called "Darwin" because that is the name of the OS core, which is the
+  level that Valgrind works at.)
+
+  Supported systems:
+
+  - It requires OS 10.5.x (Leopard).  Porting to 10.4.x is not planned
+    because it would require work and 10.4 is only becoming less common.
+
+  - 32-bit programs on x86 and AMD64 (a.k.a x86-64) machines are supported
+    fairly well.  For 10.5.x, 32-bit programs are the default even on
+    64-bit machines, so it handles most current programs.
+    
+  - 64-bit programs on x86 and AMD64 (a.k.a x86-64) machines are not
+    officially supported, but simple programs at least will probably work.
+    However, start-up is slow.
+
+  - PowerPC machines are not supported.
+
+  Things that don't work:
+
+  - The Ptrcheck tool.
+
+  - Objective-C garbage collection.
+
+  - --db-attach=yes.
+
+  - If you have Rogue Amoeba's "Instant Hijack" program installed,
+    Valgrind will fail with a SIGTRAP at start-up.  See
+    https://bugs.kde.org/show_bug.cgi?id=193917 for details and a
+    simple work-around.
+
+  Usage notes:
+
+  - You will likely find --dsymutil=yes a useful option, as error
+    messages may be imprecise without it.
+
+  - Mac OS X support is new and therefore will be less robust than the
+    Linux support.  Please report any bugs you find.
+
+  - Threaded programs may run more slowly than on Linux.
+
+  Many thanks to Greg Parker for developing this port over several years.
+
+
+* Memcheck's leak checker has been improved.  
+
+  - The results for --leak-check=summary now match the summary results
+    for --leak-check=full.  Previously they could differ because
+    --leak-check=summary counted "indirectly lost" blocks and
+    "suppressed" blocks as "definitely lost".
+
+  - Blocks that are only reachable via at least one interior-pointer,
+    but are directly pointed to by a start-pointer, were previously
+    marked as "still reachable".  They are now correctly marked as
+    "possibly lost".
+
+  - The default value for the --leak-resolution option has been
+    changed from "low" to "high".  In general, this means that more
+    leak reports will be produced, but each leak report will describe
+    fewer leaked blocks.
+
+  - With --leak-check=full, "definitely lost" and "possibly lost"
+    leaks are now considered as proper errors, ie. they are counted
+    for the "ERROR SUMMARY" and affect the behaviour of
+    --error-exitcode.  These leaks are not counted as errors if
+    --leak-check=summary is specified, however.
+
+  - Documentation for the leak checker has been improved.
+
+
+* Various aspects of Valgrind's text output have changed.
+
+  - Valgrind's start-up message has changed.  It is shorter but also
+    includes the command being run, which makes it easier to use
+    --trace-children=yes.  An example:
+
+  - Valgrind's shut-down messages have also changed.  This is most
+    noticeable with Memcheck, where the leak summary now occurs before
+    the error summary.  This change was necessary to allow leaks to be
+    counted as proper errors (see the description of the leak checker
+    changes above for more details).  This was also necessary to fix a
+    longstanding bug in which uses of suppressions against leaks were
+    not "counted", leading to difficulties in maintaining suppression
+    files (XXXX bug number).
+
+  - Behavior of -v has changed.  In previous versions, -v printed out
+    a mixture of marginally-user-useful information, and tool/core
+    statistics.  The statistics printing has now been moved to its own
+    flag, --stats=yes.  This means -v is less verbose and more likely
+    to convey useful end-user information.
+
+  - The format of some (non-XML) stack trace entries has changed a
+    little.  Previously there were six possible forms:
+
+      0x80483BF: really (a.c:20)
+      0x80483BF: really (in /foo/a.out)
+      0x80483BF: really
+      0x80483BF: (within /foo/a.out)
+      0x80483BF: ??? (a.c:20)
+      0x80483BF: ???
+
+    The third and fourth of these forms have been made more consistent
+    with the others.  The six possible forms are now:
+  
+      0x80483BF: really (a.c:20)
+      0x80483BF: really (in /foo/a.out)
+      0x80483BF: really (in ???)
+      0x80483BF: ??? (in /foo/a.out)
+      0x80483BF: ??? (a.c:20)
+      0x80483BF: ???
+
+    Stack traces produced when --xml=yes is specified are different
+    and unchanged.
+
+
+* Helgrind and Ptrcheck now support XML output, so they can be used
+  from GUI tools.  Also, the XML output mechanism has been
+  overhauled.
+
+  - The XML format has been overhauled and generalised, so it is more
+    suitable for error reporting tools in general.  The Memcheck
+    specific aspects of it have been removed.  The new format, which
+    is an evolution of the old format, is described in
+    docs/internals/xml-output-protocol4.txt.
+
+  - Memcheck has been updated to use the new format.
+
+  - Helgrind and Ptrcheck are now able to emit output in this format.
+
+  - The XML output mechanism has been overhauled.  XML is now output
+    to its own file descriptor, which means that:
+
+    * Valgrind can output text and XML independently.
+
+    * The longstanding problem of XML output being corrupted by 
+      unexpected un-tagged text messages  is solved.
+
+    As before, the destination for text output is specified using
+    --log-file=, --log-fd= or --log-socket=.
+
+    As before, XML output for a tool is enabled using --xml=yes.
+
+    Because there's a new XML output channel, the XML output
+    destination is now specified by --xml-file=, --xml-fd= or
+    --xml-socket=.
+
+    Initial feedback has shown this causes some confusion.  To
+    clarify, the two envisaged usage scenarios are:
+
+    (1) Normal text output.  In this case, do not specify --xml=yes
+        nor any of --xml-file=, --xml-fd= or --xml-socket=.
+
+    (2) XML output.  In this case, specify --xml=yes, and one of
+        --xml-file=, --xml-fd= or --xml-socket= to select the XML
+        destination, one of --log-file=, --log-fd= or --log-socket=
+        to select the destination for any remaining text messages,
+        and, importantly, -q.
+
+        -q makes Valgrind completely silent on the text channel,
+        except in the case of critical failures, such as Valgrind
+        itself segfaulting, or failing to read debugging information.
+        Hence, in this scenario, it suffices to check whether or not
+        any output appeared on the text channel.  If yes, then it is
+        likely to be a critical error which should be brought to the
+        attention of the user.  If no (the text channel produced no
+        output) then it can be assumed that the run was successful.
+
+        This allows GUIs to make the critical distinction they need to
+        make (did the run fail or not?) without having to search or
+        filter the text output channel in any way.
+
+    It is also recommended to use --child-silent-after-fork=yes in
+    scenario (2).
+
+
+* Improvements and changes in Helgrind:
+
+  - XML output, as described above
+
+  - Checks for consistent association between pthread condition
+    variables and their associated mutexes are now performed.
+
+  - pthread_spinlock functions are supported.
+
+  - Modest performance improvements.
+
+  - Initial (skeletal) support for describing the behaviour of
+    non-POSIX synchronisation objects through ThreadSanitizer
+    compatible ANNOTATE_* macros.
+
+  - More controllable tradeoffs between performance and the level of
+    detail of "previous" accesses in a race.  There are now three
+    settings:
+
+    * --history-level=full.  This is the default, and was also the
+      default in 3.4.x.  It shows both stacks involved in a race, but
+      requires a lot of memory and can be very slow in programs that
+      do many inter-thread synchronisation events.
+
+    * --history-level=none.  This only shows the later stack involved
+      in a race.  This can be much faster than --history-level=full,
+      but makes it much more difficult to find the other access
+      involved in the race.
+
+    The new intermediate setting is
+
+    * --history-level=approx
+
+      For the earlier (other) access, two stacks are presented.  The
+      earlier access is guaranteed to be somewhere in between the two
+      program points denoted by those stacks.  This is not as useful
+      as showing the exact stack for the previous access (as per
+      --history-level=full), but it is better than nothing, and it's
+      almost as fast as --history-level=none.
+
+
+* New features and improvements in DRD:
+
+  - The error messages printed by DRD are now easier to interpret.
+    Instead of using two different numbers to identify each thread
+    (Valgrind thread ID and DRD thread ID), DRD does now identify
+    threads via a single number (the DRD thread ID).  Furthermore
+    "first observed at" information is now printed for all error
+    messages related to synchronization objects.
+
+  - Added support for named semaphores (sem_open() and sem_close()).
+
+  - Race conditions between pthread_barrier_wait() and
+    pthread_barrier_destroy() calls are now reported.
+
+  - Added support for custom allocators through the macros
+    VALGRIND_MALLOCLIKE_BLOCK() VALGRIND_FREELIKE_BLOCK() (defined in
+    in <valgrind/valgrind.h>). An alternative for these two macros is
+    the new client request VG_USERREQ__DRD_CLEAN_MEMORY (defined in
+    <valgrind/drd.h>).
+
+  - Added support for annotating non-POSIX synchronization objects
+    through several new ANNOTATE_*() macros.
+
+  - OpenMP: added support for the OpenMP runtime (libgomp) included
+    with gcc versions 4.3.0 and 4.4.0.
+
+  - Faster operation.
+
+  - Added two new command-line options (--first-race-only and
+    --segment-merging-interval).
+
+
+* Genuinely atomic support for x86/amd64/ppc atomic instructions
+
+  Valgrind will now preserve (memory-access) atomicity of LOCK-
+  prefixed x86/amd64 instructions, and any others implying a global
+  bus lock.  Ditto for PowerPC l{w,d}arx/st{w,d}cx. instructions.
+
+  This means that Valgrinded processes will "play nicely" in
+  situations where communication with other processes, or the kernel,
+  is done through shared memory and coordinated with such atomic
+  instructions.  Prior to this change, such arrangements usually
+  resulted in hangs, races or other synchronisation failures, because
+  Valgrind did not honour atomicity of such instructions.
+
+
+* A new experimental tool, BBV, has been added.  BBV generates basic
+  block vectors for use with the SimPoint analysis tool, which allows
+  a program's overall behaviour to be approximated by running only a
+  fraction of it.  This is useful for computer architecture
+  researchers.  You can run BBV by specifying --tool=exp-bbv (the
+  "exp-" prefix is short for "experimental").  BBV was written by
+  Vince Weaver.
+
+
+* Modestly improved support for running Windows applications under
+  Wine.  In particular, initial support for reading Windows .PDB debug
+  information has been added.
+
+
+* A new Memcheck client request VALGRIND_COUNT_LEAK_BLOCKS has been
+  added.  It is similar to VALGRIND_COUNT_LEAKS but counts blocks
+  instead of bytes.
+
+
+* The Valgrind client requests VALGRIND_PRINTF and
+  VALGRIND_PRINTF_BACKTRACE have been changed slightly.  Previously,
+  the string was always printed immediately on its own line.  Now, the
+  string will be added to a buffer but not printed until a newline is
+  encountered, or other Valgrind output is printed (note that for
+  VALGRIND_PRINTF_BACKTRACE, the back-trace itself is considered
+  "other Valgrind output").  This allows you to use multiple
+  VALGRIND_PRINTF calls to build up a single output line, and also to
+  print multiple output lines with a single request (by embedding
+  multiple newlines in the string).
+
+
+* The graphs drawn by Massif's ms_print program have changed slightly:
+
+  - The half-height chars '.' and ',' are no longer drawn, because
+    they are confusing.  The --y option can be used if the default
+    y-resolution is not high enough.
+
+  - Horizontal lines are now drawn after the top of a snapshot if
+    there is a gap until the next snapshot.  This makes it clear that
+    the memory usage has not dropped to zero between snapshots.
+
+
+* Something that happened in 3.4.0, but wasn't clearly announced: the
+  option --read-var-info=yes can be used by some tools (Memcheck,
+  Helgrind and DRD).  When enabled, it causes Valgrind to read DWARF3
+  variable type and location information.  This makes those tools
+  start up more slowly and increases memory consumption, but
+  descriptions of data addresses in error messages become more
+  detailed.
+
+
+* exp-Omega, an experimental instantaneous leak-detecting tool, was
+  disabled in 3.4.0 due to a lack of interest and maintenance,
+  although the source code was still in the distribution.  The source
+  code has now been removed from the distribution.  For anyone
+  interested, the removal occurred in SVN revision r10247.
+
+
+* Some changes have been made to the build system.
+
+  - VEX/ is now integrated properly into the build system.  This means
+    that dependency tracking within VEX/ now works properly, "make
+    install" will work without requiring "make" before it, and
+    parallel builds (ie. 'make -j') now work (previously a
+    .NOTPARALLEL directive was used to serialize builds, ie. 'make -j'
+    was effectively ignored).
+
+  - The --with-vex configure option has been removed.  It was of
+    little use and removing it simplified the build system.
+
+  - The location of some install files has changed.  This should not
+    affect most users.  Those who might be affected:
+
+    * For people who use Valgrind with MPI programs, the installed
+      libmpiwrap.so library has moved from
+      $(INSTALL)/<platform>/libmpiwrap.so to
+      $(INSTALL)/libmpiwrap-<platform>.so.
+
+    * For people who distribute standalone Valgrind tools, the
+      installed libraries such as $(INSTALL)/<platform>/libcoregrind.a
+      have moved to $(INSTALL)/libcoregrind-<platform>.a.
+
+    These changes simplify the build system.
+
+  - Previously, all the distributed suppression (*.supp) files were
+    installed.  Now, only default.supp is installed.  This should not
+    affect users as the other installed suppression files were not
+    read; the fact that they were installed was a mistake.
+
+
+* KNOWN LIMITATIONS:
+
+  - Memcheck is unusable with the Intel compiler suite version 11.1,
+    when it generates code for SSE2-and-above capable targets.  This
+    is because of icc's use of highly optimised inlined strlen
+    implementations.  It causes Memcheck to report huge numbers of
+    false errors even in simple programs.  Helgrind and DRD may also
+    have problems.
+
+    Versions 11.0 and earlier may be OK, but this has not been
+    properly tested.
+
+
+The following bugs have been fixed or resolved.  Note that "n-i-bz"
+stands for "not in bugzilla" -- that is, a bug that was reported to us
+but never got a bugzilla entry.  We encourage you to file bugs in
+bugzilla (http://bugs.kde.org/enter_valgrind_bug.cgi) rather than
+mailing the developers (or mailing lists) directly -- bugs that are
+not entered into bugzilla tend to get forgotten about or ignored.
+
+To see details of a given bug, visit
+https://bugs.kde.org/show_bug.cgi?id=XXXXXX
+where XXXXXX is the bug number as listed below.
+
+84303   How about a LockCheck tool? 
+91633   dereference of null ptr in vgPlain_st_basetype 
+97452   Valgrind doesn't report any pthreads problems 
+100628  leak-check gets assertion failure when using 
+        VALGRIND_MALLOCLIKE_BLOCK on malloc()ed memory 
+108528  NPTL pthread cleanup handlers not called 
+110126  Valgrind 2.4.1 configure.in tramples CFLAGS 
+110128  mallinfo is not implemented... 
+110770  VEX: Generated files not always updated when making valgrind
+111102  Memcheck: problems with large (memory footprint) applications 
+115673  Vex's decoder should never assert 
+117564  False positive: Syscall param clone(child_tidptr) contains
+        uninitialised byte(s) 
+119404  executing ssh from inside valgrind fails 
+133679  Callgrind does not write path names to sources with dwarf debug
+        info
+135847  configure.in problem with non gnu compilers (and possible fix) 
+136154  threads.c:273 (vgCallgrind_post_signal): Assertion
+        '*(vgCallgrind_current_fn_stack.top) == 0' failed. 
+136230  memcheck reports "possibly lost", should be "still reachable" 
+137073  NULL arg to MALLOCLIKE_BLOCK causes crash 
+137904  Valgrind reports a memory leak when using POSIX threads,
+        while it shouldn't 
+139076  valgrind VT_GETSTATE error 
+142228  complaint of elf_dynamic_do_rela in trivial usage 
+145347  spurious warning with USBDEVFS_REAPURB 
+148441  (wine) can't find memory leak in Wine, win32 binary 
+        executable file.
+148742  Leak-check fails assert on exit 
+149878  add (proper) check for calloc integer overflow 
+150606  Call graph is broken when using callgrind control 
+152393  leak errors produce an exit code of 0. I need some way to 
+        cause leak errors to result in a nonzero exit code. 
+157154  documentation (leak-resolution doc speaks about num-callers
+        def=4) + what is a loss record
+159501  incorrect handling of ALSA ioctls 
+162020  Valgrinding an empty/zero-byte file crashes valgrind 
+162482  ppc: Valgrind crashes while reading stabs information 
+162718  x86: avoid segment selector 0 in sys_set_thread_area() 
+163253  (wine) canonicaliseSymtab forgot some fields in DiSym 
+163560  VEX/test_main.c is missing from valgrind-3.3.1 
+164353  malloc_usable_size() doesn't return a usable size 
+165468  Inconsistent formatting in memcheck manual -- please fix 
+169505  main.c:286 (endOfInstr):
+        Assertion 'ii->cost_offset == *cost_offset' failed 
+177206  Generate default.supp during compile instead of configure
+177209  Configure valt_load_address based on arch+os 
+177305  eventfd / syscall 323 patch lost
+179731  Tests fail to build because of inlining of non-local asm labels
+181394  helgrind: libhb_core.c:3762 (msm_write): Assertion 
+        'ordxx == POrd_EQ || ordxx == POrd_LT' failed. 
+181594  Bogus warning for empty text segment 
+181707  dwarf doesn't require enumerations to have name 
+185038  exp-ptrcheck: "unhandled syscall: 285" (fallocate) on x86_64 
+185050  exp-ptrcheck: sg_main.c:727 (add_block_to_GlobalTree):
+        Assertion '!already_present' failed.
+185359  exp-ptrcheck: unhandled syscall getresuid()
+185794  "WARNING: unhandled syscall: 285" (fallocate) on x86_64
+185816  Valgrind is unable to handle debug info for files with split
+        debug info that are prelinked afterwards 
+185980  [darwin] unhandled syscall: sem_open 
+186238  bbToIR_AMD64: disInstr miscalculated next %rip
+186507  exp-ptrcheck unhandled syscalls prctl, etc. 
+186790  Suppression pattern used for leaks are not reported 
+186796  Symbols with length>200 in suppression files are ignored 
+187048  drd: mutex PTHREAD_PROCESS_SHARED attribute missinterpretation
+187416  exp-ptrcheck: support for __NR_{setregid,setreuid,setresuid}
+188038  helgrind: hg_main.c:926: mk_SHVAL_fail: the 'impossible' happened
+188046  bashisms in the configure script
+188127  amd64->IR: unhandled instruction bytes: 0xF0 0xF 0xB0 0xA
+188161  memcheck: --track-origins=yes asserts "mc_machine.c:672
+        (get_otrack_shadow_offset_wrk): the 'impossible' happened."
+188248  helgrind: pthread_cleanup_push, pthread_rwlock_unlock, 
+        assertion fail "!lock->heldBy" 
+188427  Add support for epoll_create1 (with patch) 
+188530  Support for SIOCGSTAMPNS
+188560  Include valgrind.spec in the tarball
+188572  Valgrind on Mac should suppress setenv() mem leak 
+189054  Valgrind fails to build because of duplicate non-local asm labels 
+189737  vex amd64->IR: unhandled instruction bytes: 0xAC
+189762  epoll_create syscall not handled (--tool=exp-ptrcheck)
+189763  drd assertion failure: s_threadinfo[tid].is_recording 
+190219  unhandled syscall: 328 (x86-linux)
+190391  dup of 181394; see above
+190429  Valgrind reports lots of errors in ld.so with x86_64 2.9.90 glibc 
+190820  No debug information on powerpc-linux
+190820  No debug information on powerpc-linux 
+191095  PATCH: Improve usbdevfs ioctl handling 
+191182  memcheck: VALGRIND_LEAK_CHECK quadratic when big nr of chunks
+        or big nr of errors
+191189  --xml=yes should obey --gen-suppressions=all 
+191192  syslog() needs a suppression on macosx 
+191271  DARWIN: WARNING: unhandled syscall: 33554697 a.k.a.: 265 
+191761  getrlimit on MacOSX 
+191992  multiple --fn-skip only works sometimes; dependent on order 
+192634  V. reports "aspacem sync_check_mapping_callback: 
+        segment mismatch" on Darwin
+192954  __extension__ missing on 2 client requests 
+194429  Crash at start-up with glibc-2.10.1 and linux-2.6.29 
+194474  "INSTALL" file has different build instructions than "README"
+194671  Unhandled syscall (sem_wait?) from mac valgrind 
+195069  memcheck: reports leak (memory still reachable) for 
+        printf("%d', x) 
+195169  drd: (vgDrd_barrier_post_wait):
+        Assertion 'r->sg[p->post_iteration]' failed. 
+195268  valgrind --log-file doesn't accept ~/...
+195838  VEX abort: LibVEX_N_SPILL_BYTES too small for CPUID boilerplate 
+195860  WARNING: unhandled syscall: unix:223 
+196528  need a error suppression for pthread_rwlock_init under os x? 
+197227  Support aio_* syscalls on Darwin
+197456  valgrind should reject --suppressions=(directory) 
+197512  DWARF2 CFI reader: unhandled CFI instruction 0:10 
+197591  unhandled syscall 27 (mincore) 
+197793  Merge DCAS branch to the trunk == 85756, 142103
+197794  Avoid duplicate filenames in Vex 
+197898  make check fails on current SVN 
+197901  make check fails also under exp-ptrcheck in current SVN 
+197929  Make --leak-resolution=high the default 
+197930  Reduce spacing between leak reports 
+197933  Print command line of client at start-up, and shorten preamble 
+197966  unhandled syscall 205 (x86-linux, --tool=exp-ptrcheck)
+198395  add BBV to the distribution as an experimental tool 
+198624  Missing syscalls on Darwin: 82, 167, 281, 347 
+198649  callgrind_annotate doesn't cumulate counters 
+199338  callgrind_annotate sorting/thresholds are broken for all but Ir 
+199977  Valgrind complains about an unrecognized instruction in the
+        atomic_incs test program
+200029  valgrind isn't able to read Fedora 12 debuginfo 
+200760  darwin unhandled syscall: unix:284 
+200827  DRD doesn't work on Mac OS X 
+200990  VG_(read_millisecond_timer)() does not work correctly 
+201016  Valgrind does not support pthread_kill() on Mac OS 
+201169  Document --read-var-info
+201323  Pre-3.5.0 performance sanity checking 
+201384  Review user manual for the 3.5.0 release 
+201585  mfpvr not implemented on ppc 
+201708  tests failing because x86 direction flag is left set 
+201757  Valgrind doesn't handle any recent sys_futex additions 
+204377  64-bit valgrind can not start a shell script
+        (with #!/path/to/shell) if the shell is a 32-bit executable
+n-i-bz  drd: fixed assertion failure triggered by mutex reinitialization.
+n-i-bz  drd: fixed a bug that caused incorrect messages to be printed
+        about memory allocation events with memory access tracing enabled
+n-i-bz  drd: fixed a memory leak triggered by vector clock deallocation
+
+(3.5.0: 20 Aug 2009, vex r1913, valgrind r10846).
+
+
+
+Release 3.4.1 (28 February 2009)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+3.4.1 is a bug-fix release that fixes some regressions and assertion
+failures in debug info reading in 3.4.0, most notably incorrect stack
+traces on amd64-linux on older (glibc-2.3 based) systems. Various
+other debug info problems are also fixed.  A number of bugs in the
+exp-ptrcheck tool introduced in 3.4.0 have been fixed.
+
+In view of the fact that 3.4.0 contains user-visible regressions
+relative to 3.3.x, upgrading to 3.4.1 is recommended.  Packagers are
+encouraged to ship 3.4.1 in preference to 3.4.0.
+
+The fixed bugs are as follows.  Note that "n-i-bz" stands for "not in
+bugzilla" -- that is, a bug that was reported to us but never got a
+bugzilla entry.  We encourage you to file bugs in bugzilla
+(http://bugs.kde.org/enter_valgrind_bug.cgi) rather than mailing the
+developers (or mailing lists) directly -- bugs that are not entered
+into bugzilla tend to get forgotten about or ignored.
+
+n-i-bz  Fix various bugs reading icc-11 generated debug info
+n-i-bz  Fix various bugs reading gcc-4.4 generated debug info
+n-i-bz  Preliminary support for glibc-2.10 / Fedora 11
+n-i-bz  Cachegrind and Callgrind: handle non-power-of-two cache sizes,
+        so as to support (eg) 24k Atom D1 and Core2 with 3/6/12MB L2.
+179618  exp-ptrcheck crashed / exit prematurely
+179624  helgrind: false positive races with pthread_create and
+        recv/open/close/read
+134207  pkg-config output contains @VG_PLATFORM@
+176926  floating point exception at valgrind startup with PPC 440EPX
+181594  Bogus warning for empty text segment
+173751  amd64->IR: 0x48 0xF 0x6F 0x45 (even more redundant rex prefixes)
+181707  Dwarf3 doesn't require enumerations to have name
+185038  exp-ptrcheck: "unhandled syscall: 285" (fallocate) on x86_64
+185050  exp-ptrcheck: sg_main.c:727 (add_block_to_GlobalTree):
+        Assertion '!already_present' failed.
+185359  exp-ptrcheck unhandled syscall getresuid()
+
+(3.4.1.RC1:  24 Feb 2008, vex r1884, valgrind r9253).
+(3.4.1:      28 Feb 2008, vex r1884, valgrind r9293).
+
+
+
+Release 3.4.0 (2 January 2009)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+3.4.0 is a feature release with many significant improvements and the
+usual collection of bug fixes.  This release supports X86/Linux,
+AMD64/Linux, PPC32/Linux and PPC64/Linux.  Support for recent distros
+(using gcc 4.4, glibc 2.8 and 2.9) has been added.
+
+3.4.0 brings some significant tool improvements.  Memcheck can now
+report the origin of uninitialised values, the thread checkers
+Helgrind and DRD are much improved, and we have a new experimental
+tool, exp-Ptrcheck, which is able to detect overruns of stack and
+global arrays.  In detail:
+
+* Memcheck is now able to track the origin of uninitialised values.
+  When it reports an uninitialised value error, it will try to show
+  the origin of the value, as either a heap or stack allocation.
+  Origin tracking is expensive and so is not enabled by default.  To
+  use it, specify --track-origins=yes.  Memcheck's speed will be
+  essentially halved, and memory usage will be significantly
+  increased.  Nevertheless it can drastically reduce the effort
+  required to identify the root cause of uninitialised value errors,
+  and so is often a programmer productivity win, despite running more
+  slowly.
+
+* A version (1.4.0) of the Valkyrie GUI, that works with Memcheck in
+  3.4.0, will be released shortly.
+
+* Helgrind's race detection algorithm has been completely redesigned
+  and reimplemented, to address usability and scalability concerns:
+
+  - The new algorithm has a lower false-error rate: it is much less
+    likely to report races that do not really exist.
+
+  - Helgrind will display full call stacks for both accesses involved
+    in a race.  This makes it easier to identify the root causes of
+    races.
+
+  - Limitations on the size of program that can run have been removed.
+
+  - Performance has been modestly improved, although that is very
+    workload-dependent.
+
+  - Direct support for Qt4 threading has been added.
+
+  - pthread_barriers are now directly supported.
+
+  - Helgrind works well on all supported Linux targets.
+
+* The DRD thread debugging tool has seen major improvements:
+
+  - Greatly improved performance and significantly reduced memory
+    usage.
+
+  - Support for several major threading libraries (Boost.Thread, Qt4,
+    glib, OpenMP) has been added.
+
+  - Support for atomic instructions, POSIX semaphores, barriers and
+    reader-writer locks has been added.
+
+  - Works now on PowerPC CPUs too.
+
+  - Added support for printing thread stack usage at thread exit time.
+
+  - Added support for debugging lock contention.
+
+  - Added a manual for Drd.
+
+* A new experimental tool, exp-Ptrcheck, has been added.  Ptrcheck
+  checks for misuses of pointers.  In that sense it is a bit like
+  Memcheck.  However, Ptrcheck can do things Memcheck can't: it can
+  detect overruns of stack and global arrays, it can detect
+  arbitrarily far out-of-bounds accesses to heap blocks, and it can
+  detect accesses heap blocks that have been freed a very long time
+  ago (millions of blocks in the past).
+
+  Ptrcheck currently works only on x86-linux and amd64-linux.  To use
+  it, use --tool=exp-ptrcheck.  A simple manual is provided, as part
+  of the main Valgrind documentation.  As this is an experimental
+  tool, we would be particularly interested in hearing about your
+  experiences with it.
+
+* exp-Omega, an experimental instantaneous leak-detecting tool, is no
+  longer built by default, although the code remains in the repository
+  and the tarball.  This is due to three factors: a perceived lack of
+  users, a lack of maintenance, and concerns that it may not be
+  possible to achieve reliable operation using the existing design.
+
+* As usual, support for the latest Linux distros and toolchain
+  components has been added.  It should work well on Fedora Core 10,
+  OpenSUSE 11.1 and Ubuntu 8.10.  gcc-4.4 (in its current pre-release
+  state) is supported, as is glibc-2.9.  The C++ demangler has been
+  updated so as to work well with C++ compiled by even the most recent
+  g++'s.
+
+* You can now use frame-level wildcards in suppressions.  This was a
+  frequently-requested enhancement.  A line "..." in a suppression now
+  matches zero or more frames.  This makes it easier to write
+  suppressions which are precise yet insensitive to changes in
+  inlining behaviour.
+
+* 3.4.0 adds support on x86/amd64 for the SSSE3 instruction set.
+
+* Very basic support for IBM Power6 has been added (64-bit processes only).
+
+* Valgrind is now cross-compilable.  For example, it is possible to
+  cross compile Valgrind on an x86/amd64-linux host, so that it runs
+  on a ppc32/64-linux target.
+
+* You can set the main thread's stack size at startup using the
+  new --main-stacksize= flag (subject of course to ulimit settings).
+  This is useful for running apps that need a lot of stack space.
+
+* The limitation that you can't use --trace-children=yes together
+  with --db-attach=yes has been removed.
+
+* The following bugs have been fixed.  Note that "n-i-bz" stands for
+  "not in bugzilla" -- that is, a bug that was reported to us but
+  never got a bugzilla entry.  We encourage you to file bugs in
+  bugzilla (http://bugs.kde.org/enter_valgrind_bug.cgi) rather than
+  mailing the developers (or mailing lists) directly.
+
+  n-i-bz  Make return types for some client requests 64-bit clean
+  n-i-bz  glibc 2.9 support
+  n-i-bz  ignore unsafe .valgrindrc's (CVE-2008-4865)
+  n-i-bz  MPI_Init(0,0) is valid but libmpiwrap.c segfaults
+  n-i-bz  Building in an env without gdb gives bogus gdb attach
+  92456   Tracing the origin of uninitialised memory
+  106497  Valgrind does not demangle some C++ template symbols
+  162222  ==106497
+  151612  Suppression with "..." (frame-level wildcards in .supp files)
+  156404  Unable to start oocalc under memcheck on openSUSE 10.3 (64-bit)
+  159285  unhandled syscall:25 (stime, on x86-linux)
+  159452  unhandled ioctl 0x8B01 on "valgrind iwconfig"
+  160954  ppc build of valgrind crashes with illegal instruction (isel)
+  160956  mallinfo implementation, w/ patch
+  162092  Valgrind fails to start gnome-system-monitor
+  162819  malloc_free_fill test doesn't pass on glibc2.8 x86
+  163794  assertion failure with "--track-origins=yes"
+  163933  sigcontext.err and .trapno must be set together
+  163955  remove constraint !(--db-attach=yes && --trace-children=yes)
+  164476  Missing kernel module loading system calls
+  164669  SVN regression: mmap() drops posix file locks
+  166581  Callgrind output corruption when program forks
+  167288  Patch file for missing system calls on Cell BE
+  168943  unsupported scas instruction pentium
+  171645  Unrecognised instruction (MOVSD, non-binutils encoding)
+  172417  x86->IR: 0x82 ...
+  172563  amd64->IR: 0xD9 0xF5  -  fprem1
+  173099  .lds linker script generation error
+  173177  [x86_64] syscalls: 125/126/179 (capget/capset/quotactl)
+  173751  amd64->IR: 0x48 0xF 0x6F 0x45 (even more redundant prefixes)
+  174532  == 173751
+  174908  --log-file value not expanded correctly for core file
+  175044  Add lookup_dcookie for amd64
+  175150  x86->IR: 0xF2 0xF 0x11 0xC1 (movss non-binutils encoding)
+
+Developer-visible changes:
+
+* Valgrind's debug-info reading machinery has been majorly overhauled.
+  It can now correctly establish the addresses for ELF data symbols,
+  which is something that has never worked properly before now.
+
+  Also, Valgrind can now read DWARF3 type and location information for
+  stack and global variables.  This makes it possible to use the
+  framework to build tools that rely on knowing the type and locations
+  of stack and global variables, for example exp-Ptrcheck.
+
+  Reading of such information is disabled by default, because most
+  tools don't need it, and because it is expensive in space and time.
+  However, you can force Valgrind to read it, using the
+  --read-var-info=yes flag.  Memcheck, Helgrind and DRD are able to
+  make use of such information, if present, to provide source-level
+  descriptions of data addresses in the error messages they create.
+
+(3.4.0.RC1:  24 Dec 2008, vex r1878, valgrind r8882).
+(3.4.0:       3 Jan 2009, vex r1878, valgrind r8899).
+
 
 
 Release 3.3.1 (4 June 2008)
@@ -188,7 +968,7 @@ Omega and DRD.  There are many other smaller improvements.  In detail:
 - Memcheck has new flags --malloc-fill=<hexnum> and
   --free-fill=<hexnum> which free malloc'd / free'd areas with the
   specified byte.  This can help shake out obscure memory corruption
-  problems.  The definedness and addressibility of these areas is
+  problems.  The definedness and addressability of these areas is
   unchanged -- only the contents are affected.
 
 - The behaviour of Memcheck's client requests VALGRIND_GET_VBITS and

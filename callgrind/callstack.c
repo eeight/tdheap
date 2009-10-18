@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2008, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2009, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -114,7 +114,7 @@ void ensure_stack_size(Int i)
 
 
 /* Called when function entered nonrecursive */
-static void function_entered(fn_node* fn, BBCC* to)
+static void function_entered(fn_node* fn)
 {
   CLG_ASSERT(fn != 0);
 
@@ -124,7 +124,7 @@ static void function_entered(fn_node* fn, BBCC* to)
     CLG_(clo).verbose = fn->verbosity;
     fn->verbosity = old;
     VG_(message)(Vg_DebugMsg, 
-		 "Entering %s: Verbosity set to %d",
+		 "Entering %s: Verbosity set to %d\n",
 		 fn->name, CLG_(clo).verbose);
   }
 #endif		
@@ -147,7 +147,7 @@ static void function_entered(fn_node* fn, BBCC* to)
 }	
 
 /* Called when function left (no recursive level active) */
-static void function_left(fn_node* fn, BBCC* from)
+static void function_left(fn_node* fn)
 {
   CLG_ASSERT(fn != 0);
 
@@ -169,7 +169,7 @@ static void function_left(fn_node* fn, BBCC* from)
     CLG_(clo).verbose = fn->verbosity;
     fn->verbosity = old;
     VG_(message)(Vg_DebugMsg, 
-		 "Leaving %s: Verbosity set back to %d",
+		 "Leaving %s: Verbosity set back to %d\n",
 		 fn->name, CLG_(clo).verbose);
   }
 #endif		
@@ -230,7 +230,7 @@ void CLG_(push_call_stack)(BBCC* from, UInt jmp, BBCC* to, Addr sp, Bool skip)
 	jcc->call_counter++;
 	CLG_(stat).call_counter++;
 
-	if (*pdepth == 1) function_entered(to_fn, to);
+	if (*pdepth == 1) function_entered(to_fn);
     }
 
     /* return address is only is useful with a real call;
@@ -354,7 +354,7 @@ void CLG_(pop_call_stack)()
 	  CLG_(current_fn_stack).bottom + lower_entry->fn_sp;
 	CLG_ASSERT(CLG_(current_state).cxt != 0);
 
-	if (depth == 0) function_left(to_fn, jcc->from);
+	if (depth == 0) function_left(to_fn);
     }
 
     /* To allow for an assertion in push_call_stack() */

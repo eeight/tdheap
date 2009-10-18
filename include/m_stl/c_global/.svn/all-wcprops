@@ -1,0 +1,155 @@
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global
+END
+csignal
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/csignal
+END
+cinttypes
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/cinttypes
+END
+cstdlib
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/cstdlib
+END
+cstdio
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/cstdio
+END
+cctype
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/cctype
+END
+ctgmath
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/ctgmath
+END
+cstdarg
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/cstdarg
+END
+cerrno
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/cerrno
+END
+cmath
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/cmath
+END
+ciso646
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/ciso646
+END
+ctime
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/ctime
+END
+cfenv
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/cfenv
+END
+clocale
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/clocale
+END
+cmath.tcc
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/cmath.tcc
+END
+cassert
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/cassert
+END
+climits
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/climits
+END
+csetjmp
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/csetjmp
+END
+cwchar
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/cwchar
+END
+cstdint
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/cstdint
+END
+cfloat
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/cfloat
+END
+cstring
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/cstring
+END
+cstdbool
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/cstdbool
+END
+ccomplex
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/ccomplex
+END
+cstddef
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/cstddef
+END
+cwctype
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/!svn/ver/618/trunk/cpp_vg/include/m_stl/c_global/cwctype
+END
