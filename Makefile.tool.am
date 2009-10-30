@@ -18,6 +18,16 @@ TOOL_DEPENDENCIES_@VGCONF_PLATFORM_SEC_CAPS@ = \
 endif
 
 
+#AM_CXXFLAGS_@VGCONF_PLATFORM_PRI_CAPS@ = \
+#  -fno-exceptions \
+#  -fno-rtti
+#
+#if VGCONF_HAVE_PLATFORM_SEC
+#AM_CXXFLAGS_@VGCONF_PLATFORM_SEC_CAPS@ = \
+#  -fno-exceptions \
+#  -fno-rtti
+#endif
+
 TOOL_LDADD_COMMON = -lgcc
 TOOL_LDADD_@VGCONF_PLATFORM_PRI_CAPS@ = \
 	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_PRI_CAPS@) $(TOOL_LDADD_COMMON)
@@ -29,7 +39,7 @@ endif
 
 TOOL_LDFLAGS_COMMON_LINUX = -static \
 	-Wl,-defsym,valt_load_address=@VALT_LOAD_ADDRESS@ \
-	-nodefaultlibs -nostartfiles -u _start
+	-nodefaultlibs -nostartfiles -u _start -fno-exceptions -fno-rtti
 TOOL_LDFLAGS_COMMON_AIX5 = -static -Wl,-e_start_valgrind
 TOOL_LDFLAGS_COMMON_DARWIN = -nodefaultlibs -nostartfiles \
 	-Wl,-u,__start -Wl,-e,__start -Wl,-bind_at_load /usr/lib/dyld

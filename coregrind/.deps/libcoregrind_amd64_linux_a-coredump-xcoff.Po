@@ -1,1 +1,0 @@
-libcoregrind_amd64_linux_a-coredump-xcoff.o: m_coredump/coredump-xcoff.c

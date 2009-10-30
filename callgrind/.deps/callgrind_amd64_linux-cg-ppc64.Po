@@ -1,1 +1,0 @@
-callgrind_amd64_linux-cg-ppc64.o: ../cachegrind/cg-ppc64.c

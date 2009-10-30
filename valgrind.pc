@@ -1,4 +1,4 @@
-prefix=/home/eeight/prog/work/valgrind-3.5.0/inst
+prefix=/home/eeight/prog/work/git/inst
 exec_prefix=${prefix}
 libdir=${exec_prefix}/lib
 includedir=${prefix}/include/valgrind

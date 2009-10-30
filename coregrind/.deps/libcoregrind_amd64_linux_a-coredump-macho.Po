@@ -1,1 +1,0 @@
-libcoregrind_amd64_linux_a-coredump-macho.o: m_coredump/coredump-macho.c

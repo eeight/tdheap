@@ -11,7 +11,7 @@ TOOLS =		memcheck \
 		none \
 		helgrind \
 		drd \
-		cppgrind
+		tdheap2
 
 EXP_TOOLS = 	exp-ptrcheck \
 		exp-bbv

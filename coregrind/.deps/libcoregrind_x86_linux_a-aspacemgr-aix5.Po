@@ -1,1 +1,0 @@
-libcoregrind_x86_linux_a-aspacemgr-aix5.o: m_aspacemgr/aspacemgr-aix5.c

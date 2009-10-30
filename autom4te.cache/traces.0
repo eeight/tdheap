@@ -1197,9 +1197,9 @@ m4trace:configure.in:1861: -1- AC_CONFIG_FILES([
    callgrind/callgrind_annotate
    callgrind/callgrind_control
    callgrind/tests/Makefile
-   cppgrind/Makefile
-   cppgrind/docs/Makefile
-   cppgrind/tests/Makefile
+   tdheap2/Makefile
+   tdheap2/docs/Makefile
+   tdheap2/tests/Makefile
    helgrind/Makefile
    helgrind/tests/Makefile
    massif/Makefile
