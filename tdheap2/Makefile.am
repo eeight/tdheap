@@ -9,7 +9,7 @@ if VGCONF_HAVE_PLATFORM_SEC
 noinst_PROGRAMS += tdheap2-@VGCONF_ARCH_SEC@-@VGCONF_OS@
 endif
 
-tdheap2_SOURCES_COMMON = t2_main.cc
+tdheap2_SOURCES_COMMON = t2_main.cc t2_malloc.c
 
 tdheap2_@VGCONF_ARCH_PRI@_@VGCONF_OS@_SOURCES      = $(tdheap2_SOURCES_COMMON)
 tdheap2_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CPPFLAGS     = \
@@ -39,3 +39,40 @@ tdheap2_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDFLAGS      = \
 tdheap2_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CXXFLAGS     = \
 	$(AM_CXXFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
 endif
+
+#----------------------------------------------------------------------------
+# vgpreload_tdheap2-<platform>.so
+#----------------------------------------------------------------------------
+
+noinst_PROGRAMS += vgpreload_tdheap2-@VGCONF_ARCH_PRI@-@VGCONF_OS@.so
+if VGCONF_HAVE_PLATFORM_SEC
+noinst_PROGRAMS += vgpreload_tdheap2-@VGCONF_ARCH_SEC@-@VGCONF_OS@.so
+endif
+
+if VGCONF_OS_IS_DARWIN
+noinst_DSYMS = $(noinst_PROGRAMS)
+endif
+
+vgpreload_tdheap2_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_SOURCES      = 
+vgpreload_tdheap2_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CPPFLAGS     = \
+	$(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+vgpreload_tdheap2_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CFLAGS       = \
+	$(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@) $(AM_CFLAGS_PIC)
+vgpreload_tdheap2_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_DEPENDENCIES = \
+	$(LIBREPLACEMALLOC_@VGCONF_PLATFORM_PRI_CAPS@)
+vgpreload_tdheap2_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_LDFLAGS      = \
+	$(PRELOAD_LDFLAGS_@VGCONF_PLATFORM_PRI_CAPS@) \
+	$(LIBREPLACEMALLOC_LDFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+if VGCONF_HAVE_PLATFORM_SEC
+vgpreload_tdheap2_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_SOURCES      = 
+vgpreload_tdheap2_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CPPFLAGS     = \
+	$(AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
+vgpreload_tdheap2_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CFLAGS       = \
+	$(AM_CFLAGS_@VGCONF_PLATFORM_SEC_CAPS@) $(AM_CFLAGS_PIC)
+vgpreload_tdheap2_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_DEPENDENCIES = \
+	$(LIBREPLACEMALLOC_@VGCONF_PLATFORM_SEC_CAPS@)
+vgpreload_tdheap2_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_LDFLAGS      = \
+	$(PRELOAD_LDFLAGS_@VGCONF_PLATFORM_SEC_CAPS@) \
+	$(LIBREPLACEMALLOC_LDFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
+endif
+
