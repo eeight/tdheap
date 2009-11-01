@@ -5,7 +5,6 @@ extern "C" {
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcprint.h"
 #include "pub_tool_mallocfree.h"
-
 }
 
 #ifndef USE_STLPORT
