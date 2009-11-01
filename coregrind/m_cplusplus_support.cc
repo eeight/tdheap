@@ -80,4 +80,13 @@ namespace std {
   void abort() {
     tl_assert(false);
   }
+
+double ceil(double x) {
+  return static_cast<size_t>(x + 0.5);
 }
+
+float ceilf(float x) {
+  return static_cast<size_t>(x + 0.5f);
+}
+
+} // namespace std

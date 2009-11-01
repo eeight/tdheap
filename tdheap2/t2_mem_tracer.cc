@@ -7,7 +7,15 @@ const Addr kBucketMask = (static_cast<Addr>(0) - 1) << 6;
 
 } // namespace
 
-MemTracer theMemTracer;
+MemTracer *theMemTracer;
+
+void InitMemTracer() {
+  theMemTracer = new MemTracer();
+}
+
+void ShutdownMemTracer() {
+  delete theMemTracer;
+}
 
 MemTracer::MemTracer()
 {}
@@ -15,11 +23,11 @@ MemTracer::MemTracer()
 MemTracer::~MemTracer()
 {}
 
-void Memtracer::RegisterMemoryBlock(Addr addr, SizeT size) {
+void MemTracer::RegisterMemoryBlock(Addr addr, SizeT size) {
   InsertInMemTable_(MemoryBlock(addr, size));
 }
 
-void Memtracer::UnregisterMemoryBlock(Addr addr) {
+void MemTracer::UnregisterMemoryBlock(Addr addr) {
   const MemoryBlock *block = FindBlockByAddress(addr);
 
   if (block != 0) {
@@ -27,10 +35,10 @@ void Memtracer::UnregisterMemoryBlock(Addr addr) {
   }
 }
 
-void MemTracer::UnregisterMemoryBlock(const MemoryBlock &block,
+void MemTracer::HandleRealloc(const MemoryBlock &block,
     Addr new_start_addr, SizeT new_size) {
-  RemoveFromMemTable_(*block);
-  RegisterMemoryBlock(MemoryBlock(new_start_addr, new_size));
+  RemoveFromMemTable_(block);
+  RegisterMemoryBlock(new_start_addr, new_size);
 }
 
 const MemoryBlock *MemTracer::FindBlockByAddress(Addr addr) {
@@ -39,8 +47,8 @@ const MemoryBlock *MemTracer::FindBlockByAddress(Addr addr) {
   MemoryTable::const_iterator entry = memory_table_.find(bucket_number);
 
   if (entry != memory_table_.end()) {
-    for (MemoryBlockSet::const_iterator i = entry.second.begin();
-        i != entry.second.end(); ++i) {
+    for (MemoryBlockSet::const_iterator i = entry->second.begin();
+        i != entry->second.end(); ++i) {
       if (i->DoesContainAddress(addr)) {
         return &*i;
       }
@@ -78,7 +86,7 @@ void MemTracer::InsertInMemTable_(const MemoryBlock &block) {
 
   for (Addr bucket = begin_bucket; bucket <= end_bucket;
       bucket += kBucketSize) {
-    memory_table[bucket].insert(block);
+    memory_table_[bucket].insert(block);
   }
 }
 
@@ -88,6 +96,6 @@ void MemTracer::RemoveFromMemTable_(const MemoryBlock &block) {
 
   for (Addr bucket = begin_bucket; bucket <= end_bucket;
       bucket += kBucketSize) {
-    memory_table[bucket].erase(block);
+    memory_table_[bucket].erase(block);
   }
 }

@@ -6,34 +6,16 @@ extern "C" {
 #include "pub_tool_libcprint.h"
 #include "pub_tool_mallocfree.h"
 }
+#include "pub_tool_cplusplus.h"
 
-#ifndef USE_STLPORT
 #include "m_stl/std/vector"
 #include "m_stl/std/string"
 #include "m_stl/std/map"
 #include "m_stl/std/set"
 #include "m_stl/std/algorithm"
 
-#define STL_FROM "libstdc++/gcc-4.3.2"
-
-using namespace std;
-#else
-// using cppgrind/stlport
-#include "stlport/vector"
-#include "stlport/string"
-#include "stlport/map"
-#include "stlport/set"
-
-#define STL_FROM "stlport 5.2.0"
-
-using namespace stlport;
-#endif
-
-#include "include/pub_tool_cplusplus.h"
-
-extern "C" {
 #include "t2_malloc.h"
-}
+#include "t2_mem_tracer.h"
 
 static void t2_post_clo_init() {
 }
@@ -48,6 +30,7 @@ IRSB* t2_instrument(VgCallbackClosure* closure,
 }
 
 static void t2_fini(Int exitcode) {
+  ShutdownMemTracer();
 }
 
 static void t2_pre_clo_init() {
@@ -72,8 +55,7 @@ static void t2_pre_clo_init() {
                                 &t2_realloc,
                                 &t2_usable_size,
                                 0);
-
-  VG_(printf)("Using " STL_FROM " as STL implementation\n");
+  InitMemTracer();
 }
 
 VG_DETERMINE_INTERFACE_VERSION(t2_pre_clo_init)

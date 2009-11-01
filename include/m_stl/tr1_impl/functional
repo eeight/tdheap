@@ -1532,7 +1532,7 @@ _GLIBCXX_BEGIN_NAMESPACE_TR1
 	  switch (__op)
 	    {
 	    case __get_type_info:
-	      __dest._M_access<const type_info*>() = &typeid(_Functor);
+	      //__dest._M_access<const type_info*>() = &typeid(_Functor);
 	      break;
 
 	    case __get_functor_ptr:
@@ -1597,7 +1597,7 @@ _GLIBCXX_BEGIN_NAMESPACE_TR1
 	  switch (__op)
 	    {
 	    case __get_type_info:
-	      __dest._M_access<const type_info*>() = &typeid(_Functor);
+	      //__dest._M_access<const type_info*>() = &typeid(_Functor);
 	      break;
 	      
 	    case __get_functor_ptr:
@@ -1731,7 +1731,7 @@ _GLIBCXX_BEGIN_NAMESPACE_TR1
         switch (__op)
 	  {
 	  case __get_type_info:
-	    __dest._M_access<const type_info*>() = &typeid(_Functor);
+	    //__dest._M_access<const type_info*>() = &typeid(_Functor);
 	    break;
 	    
 	  case __get_functor_ptr:
@@ -1946,7 +1946,7 @@ _GLIBCXX_BEGIN_NAMESPACE_TR1
        *
        *  This function will not throw an exception.
        */
-      const type_info& target_type() const;
+      //const type_info& target_type() const;
       
       /**
        *  @brief Access the stored target function object.
@@ -2020,6 +2020,7 @@ _GLIBCXX_BEGIN_NAMESPACE_TR1
       return _M_invoker(_M_functor, __args...);
     }
 
+#if 0
   template<typename _Res, typename... _ArgTypes>
     const type_info&
     function<_Res(_ArgTypes...)>::
@@ -2034,6 +2035,7 @@ _GLIBCXX_BEGIN_NAMESPACE_TR1
       else
 	return typeid(void);
     }
+#endif
 
   template<typename _Res, typename... _ArgTypes>
     template<typename _Functor>
@@ -2041,17 +2043,17 @@ _GLIBCXX_BEGIN_NAMESPACE_TR1
       function<_Res(_ArgTypes...)>::
       target()
       {
-	if (typeid(_Functor) == target_type() && _M_manager)
-	  {
+	//if (typeid(_Functor) == target_type() && _M_manager)
+//	  {
 	    _Any_data __ptr;
 	    if (_M_manager(__ptr, _M_functor, __get_functor_ptr)
 		&& !is_const<_Functor>::value)
 	      return 0;
 	    else
 	      return __ptr._M_access<_Functor*>();
-	  }
-	else
-	  return 0;
+//	  }
+//	else
+//	  return 0;
       }
 
   template<typename _Res, typename... _ArgTypes>
@@ -2060,14 +2062,14 @@ _GLIBCXX_BEGIN_NAMESPACE_TR1
       function<_Res(_ArgTypes...)>::
       target() const
       {
-	if (typeid(_Functor) == target_type() && _M_manager)
-	  {
+//	if (typeid(_Functor) == target_type() && _M_manager)
+//	  {
 	    _Any_data __ptr;
 	    _M_manager(__ptr, _M_functor, __get_functor_ptr);
 	    return __ptr._M_access<const _Functor*>();
-	  }
-	else
-	  return 0;
+//	  }
+//	else
+//	  return 0;
       }
 
   // [3.7.2.7] null pointer comparisons

@@ -335,7 +335,10 @@ COREGRIND_SOURCES_COMMON = \
 	m_cplusplus_support.cc \
 	m_stl/src/tree.cc \
 	m_stl/src/string-inst.cc \
-	m_stl/src/functexcept.cc
+	m_stl/src/functexcept.cc \
+	m_stl/src/hash.cc \
+	m_stl/src/hashtable.cc \
+	m_stl/src/compatibility.cc
 #TODO: add more sources above
 
 libcoregrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_a_SOURCES = \

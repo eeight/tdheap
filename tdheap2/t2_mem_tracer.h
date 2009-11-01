@@ -16,11 +16,11 @@ class MemoryBlock {
 
   Addr start_addr() const { return start_addr_; }
   Addr end_addr() const { return start_addr_ + size_ - 1; }
-  SizeT size() const { return size; }
+  SizeT size() const { return size_; }
   bool DoesContainAddress(Addr addr) const {
     return addr >= start_addr_ && addr < start_addr_ + size_;
   } 
-  bool operator ==(const MemoryBlock &other) {
+  bool operator ==(const MemoryBlock &other) const {
     return start_addr_ == other.start_addr_;
   }
 
@@ -33,9 +33,11 @@ namespace std {
 namespace tr1 {
 
 template <>
-size_t hash::operator()<MemoryBlock>(const MemoryBlock &block) {
-  return block.start_addr();
-}
+struct hash<MemoryBlock> : public unary_function<MemoryBlock, size_t> {
+  size_t operator()(const MemoryBlock &block) const {
+    return block.start_addr();
+  }
+};
 
 } // namespace tr1
 } // namespace std
@@ -47,7 +49,7 @@ class MemTracer {
 
   void RegisterMemoryBlock(Addr addr, SizeT size);
   void UnregisterMemoryBlock(Addr addr);
-  void UnregisterMemoryBlock(const MemoryBlock &block, Addr new_start_addr,
+  void HandleRealloc(const MemoryBlock &block, Addr new_start_addr,
       SizeT new_size);
   void UpdateMemoryBlockSize(const MemoryBlock &block, SizeT new_size);
   const MemoryBlock *FindBlockByAddress(Addr addr);
@@ -68,6 +70,9 @@ class MemTracer {
   MemoryTable memory_table_;
 };
 
-extern MemTracer theMemTracer;
+extern MemTracer *theMemTracer;
+
+void InitMemTracer();
+void ShutdownMemTracer();
 
 #endif
