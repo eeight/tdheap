@@ -32,7 +32,7 @@ void *t2_malloc_common(SizeT align, SizeT n) {
         theMemTracer->RegisterMemoryBlock((Addr)result, n);
     }
 
-    VG_(printf)("Allocated %d bytes\n", n);
+    //VG_(printf)("Allocated %d bytes\n", n);
     return result;
 }
 
