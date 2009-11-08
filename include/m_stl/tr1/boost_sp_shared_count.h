@@ -76,9 +76,11 @@ namespace tr1
       _M_dispose() // nothrow
       { _M_del(_M_ptr); }
       
+#if 0
       virtual void*
       _M_get_deleter(const std::type_info& __ti)
       { return __ti == typeid(_Deleter) ? &_M_del : 0; }
+#endif
       
     private:
       _Sp_counted_base_impl(const _Sp_counted_base_impl&);
@@ -201,9 +203,11 @@ namespace tr1
       operator<(const __shared_count& __a, const __shared_count& __b)
       { return std::less<_Sp_counted_base<_Lp>*>()(__a._M_pi, __b._M_pi); }
   
+#if 0
       void*
       _M_get_deleter(const std::type_info& __ti) const
       { return _M_pi ? _M_pi->_M_get_deleter(__ti) : 0; }
+#endif
 
     private:
       friend class __weak_count<_Lp>;

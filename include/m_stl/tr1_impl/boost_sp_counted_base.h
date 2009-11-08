@@ -127,8 +127,10 @@ _GLIBCXX_BEGIN_NAMESPACE_TR1
       _M_destroy() // nothrow
       { delete this; }
       
+#if 0
       virtual void*
       _M_get_deleter(const std::type_info&) = 0;
+#endif
 
       void
       _M_add_ref_copy()

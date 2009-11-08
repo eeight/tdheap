@@ -81,7 +81,7 @@ void t2_builtin_vec_delete(ThreadId tid, void *p) {
 void *t2_realloc(ThreadId tid, void *p, SizeT new_size) {
   SizeT old_size;
 
-  const MemoryBlock *block = theMemTracer->FindBlockByAddress((Addr)p);
+  MemoryBlockPtr block = theMemTracer->FindBlockByAddress((Addr)p);
   if (block == NULL) {
       VG_(tool_panic)((Char *)"Cannot realloc not malloc'd block");
   } else {
@@ -101,14 +101,14 @@ void *t2_realloc(ThreadId tid, void *p, SizeT new_size) {
     VG_(memcpy)(result, p, copy_size);
     VG_(cli_free)(p);
 
-    theMemTracer->HandleRealloc(*block, (Addr)result, new_size);
+    theMemTracer->HandleRealloc(block, (Addr)result, new_size);
 
     return result;
   }
 }
 
 SizeT t2_usable_size(ThreadId tid, void *p) {
-  const MemoryBlock *block = theMemTracer->FindBlockByAddress((Addr)p);
+  MemoryBlockPtr block = theMemTracer->FindBlockByAddress((Addr)p);
   if (block != 0) {
     return block->size();
   } else {

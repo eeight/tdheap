@@ -623,11 +623,13 @@ _GLIBCXX_BEGIN_NAMESPACE_TR1
       return __os;
     }
 
+#if 0
   // 2.2.3.10 shared_ptr get_deleter (experimental)
   template<typename _Del, typename _Tp, _Lock_policy _Lp>
     inline _Del*
     get_deleter(const __shared_ptr<_Tp, _Lp>& __p)
     { return static_cast<_Del*>(__p._M_get_deleter(typeid(_Del))); }
+#endif
 
 
   template<typename _Tp, _Lock_policy _Lp>

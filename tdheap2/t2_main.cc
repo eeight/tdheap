@@ -5,9 +5,9 @@ extern "C" {
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcprint.h"
 #include "pub_tool_mallocfree.h"
-#include "pub_tool_machine.h" // VG_(fnptr_to_fnentry)
-}
+#include "pub_tool_machine.h" // VG_(fnptr_to_fnentry) }
 #include "pub_tool_cplusplus.h"
+}
 
 #include "m_stl/std/vector"
 #include "m_stl/std/string"
@@ -17,6 +17,7 @@ extern "C" {
 
 #include "t2_malloc.h"
 #include "t2_mem_tracer.h"
+#include "t2_clusterizer.h"
 
 Addr current_vtable;
 
@@ -26,7 +27,7 @@ static void t2_post_clo_init() {
 static
 void VG_REGPARM(2) MemReadHook(Addr addr, SizeT size) {
   if (size == sizeof(void *)) {
-    const MemoryBlock *block = theMemTracer->FindBlockByAddress(addr);
+    MemoryBlockPtr block = theMemTracer->FindBlockByAddress(addr);
 
     if (block != 0) {
       // Program something that looks like a pointer located at the beginning of
@@ -35,6 +36,7 @@ void VG_REGPARM(2) MemReadHook(Addr addr, SizeT size) {
         // Save this pointer in variable.
         // TODO: add test not to use values that are not vatable pointers for sure.
         current_vtable = *reinterpret_cast<Addr *>(addr);
+        block->SetVtable(current_vtable);
         VG_(printf)("Obtained current vtable\n");
       }
     }
@@ -159,6 +161,10 @@ IRSB* t2_instrument(VgCallbackClosure* closure,
 }
 
 static void t2_fini(Int exitcode) {
+  Clusterizer clusterizer(theMemTracer->memory_table());
+
+  clusterizer.PrintClusters();
+
   ShutdownMemTracer();
 }
 

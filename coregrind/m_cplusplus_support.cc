@@ -12,6 +12,7 @@ extern "C" {
 #include <new>
 #include "include/pub_tool_cplusplus.h"
 
+extern "C" void __cxa_pure_virtual() { VG_(tool_panic)((Char *)"Pure virtual function called"); }
 
 //---------------------- C++ malloc support -------------- {{{1
 class MallocCostCenterStack {
