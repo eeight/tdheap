@@ -1,11 +1,15 @@
 extern "C" {
 #include "pub_tool_basics.h"
+#include "pub_tool_basics.h"
+#include "pub_tool_debuginfo.h"
 #include "pub_tool_tooliface.h"
 #include "pub_tool_libcassert.h"
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcprint.h"
 #include "pub_tool_mallocfree.h"
 #include "pub_tool_machine.h" // VG_(fnptr_to_fnentry)
+#include "pub_tool_stacktrace.h"
+#include "pub_tool_threadstate.h"
 }
 #include "pub_tool_cplusplus.h"
 
@@ -15,6 +19,7 @@ extern "C" {
 #include "m_stl/std/set"
 #include "m_stl/std/algorithm"
 #include "m_stl/tr1/unordered_map"
+#include "m_stl/tr1/unordered_set"
 
 #include "t2_malloc.h"
 #include "t2_mem_tracer.h"
@@ -24,14 +29,123 @@ namespace {
 const IRType kPointerType = sizeof(void *) == 8 ? Ity_I64 : Ity_I32;
 const IROp kPointerAddOp = sizeof(void *) == 8 ? Iop_Add64 : Iop_Add32;
 
+typedef std::tr1::unordered_set<Addr> AddrSet;
+typedef std::tr1::unordered_map<Addr, AddrSet> CallSites;
+
+AddrSet *g_vtables;
+CallSites *g_callSites;
+
+/*
+ * Finds begginning of vtable.
+ * If a virtual call happens though pointer to inherited class
+ * pointer to virtual table might have a non-zero offset from real vtable.
+ *
+ * Layout is the following:
+ * (See http://www.cse.wustl.edu/~mdeters/seminar/fall2005/mi.html
+ * for more details).
+ *
+ * <vbase_offset>
+ * <top_offset>
+ * <ptr to typeinfo>
+ * first method
+ */
+Addr FindVtableBeginning(Addr addr) {
+    Addr *x = (Addr *)addr;
+    Addr top_offset = x[-2];
+    Addr ptr_to_typeinfo = x[-1];
+
+    /*
+     * There could be a problem when ptr_to_typeinfo == 0 and
+     * there are two consequent null entries in the vtable.
+     */
+    while (top_offset != 0) {
+        /*
+         * Move x backwards until we found another pointer
+         * to the same typeinfo.
+         */
+        do {
+            --x;
+        } while (x[-1] != ptr_to_typeinfo);
+        top_offset = x[-2];
+    }
+
+    //TODO maybe also return offset from given addr.
+    return (Addr)x;
+}
+
+void GenerateVtablesLayout() {
+    char buffer[1024];
+
+    VG_(printf)("digraph hierarchy {\n");
+    for (CallSites::const_iterator call_site = g_callSites->begin();
+            call_site != g_callSites->end(); ++call_site) {
+        for (AddrSet::const_iterator addr = call_site->second.begin();
+                addr != call_site->second.end(); ++addr) {
+            if (!VG_(get_objname)(call_site->first, (Char *)buffer, 1024)) {
+                VG_(strcpy)((Char *)buffer, (Char *)"unknown");
+            }
+            VG_(printf)("\"%p\" -> \"%s@%p\";\n",
+                    *addr, buffer, call_site->first);
+        }
+    }
+    VG_(printf)("}\n");
+}
+
+void InitInheritanceTracker() {
+    g_vtables = new AddrSet();
+    g_callSites = new CallSites();
+}
+
+void ShutdownInheritanceTracker() {
+    delete g_vtables;
+    delete g_callSites;
+}
+
+Addr GetCurrentIp() {
+    Addr ip, sp, fp;
+
+    VG_(get_StackTrace)(VG_(get_running_tid)(), &ip, 1, &sp, &fp, 0);
+
+    return ip;
+}
+
 } // namespace
 
 static void t2_post_clo_init() {
 }
 
+#if 0
 static
-void VG_REGPARM(2) VCallHook(Addr addr, Addr vtable) {
-  VG_(printf)("Virtual call(object=%p, vtable=%p)\n", addr, vtable);
+ULong IRConstToULong(IRConst *c) {
+  switch (c->tag) {
+    case ICo_U1:
+      return c->Ico.U1;
+    case ICo_U8:
+      return c->Ico.U8;
+    case ICo_U16:
+      return c->Ico.U16;
+    case ICo_U32:
+      return c->Ico.U32;
+    case ICo_U64:
+      return c->Ico.U64;
+    default:
+      VG_(tool_panic)((Char *)"IRCosntToULong: Integer constant expected");
+  }
+}
+#endif
+
+static
+void VG_REGPARM(3) VCallHook(Addr addr, Addr vtable, Addr offset) {
+    Addr real_vtable = FindVtableBeginning(vtable);
+    Addr ip = GetCurrentIp();
+
+    g_vtables->insert(real_vtable);
+    (*g_callSites)[ip].insert(real_vtable);
+
+#if 0
+    VG_(printf)("Virtual call(ip=%p, object=%p, vtable=%p, real_vtable=%p, offset=%ld)\n",
+            ip, addr, vtable, real_vtable, offset/sizeof(void *));
+#endif
 }
 
 static
@@ -81,6 +195,7 @@ IRSB* t2_instrument(VgCallbackClosure* closure,
 
   IRExpr *expr = code_in->next;
   IRTemp a_vtable_tmp = expr->Iex.RdTmp.tmp;
+  IRConst *offset = 0;
 
   if (IRExpr *a_vtable_tmp_value = tmp_values[a_vtable_tmp]) {
     if (a_vtable_tmp_value->tag == Iex_Load &&
@@ -100,6 +215,8 @@ IRSB* t2_instrument(VgCallbackClosure* closure,
               left->tag == Iex_RdTmp) {
             a_vtable_address = left->Iex.RdTmp.tmp;
             a_vtable_address_value = tmp_values[left->Iex.RdTmp.tmp];
+            
+            offset = right->Iex.Const.con;
           }
         }
 
@@ -112,11 +229,20 @@ IRSB* t2_instrument(VgCallbackClosure* closure,
           IRExpr **argv;
           IRDirty *di;
 
-          argv = mkIRExprVec_2(
+          if (offset == 0) {
+            if (sizeof(void *) == 4) {
+              offset = IRConst_U32(0);
+            } else {
+              offset = IRConst_U64(0);
+            }
+          }
+
+          argv = mkIRExprVec_3(
               IRExpr_RdTmp(a),
-              IRExpr_RdTmp(a_vtable_address)
+              IRExpr_RdTmp(a_vtable_address),
+              IRExpr_Const(offset)
               );
-          di = unsafeIRDirty_0_N(2, "VCallHook",
+          di = unsafeIRDirty_0_N(3, (HChar *)"VCallHook",
               VG_(fnptr_to_fnentry)(reinterpret_cast<void *>(&VCallHook)),
               argv);
           addStmtToIRSB(code_out, IRStmt_Dirty(di));
@@ -131,7 +257,9 @@ IRSB* t2_instrument(VgCallbackClosure* closure,
 }
 
 static void t2_fini(Int exitcode) {
-  ShutdownMemTracer();
+    GenerateVtablesLayout();
+    ShutdownInheritanceTracker();
+    ShutdownMemTracer();
 }
 
 static void t2_pre_clo_init() {
@@ -157,6 +285,7 @@ static void t2_pre_clo_init() {
                                 &t2_usable_size,
                                 0);
   InitMemTracer();
+  InitInheritanceTracker();
 }
 
 VG_DETERMINE_INTERFACE_VERSION(t2_pre_clo_init)
