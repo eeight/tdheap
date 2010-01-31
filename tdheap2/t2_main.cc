@@ -1,9 +1,7 @@
 extern "C" {
 #include "pub_tool_basics.h"
-#include "pub_tool_basics.h"
 #include "pub_tool_debuginfo.h"
 #include "pub_tool_tooliface.h"
-#include "pub_tool_libcassert.h"
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcprint.h"
 #include "pub_tool_mallocfree.h"
@@ -23,83 +21,12 @@ extern "C" {
 
 #include "t2_malloc.h"
 #include "t2_mem_tracer.h"
+#include "t2_inheritance.h"
 
 namespace {
 
 const IRType kPointerType = sizeof(void *) == 8 ? Ity_I64 : Ity_I32;
 const IROp kPointerAddOp = sizeof(void *) == 8 ? Iop_Add64 : Iop_Add32;
-
-typedef std::tr1::unordered_set<Addr> AddrSet;
-typedef std::tr1::unordered_map<Addr, AddrSet> CallSites;
-
-AddrSet *g_vtables;
-CallSites *g_callSites;
-
-/*
- * Finds begginning of vtable.
- * If a virtual call happens though pointer to inherited class
- * pointer to virtual table might have a non-zero offset from real vtable.
- *
- * Layout is the following:
- * (See http://www.cse.wustl.edu/~mdeters/seminar/fall2005/mi.html
- * for more details).
- *
- * <vbase_offset>
- * <top_offset>
- * <ptr to typeinfo>
- * first method
- */
-Addr FindVtableBeginning(Addr addr) {
-    Addr *x = (Addr *)addr;
-    Addr top_offset = x[-2];
-    Addr ptr_to_typeinfo = x[-1];
-
-    /*
-     * There could be a problem when ptr_to_typeinfo == 0 and
-     * there are two consequent null entries in the vtable.
-     */
-    while (top_offset != 0) {
-        /*
-         * Move x backwards until we found another pointer
-         * to the same typeinfo.
-         */
-        do {
-            --x;
-        } while (x[-1] != ptr_to_typeinfo);
-        top_offset = x[-2];
-    }
-
-    //TODO maybe also return offset from given addr.
-    return (Addr)x;
-}
-
-void GenerateVtablesLayout() {
-    char buffer[1024];
-
-    VG_(printf)("digraph hierarchy {\n");
-    for (CallSites::const_iterator call_site = g_callSites->begin();
-            call_site != g_callSites->end(); ++call_site) {
-        for (AddrSet::const_iterator addr = call_site->second.begin();
-                addr != call_site->second.end(); ++addr) {
-            if (!VG_(get_objname)(call_site->first, (Char *)buffer, 1024)) {
-                VG_(strcpy)((Char *)buffer, (Char *)"unknown");
-            }
-            VG_(printf)("\"%p\" -> \"%s@%p\";\n",
-                    *addr, buffer, call_site->first);
-        }
-    }
-    VG_(printf)("}\n");
-}
-
-void InitInheritanceTracker() {
-    g_vtables = new AddrSet();
-    g_callSites = new CallSites();
-}
-
-void ShutdownInheritanceTracker() {
-    delete g_vtables;
-    delete g_callSites;
-}
 
 Addr GetCurrentIp() {
     Addr ip, sp, fp;
@@ -137,14 +64,17 @@ ULong IRConstToULong(IRConst *c) {
 static
 void VG_REGPARM(3) VCallHook(Addr addr, Addr vtable, Addr offset) {
     Addr real_vtable = FindVtableBeginning(vtable);
+    Addr real_addr = FindObjectBeginning(addr, real_vtable);
     Addr ip = GetCurrentIp();
+    int function_number = offset/sizeof(void *);
 
-    g_vtables->insert(real_vtable);
-    (*g_callSites)[ip].insert(real_vtable);
-
+    g_callSites->insert(std::make_pair(
+                ip, CallSite(function_number))).
+        first->second.addCallee(real_vtable);
+    
 #if 0
-    VG_(printf)("Virtual call(ip=%p, object=%p, vtable=%p, real_vtable=%p, offset=%ld)\n",
-            ip, addr, vtable, real_vtable, offset/sizeof(void *));
+    VG_(printf)("Virtual call(ip=%p, object=%p, real_object=%p, vtable=%p, real_vtable=%p, offset=%ld)\n",
+            ip, addr, real_addr, vtable, real_vtable, offset/sizeof(void *));
 #endif
 }
 
