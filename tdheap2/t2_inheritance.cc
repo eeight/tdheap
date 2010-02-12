@@ -8,6 +8,7 @@ extern "C" {
 }
 
 #include "m_stl/tr1/functional"
+#include "m_stl/std/string"
 
 CallSites *g_callSites;
 
@@ -62,6 +63,55 @@ void MergeCallSites() {
     } while (false);
 }
 
+/**
+ * Sorts call sites' interfaces.
+ * Suppose we have two call sites used with same vtable.
+ * First of them refers to nth furction, second refers to mth function and n < m.
+ * Then we say second call site interface inherits the fist call site interface.
+ *
+ * The whole thing after inheritance links are set becomes very fragile
+ * as inheritance relations are represented as pointers. Se be sure that
+ * no reallocs would be made to the CallSites storage.
+ */
+void SortInterfaces() {
+    for (CallSites::iterator i = g_callSites->begin();
+            next(i) != g_callSites->end(); ++i) {
+        for (CallSites::iterator ii = next(i);
+                ii != g_callSites->end(); ++ii) {
+            CallSite *a = &i->second;
+            CallSite *b = &ii->second;
+            if (DoIntersect(a->callees(), b->callees())) {
+                if (a->functionNumber() == b->functionNumber()) {
+                    VG_(tool_panic)((Char *)"Call MergeCallSites before calling SortInterfaces");
+                }
+                if (a->functionNumber() > b->functionNumber()) {
+                    std::swap(a, b);
+                }
+                if (a->parent() != 0 &&
+                        a->parent()->functionNumber() == b->functionNumber()) {
+                    VG_(tool_panic)((Char *)"Call MergeCallSites before calling SortInterfaces");
+                }
+                if (a->parent() == 0 ||
+                        (a->parent()->functionNumber() > b->functionNumber())) {
+                    a->setParent(b);
+                }
+            }
+        }
+    }
+}
+
+std::string codeReference(Addr addr) {
+    char objname[1024];
+    char buffer[1024];
+
+    if (!VG_(get_objname)(addr, (Char *)objname, 1024)) {
+        VG_(strcpy)((Char *)objname, (Char *)"unknown");
+    }
+
+    VG_(snprintf)((Char *)buffer, 1024, "%p@%s", addr, objname);
+    return buffer;
+}
+
 } // namespace
 
 void CallSite::mergeWith(const CallSite &site) {
@@ -111,9 +161,8 @@ Addr FindObjectBeginning(Addr addr, Addr real_vtable) {
 }
 
 void GenerateVtablesLayout() {
-    char buffer[1024];
-
     MergeCallSites();
+    SortInterfaces();
 
     VG_(printf)("digraph hierarchy {\n");
     for (CallSites::const_iterator call_site = g_callSites->begin();
@@ -121,11 +170,16 @@ void GenerateVtablesLayout() {
         const AddrSet &callees = call_site->second.callees();
         for (AddrSet::const_iterator addr = callees.begin();
                 addr != callees.end(); ++addr) {
-            if (!VG_(get_objname)(call_site->first, (Char *)buffer, 1024)) {
-                VG_(strcpy)((Char *)buffer, (Char *)"unknown");
+            if (!call_site->second.isInherited()) {
+                VG_(printf)("\"%p\" -> \"%s\";\n",
+                        *addr, codeReference(call_site->first).c_str());
             }
-            VG_(printf)("\"%p\" -> \"%s@%p\";\n",
-                    *addr, buffer, call_site->first);
+        }
+
+        if (call_site->second.parent() != 0) {
+            VG_(printf)("\"%s\" -> \"%s\";\n",
+                    codeReference(call_site->first).c_str(),
+                    codeReference(call_site->second.parent()->ip()).c_str());
         }
     }
     VG_(printf)("}\n");

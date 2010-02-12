@@ -13,18 +13,35 @@ typedef std::tr1::unordered_set<Addr> AddrSet;
 
 class CallSite {
 public:
-    CallSite(int function_number) : function_number_(function_number)
+    CallSite(Addr ip, int function_number) : 
+        ip_(ip), function_number_(function_number), parent_(0),
+        isInherited_(false)
     {}
 
     void mergeWith(const CallSite &site);
     void addCallee(Addr addr);
 
+    Addr ip() const { return ip_; }
+
     int functionNumber() const { return function_number_; }
     const AddrSet &callees() const { return callees_; }
 
+    CallSite *parent() const { return parent_; }
+
+    void setParent(CallSite *parent) {
+        parent_ = parent;
+        parent->isInherited_ = true;
+    }
+
+    bool isInherited() const { return isInherited_; }
+
 private:
+    // Vtables used with this call site.
     AddrSet callees_;
+    Addr ip_;
     int function_number_;
+    CallSite *parent_;
+    bool isInherited_;
 };
 
 typedef std::tr1::unordered_map<Addr, CallSite> CallSites;
