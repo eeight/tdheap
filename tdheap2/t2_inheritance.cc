@@ -13,6 +13,7 @@ CallSites *g_callSites;
 VTables *g_vtables;
 
 // FIXME Memory occupied by g_callSites is never freed.
+// FIXME Memory occupied by g_vtables is never freed.
 
 namespace {
 
@@ -44,6 +45,36 @@ bool DoIntersect(const VTableSet &lhs, const VTableSet &rhs) {
 }
 
 /**
+ * Propagates callees.
+ * Suppose we have two call sites intersecting by used vtables with
+ * function numbers n and m, n < m. The we say that everythig used
+ * through the second one might be used through the first one.
+ */
+void PropagateCallees() {
+    bool has_been_propagaged;
+
+    do { 
+        has_been_propagaged = false;
+        for (CallSites::iterator i = g_callSites->begin();
+                next(i) != g_callSites->end(); ++i) {
+            for (CallSites::iterator ii = next(i);
+                    ii != g_callSites->end(); ++ii) {
+                CallSite *a = i->second;
+                CallSite *b = ii->second;
+                if (a->functionNumber() > b->functionNumber()) {
+                    std::swap(a, b);
+                }
+                if (DoIntersect(a->callees(), b->callees())) {
+                    if (a->copyCalleesFrom(b)) {
+                        has_been_propagaged = true;
+                    }
+                }
+            }
+        }
+    } while (has_been_propagaged);
+}
+
+/**
  * Merges call sites.
  * Two call sites are merged if they have the same function
  * number and there is a vtable used by both.
@@ -61,7 +92,7 @@ void MergeCallSites() {
             if (i->second->functionNumber() ==
                     ii->second->functionNumber() &&
                     DoIntersect(i->second->callees(), ii->second->callees())) {
-                i->second->mergeWith(*ii->second);
+                i->second->mergeWith(ii->second);
                 g_callSites->erase(ii);
                 goto next_iter;
             }
@@ -76,6 +107,10 @@ void MergeCallSites() {
  * Then we say second call site interface inherits the fist call site interface.
  */
 void SortInterfaces() {
+    if (g_callSites->size() < 2) {
+        return;
+    }
+
     for (CallSites::iterator i = g_callSites->begin();
             next(i) != g_callSites->end(); ++i) {
         for (CallSites::iterator ii = next(i);
@@ -84,17 +119,23 @@ void SortInterfaces() {
             CallSite *b = ii->second;
             if (DoIntersect(a->callees(), b->callees())) {
                 if (a->functionNumber() == b->functionNumber()) {
-                    VG_(tool_panic)((Char *)"Call MergeCallSites before calling SortInterfaces");
+                    VG_(tool_panic)((Char *)"Call MergeCallSites before calling SortInterfaces #1");
                 }
-                if (a->functionNumber() > b->functionNumber()) {
+                if (a->functionNumber() < b->functionNumber()) {
                     std::swap(a, b);
                 }
                 if (a->parent() != 0 &&
                         a->parent()->functionNumber() == b->functionNumber()) {
-                    VG_(tool_panic)((Char *)"Call MergeCallSites before calling SortInterfaces");
+                    VG_(printf)("a=%p, a->parent=%p, b=%p\n", a, a->parent(), b);
+                    VG_(printf)("Intersect: %d %d %d",
+                            (int)DoIntersect(a->callees(), b->callees()),
+                            (int)DoIntersect(a->parent()->callees(), a->callees()),
+                            (int)DoIntersect(a->parent()->callees(), b->callees())
+                            );
+                    VG_(tool_panic)((Char *)"Call MergeCallSites before calling SortInterfaces #2");
                 }
                 if (a->parent() == 0 ||
-                        (a->parent()->functionNumber() > b->functionNumber())) {
+                        (a->parent()->functionNumber() < b->functionNumber())) {
                     a->setParent(b);
                 }
             }
@@ -114,7 +155,7 @@ void CollapseChains() {
 
         if (call_site->parent() != 0 &&
                 call_site->parent()->timesInherited() == 1) {
-            call_site->parent()->mergeWithChild(*call_site);
+            call_site->parent()->mergeWithChild(call_site);
             // Update parent pointers pointing to the call site being
             // removed.
             if (call_site->timesInherited() > 0) {
@@ -167,22 +208,29 @@ std::string VTable::label() const {
     }
 }
 
-void CallSite::mergeWith(const CallSite &site) {
-    if (function_number_ != site.function_number_) {
+void CallSite::mergeWith(const CallSite *site) {
+    if (function_number_ != site->function_number_) {
         VG_(tool_panic)((Char *)"CallSite::mergeWith: function numbers don't match");
     }
-    std::copy(site.callees_.begin(), site.callees_.end(),
-            std::inserter(callees_, callees_.begin()));
+    copyCalleesFrom(site);
 }
 
-void CallSite::mergeWithChild(const CallSite &site) {
-    if (function_number_ <= site.function_number_) {
+void CallSite::mergeWithChild(const CallSite *site) {
+    if (function_number_ >= site->function_number_) {
         VG_(tool_panic)((Char *)"CallSite::mergeWithChild: function numbers don't match");
     }
-    std::copy(site.callees_.begin(), site.callees_.end(),
-            std::inserter(callees_, callees_.begin()));
+    copyCalleesFrom(site);
+    function_number_ = site->function_number_;
 }
 
+bool CallSite::copyCalleesFrom(const CallSite *site) {
+    size_t old_size = callees_.size();
+
+    std::copy(site->callees_.begin(), site->callees_.end(),
+            std::inserter(callees_, callees_.begin()));
+
+    return callees_.size() > old_size;
+}
 void CallSite::addCallee(VTable *vtable) {
     callees_.insert(vtable);
 }
@@ -196,9 +244,7 @@ void CallSite::setParent(CallSite *parent) {
         ++parent->timesInherited_;
     } }
 
-std::string CallSite::label() const {
-    return codeReference(ip_) + "\\n// Functions count: " +
-        int2string(function_number_ + 1);
+std::string CallSite::label() const { return codeReference(ip_) + "\\n// Functions count: " + int2string(function_number_ + 1);
 }
 
 Addr FindVtableBeginning(Addr addr) {
@@ -246,6 +292,7 @@ VTable *getVtable(Addr vtable) {
 }
 
 void GenerateVtablesLayout() {
+    PropagateCallees();
     MergeCallSites();
     SortInterfaces();
     CollapseChains();

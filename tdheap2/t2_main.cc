@@ -70,9 +70,14 @@ void VG_REGPARM(3) VCallHook(Addr addr, Addr vtable, Addr offset) {
     VTable *vt = getVtable(vtable);
     VTable *rvt = getVtable(real_vtable);
 
-    g_callSites->insert(std::make_pair(
-                ip, new CallSite(ip, function_number))).
-        first->second->addCallee(vt);
+
+    if (g_callSites->find(ip) == g_callSites->end()) {
+        g_callSites->insert(std::make_pair(
+                    ip, new CallSite(ip, function_number))).
+            first->second->addCallee(vt);
+    } else {
+        (*g_callSites)[ip]->addCallee(vt);
+    }
 
     if (vt != rvt) {
         rvt->addChild(vt);
@@ -193,6 +198,9 @@ IRSB* t2_instrument(VgCallbackClosure* closure,
 }
 
 static void t2_fini(Int exitcode) {
+    VG_(printf)("Reconstructing inheritance relations "
+            "(%d call sites, %d vtables)...\n",
+            g_callSites->size(), g_vtables->size());
     GenerateVtablesLayout();
     ShutdownInheritanceTracker();
     ShutdownMemTracer();

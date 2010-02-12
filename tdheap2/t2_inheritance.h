@@ -42,9 +42,14 @@ public:
         timesInherited_(0)
     {}
 
-    void mergeWith(const CallSite &site);
-    void mergeWithChild(const CallSite &site);
+    void mergeWith(const CallSite *site);
+    void mergeWithChild(const CallSite *site);
+
     void addCallee(VTable *vtable);
+    /**
+     * @return true iff at least one new callee has been optained.
+     */
+    bool copyCalleesFrom(const CallSite *site);
 
     Addr ip() const { return ip_; }
 
