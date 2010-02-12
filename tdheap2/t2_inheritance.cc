@@ -12,6 +12,8 @@ extern "C" {
 
 CallSites *g_callSites;
 
+// FIXME Memory occupied by g_callSites is never freed.
+
 namespace {
 
 template <class Iterator>
@@ -51,10 +53,10 @@ void MergeCallSites() {
                 next(i) != g_callSites->end(); ++i) {
             for (CallSites::iterator ii = next(i);
                     ii != g_callSites->end(); ++ii) {
-                if (i->second.functionNumber() ==
-                        ii->second.functionNumber() &&
-                        DoIntersect(i->second.callees(), ii->second.callees())) {
-                    i->second.mergeWith(ii->second);
+                if (i->second->functionNumber() ==
+                        ii->second->functionNumber() &&
+                        DoIntersect(i->second->callees(), ii->second->callees())) {
+                    i->second->mergeWith(*ii->second);
                     g_callSites->erase(ii);
                     goto next_iter;
                 }
@@ -68,18 +70,14 @@ void MergeCallSites() {
  * Suppose we have two call sites used with same vtable.
  * First of them refers to nth furction, second refers to mth function and n < m.
  * Then we say second call site interface inherits the fist call site interface.
- *
- * The whole thing after inheritance links are set becomes very fragile
- * as inheritance relations are represented as pointers. Se be sure that
- * no reallocs would be made to the CallSites storage.
  */
 void SortInterfaces() {
     for (CallSites::iterator i = g_callSites->begin();
             next(i) != g_callSites->end(); ++i) {
         for (CallSites::iterator ii = next(i);
                 ii != g_callSites->end(); ++ii) {
-            CallSite *a = &i->second;
-            CallSite *b = &ii->second;
+            CallSite *a = i->second;
+            CallSite *b = ii->second;
             if (DoIntersect(a->callees(), b->callees())) {
                 if (a->functionNumber() == b->functionNumber()) {
                     VG_(tool_panic)((Char *)"Call MergeCallSites before calling SortInterfaces");
@@ -167,19 +165,19 @@ void GenerateVtablesLayout() {
     VG_(printf)("digraph hierarchy {\n");
     for (CallSites::const_iterator call_site = g_callSites->begin();
             call_site != g_callSites->end(); ++call_site) {
-        const AddrSet &callees = call_site->second.callees();
+        const AddrSet &callees = call_site->second->callees();
         for (AddrSet::const_iterator addr = callees.begin();
                 addr != callees.end(); ++addr) {
-            if (!call_site->second.isInherited()) {
+            if (!call_site->second->isInherited()) {
                 VG_(printf)("\"%p\" -> \"%s\";\n",
                         *addr, codeReference(call_site->first).c_str());
             }
         }
 
-        if (call_site->second.parent() != 0) {
+        if (call_site->second->parent() != 0) {
             VG_(printf)("\"%s\" -> \"%s\";\n",
                     codeReference(call_site->first).c_str(),
-                    codeReference(call_site->second.parent()->ip()).c_str());
+                    codeReference(call_site->second->parent()->ip()).c_str());
         }
     }
     VG_(printf)("}\n");

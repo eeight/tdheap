@@ -44,7 +44,7 @@ private:
     bool isInherited_;
 };
 
-typedef std::tr1::unordered_map<Addr, CallSite> CallSites;
+typedef std::tr1::unordered_map<Addr, CallSite *> CallSites;
 
 /*
  * Finds begginning of vtable.
