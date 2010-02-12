@@ -8,6 +8,7 @@ extern "C" {
 
 #include "m_stl/tr1/unordered_map"
 #include "m_stl/tr1/unordered_set"
+#include "m_stl/std/string"
 
 typedef std::tr1::unordered_set<Addr> AddrSet;
 
@@ -15,10 +16,11 @@ class CallSite {
 public:
     CallSite(Addr ip, int function_number) : 
         ip_(ip), function_number_(function_number), parent_(0),
-        isInherited_(false)
+        timesInherited_(0)
     {}
 
     void mergeWith(const CallSite &site);
+    void mergeWithChild(const CallSite &site);
     void addCallee(Addr addr);
 
     Addr ip() const { return ip_; }
@@ -28,12 +30,11 @@ public:
 
     CallSite *parent() const { return parent_; }
 
-    void setParent(CallSite *parent) {
-        parent_ = parent;
-        parent->isInherited_ = true;
-    }
+    void setParent(CallSite *parent);
 
-    bool isInherited() const { return isInherited_; }
+    int timesInherited() const { return timesInherited_; }
+
+    std::string label() const;
 
 private:
     // Vtables used with this call site.
@@ -41,7 +42,7 @@ private:
     Addr ip_;
     int function_number_;
     CallSite *parent_;
-    bool isInherited_;
+    int timesInherited_;
 };
 
 typedef std::tr1::unordered_map<Addr, CallSite *> CallSites;

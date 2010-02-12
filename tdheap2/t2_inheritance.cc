@@ -8,7 +8,6 @@ extern "C" {
 }
 
 #include "m_stl/tr1/functional"
-#include "m_stl/std/string"
 
 CallSites *g_callSites;
 
@@ -47,22 +46,20 @@ void MergeCallSites() {
         return;
     }
 
-    do {
-        next_iter:
-        for (CallSites::iterator i = g_callSites->begin();
-                next(i) != g_callSites->end(); ++i) {
-            for (CallSites::iterator ii = next(i);
-                    ii != g_callSites->end(); ++ii) {
-                if (i->second->functionNumber() ==
-                        ii->second->functionNumber() &&
-                        DoIntersect(i->second->callees(), ii->second->callees())) {
-                    i->second->mergeWith(*ii->second);
-                    g_callSites->erase(ii);
-                    goto next_iter;
-                }
+    next_iter:
+    for (CallSites::iterator i = g_callSites->begin();
+            next(i) != g_callSites->end(); ++i) {
+        for (CallSites::iterator ii = next(i);
+                ii != g_callSites->end(); ++ii) {
+            if (i->second->functionNumber() ==
+                    ii->second->functionNumber() &&
+                    DoIntersect(i->second->callees(), ii->second->callees())) {
+                i->second->mergeWith(*ii->second);
+                g_callSites->erase(ii);
+                goto next_iter;
             }
         }
-    } while (false);
+    }
 }
 
 /**
@@ -98,6 +95,36 @@ void SortInterfaces() {
     }
 }
 
+/**
+ * Collapses chains of inheritance.
+ * A -> B -> C
+ */
+void CollapseChains() {
+    next_iter:
+    for (CallSites::iterator i = g_callSites->begin();
+            i != g_callSites->end(); ++i) {
+        CallSite *call_site = i->second;
+
+        if (call_site->parent() != 0 &&
+                call_site->parent()->timesInherited() == 1) {
+            call_site->parent()->mergeWithChild(*call_site);
+            // Update parent pointers pointing to the call site being
+            // removed.
+            if (call_site->timesInherited() > 0) {
+                for (CallSites::iterator ii = g_callSites->begin();
+                        ii != g_callSites->end(); ++ii) {
+                    if (ii->second->parent() == call_site) {
+                        ii->second->setParent(call_site->parent());
+                    }
+                }
+            }
+            call_site->setParent(0);
+            g_callSites->erase(i);
+            goto next_iter;
+        }
+    }
+}
+
 std::string codeReference(Addr addr) {
     char objname[1024];
     char buffer[1024];
@@ -120,8 +147,32 @@ void CallSite::mergeWith(const CallSite &site) {
             std::inserter(callees_, callees_.begin()));
 }
 
+void CallSite::mergeWithChild(const CallSite &site) {
+    if (function_number_ <= site.function_number_) {
+        VG_(tool_panic)((Char *)"CallSite::mergeWithChild: function numbers don't match");
+    }
+    std::copy(site.callees_.begin(), site.callees_.end(),
+            std::inserter(callees_, callees_.begin()));
+}
+
 void CallSite::addCallee(Addr addr) {
     callees_.insert(addr);
+}
+
+void CallSite::setParent(CallSite *parent) {
+    if (parent_ != 0) {
+        --parent_->timesInherited_;
+    }
+    parent_ = parent;
+    if (parent != 0) {
+        ++parent->timesInherited_;
+    }
+}
+
+std::string CallSite::label() const {
+    char buffer[1024];
+    VG_(snprintf)((Char *)buffer, 1024, "%d", function_number_ + 1);
+    return codeReference(ip_) + "\\n// Functions count: " + buffer;
 }
 
 Addr FindVtableBeginning(Addr addr) {
@@ -161,6 +212,7 @@ Addr FindObjectBeginning(Addr addr, Addr real_vtable) {
 void GenerateVtablesLayout() {
     MergeCallSites();
     SortInterfaces();
+    CollapseChains();
 
     VG_(printf)("digraph hierarchy {\n");
     for (CallSites::const_iterator call_site = g_callSites->begin();
@@ -168,16 +220,19 @@ void GenerateVtablesLayout() {
         const AddrSet &callees = call_site->second->callees();
         for (AddrSet::const_iterator addr = callees.begin();
                 addr != callees.end(); ++addr) {
-            if (!call_site->second->isInherited()) {
-                VG_(printf)("\"%p\" -> \"%s\";\n",
-                        *addr, codeReference(call_site->first).c_str());
+            if (call_site->second->timesInherited() == 0) {
+                VG_(printf)("\"%p\" -> \"%p\";\n",
+                        *addr, call_site->first);
             }
         }
 
+        VG_(printf)("\"%p\" [ label=\"%s\", shape=rectangle ];\n",
+                call_site->first, call_site->second->label().c_str());
+
         if (call_site->second->parent() != 0) {
-            VG_(printf)("\"%s\" -> \"%s\";\n",
-                    codeReference(call_site->first).c_str(),
-                    codeReference(call_site->second->parent()->ip()).c_str());
+            VG_(printf)("\"%p\" -> \"%p\";\n",
+                    call_site->first,
+                    call_site->second->parent()->ip());
         }
     }
     VG_(printf)("}\n");
