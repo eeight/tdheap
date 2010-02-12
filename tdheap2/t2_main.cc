@@ -67,10 +67,16 @@ void VG_REGPARM(3) VCallHook(Addr addr, Addr vtable, Addr offset) {
     Addr real_addr = FindObjectBeginning(addr, real_vtable);
     Addr ip = GetCurrentIp();
     int function_number = offset/sizeof(void *);
+    VTable *vt = getVtable(vtable);
+    VTable *rvt = getVtable(real_vtable);
 
     g_callSites->insert(std::make_pair(
                 ip, new CallSite(ip, function_number))).
-        first->second->addCallee(/* real_ */vtable);
+        first->second->addCallee(vt);
+
+    if (vt != rvt) {
+        rvt->addChild(vt);
+    }
     
 #if 0
     VG_(printf)("Virtual call(ip=%p, object=%p, real_object=%p, vtable=%p, real_vtable=%p, offset=%ld)\n",

@@ -10,7 +10,30 @@ extern "C" {
 #include "m_stl/tr1/unordered_set"
 #include "m_stl/std/string"
 
-typedef std::tr1::unordered_set<Addr> AddrSet;
+class VTable;
+
+typedef std::tr1::unordered_set<VTable *> VTableSet;
+
+class VTable {
+public:
+    VTable(Addr start) : start_(start), parent_(0)
+    {}
+
+    void addChild(VTable *child);
+    const VTableSet &children() { return children_; }
+
+    Addr start() const;
+
+    VTable *parent() const { return parent_; }
+
+    std::string label() const;
+
+private:
+    Addr start_;
+    // FIXME: Add int function_count_;
+    VTableSet children_;
+    VTable *parent_;
+};
 
 class CallSite {
 public:
@@ -21,12 +44,12 @@ public:
 
     void mergeWith(const CallSite &site);
     void mergeWithChild(const CallSite &site);
-    void addCallee(Addr addr);
+    void addCallee(VTable *vtable);
 
     Addr ip() const { return ip_; }
 
     int functionNumber() const { return function_number_; }
-    const AddrSet &callees() const { return callees_; }
+    const VTableSet &callees() const { return callees_; }
 
     CallSite *parent() const { return parent_; }
 
@@ -38,14 +61,17 @@ public:
 
 private:
     // Vtables used with this call site.
-    AddrSet callees_;
+    VTableSet callees_;
     Addr ip_;
     int function_number_;
     CallSite *parent_;
     int timesInherited_;
 };
 
+// Ip->CallSite map
 typedef std::tr1::unordered_map<Addr, CallSite *> CallSites;
+// vtable->VTable map
+typedef std::tr1::unordered_map<Addr, VTable *> VTables;
 
 /*
  * Finds begginning of vtable.
@@ -64,9 +90,12 @@ typedef std::tr1::unordered_map<Addr, CallSite *> CallSites;
 Addr FindVtableBeginning(Addr addr);
 Addr FindObjectBeginning(Addr addr, Addr real_vtable);
 
+VTable *getVtable(Addr vtable);
+
 void GenerateVtablesLayout();
 
 extern CallSites *g_callSites;
+extern VTables *g_vtables;
 
 void InitInheritanceTracker();
 void ShutdownInheritanceTracker();

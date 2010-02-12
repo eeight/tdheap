@@ -10,10 +10,17 @@ extern "C" {
 #include "m_stl/tr1/functional"
 
 CallSites *g_callSites;
+VTables *g_vtables;
 
 // FIXME Memory occupied by g_callSites is never freed.
 
 namespace {
+
+std::string int2string(int n) {
+    char buffer[1024];
+    VG_(snprintf)((Char *)buffer, 1024, "%d", n);
+    return buffer;
+}
 
 template <class Iterator>
 Iterator next(Iterator i) {
@@ -25,8 +32,8 @@ Iterator prior(Iterator i) {
     return --i;
 }
 
-bool DoIntersect(const AddrSet &lhs, const AddrSet &rhs) {
-    for (AddrSet::const_iterator i = lhs.begin();
+bool DoIntersect(const VTableSet &lhs, const VTableSet &rhs) {
+    for (VTableSet::const_iterator i = lhs.begin();
             i != lhs.end(); ++i) {
         if (rhs.count(*i) > 0) {
             return true;
@@ -139,6 +146,27 @@ std::string codeReference(Addr addr) {
 
 } // namespace
 
+Addr VTable::start() const {
+    if (parent_ != 0) {
+        return parent_->start_;
+    } else {
+        return start_;
+    }
+}
+
+void VTable::addChild(VTable *child) {
+    children_.insert(child);
+    child->parent_ = this;
+}
+
+std::string VTable::label() const {
+    if (parent_ != 0) {
+        return codeReference(parent_->start_);
+    } else {
+        return codeReference(start_);
+    }
+}
+
 void CallSite::mergeWith(const CallSite &site) {
     if (function_number_ != site.function_number_) {
         VG_(tool_panic)((Char *)"CallSite::mergeWith: function numbers don't match");
@@ -155,8 +183,8 @@ void CallSite::mergeWithChild(const CallSite &site) {
             std::inserter(callees_, callees_.begin()));
 }
 
-void CallSite::addCallee(Addr addr) {
-    callees_.insert(addr);
+void CallSite::addCallee(VTable *vtable) {
+    callees_.insert(vtable);
 }
 
 void CallSite::setParent(CallSite *parent) {
@@ -166,13 +194,11 @@ void CallSite::setParent(CallSite *parent) {
     parent_ = parent;
     if (parent != 0) {
         ++parent->timesInherited_;
-    }
-}
+    } }
 
 std::string CallSite::label() const {
-    char buffer[1024];
-    VG_(snprintf)((Char *)buffer, 1024, "%d", function_number_ + 1);
-    return codeReference(ip_) + "\\n// Functions count: " + buffer;
+    return codeReference(ip_) + "\\n// Functions count: " +
+        int2string(function_number_ + 1);
 }
 
 Addr FindVtableBeginning(Addr addr) {
@@ -209,6 +235,16 @@ Addr FindObjectBeginning(Addr addr, Addr real_vtable) {
     return (Addr)x;
 }
 
+VTable *getVtable(Addr vtable) {
+    if (g_vtables->find(vtable) != g_vtables->end()) {
+        return (*g_vtables)[vtable];
+    } else {
+        VTable *result = new VTable(vtable);
+        g_vtables->insert(std::make_pair(vtable, result));
+        return result;
+    }
+}
+
 void GenerateVtablesLayout() {
     MergeCallSites();
     SortInterfaces();
@@ -217,12 +253,12 @@ void GenerateVtablesLayout() {
     VG_(printf)("digraph hierarchy {\n");
     for (CallSites::const_iterator call_site = g_callSites->begin();
             call_site != g_callSites->end(); ++call_site) {
-        const AddrSet &callees = call_site->second->callees();
-        for (AddrSet::const_iterator addr = callees.begin();
-                addr != callees.end(); ++addr) {
+        const VTableSet &callees = call_site->second->callees();
+        for (VTableSet::const_iterator vtable = callees.begin();
+                vtable != callees.end(); ++vtable) {
             if (call_site->second->timesInherited() == 0) {
                 VG_(printf)("\"%p\" -> \"%p\";\n",
-                        *addr, call_site->first);
+                        (*vtable)->start(), call_site->first);
             }
         }
 
@@ -235,14 +271,23 @@ void GenerateVtablesLayout() {
                     call_site->second->parent()->ip());
         }
     }
+    for (VTables::const_iterator vtable = g_vtables->begin();
+            vtable != g_vtables->end(); ++vtable) {
+        if (vtable->second->parent() == 0) {
+            VG_(printf)("\"%p\" [ label=\"%s\" ];\n",
+                    vtable->second->start(), vtable->second->label().c_str());
+        }
+    }
     VG_(printf)("}\n");
 }
 
 void InitInheritanceTracker() {
     g_callSites = new CallSites();
+    g_vtables = new VTables();
 }
 
 void ShutdownInheritanceTracker() {
     delete g_callSites;
+    delete g_vtables;
 }
 
