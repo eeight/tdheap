@@ -68,7 +68,6 @@ void VG_REGPARM(3) VCallHook(Addr addr, Addr vtable, Addr offset) {
     Addr ip = GetCurrentIp();
     int function_number = offset/sizeof(void *);
     VTable *vt = getVtable(vtable);
-    VTable *rvt = getVtable(real_vtable);
 
 
     if (g_callSites->find(ip) == g_callSites->end()) {
@@ -79,10 +78,6 @@ void VG_REGPARM(3) VCallHook(Addr addr, Addr vtable, Addr offset) {
         (*g_callSites)[ip]->addCallee(vt);
     }
 
-    if (vt != rvt) {
-        rvt->addChild(vt);
-    }
-    
 #if 0
     VG_(printf)("Virtual call(ip=%p, object=%p, real_object=%p, vtable=%p, real_vtable=%p, offset=%ld)\n",
             ip, addr, real_addr, vtable, real_vtable, offset/sizeof(void *));

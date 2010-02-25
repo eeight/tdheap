@@ -7,6 +7,7 @@ extern "C" {
 #include "pub_tool_libcprint.h"
 }
 
+#include "m_stl/std/algorithm"
 #include "m_stl/tr1/functional"
 
 CallSites *g_callSites;
@@ -16,6 +17,9 @@ VTables *g_vtables;
 // FIXME Memory occupied by g_vtables is never freed.
 
 namespace {
+
+const Long MIN_POINTER_VALUE = 0xffff;
+const Long POINTER_LOCALITY_THRESHOLD = 0xfffffff;
 
 std::string int2string(int n) {
     char buffer[1024];
@@ -141,6 +145,13 @@ void SortInterfaces() {
             }
         }
     }
+
+    for (CallSites::iterator i = g_callSites->begin();
+            next(i) != g_callSites->end(); ++i) {
+        if (i->second->timesInherited() == 0) {
+            i->second->subtractCalleesFromParents();
+        }
+    }
 }
 
 /**
@@ -201,11 +212,16 @@ void VTable::addChild(VTable *child) {
 }
 
 std::string VTable::label() const {
+    std::string result;
+
     if (parent_ != 0) {
-        return codeReference(parent_->start_);
+        result = codeReference(parent_->start_);
     } else {
-        return codeReference(start_);
+        result = codeReference(start_);
     }
+
+    result += "\\n// Functions count " + int2string(functions_count_);
+    return result;
 }
 
 void CallSite::mergeWith(const CallSite *site) {
@@ -231,6 +247,30 @@ bool CallSite::copyCalleesFrom(const CallSite *site) {
 
     return callees_.size() > old_size;
 }
+
+void CallSite::subtractCalleesFromParents() {
+    VTableSet callees = callees_;
+
+    for (CallSite *site = parent_; site; site = site->parent_) {
+        VTableSet next_callees(callees);
+
+        std::copy(site->callees_.begin(), site->callees_.end(),
+                std::inserter(next_callees, next_callees.begin()));
+        site->subtractCallees(callees);
+
+        std::swap(callees, next_callees);
+    }
+}
+void CallSite::subtractCallees(const VTableSet &callees) {
+   VTableSet result;
+
+   std::set_difference(callees_.begin(), callees_.end(),
+           callees.begin(), callees.end(),
+           std::inserter(result, result.begin()));
+
+   callees_ = result;
+}
+
 void CallSite::addCallee(VTable *vtable) {
     callees_.insert(vtable);
 }
@@ -244,7 +284,10 @@ void CallSite::setParent(CallSite *parent) {
         ++parent->timesInherited_;
     } }
 
-std::string CallSite::label() const { return codeReference(ip_) + "\\n// Functions count: " + int2string(function_number_ + 1);
+std::string CallSite::label() const {
+    return codeReference(ip_) +
+        "\\n// Functions count: " + int2string(function_number_ + 1) +
+        "\\n// Times inherited: " + int2string(timesInherited_ + callees_.size());
 }
 
 Addr FindVtableBeginning(Addr addr) {
@@ -281,11 +324,42 @@ Addr FindObjectBeginning(Addr addr, Addr real_vtable) {
     return (Addr)x;
 }
 
+int GetVTableSize(Addr addr) {
+    // sizeof(Long) == sizeof(void *) should hold for this thing to work!
+    Long *x = (Long *)addr;
+    int i;
+
+#if 0
+    VG_(printf)("Begin vtable search\n");
+#endif
+    while ((x[i] > MIN_POINTER_VALUE || x[i] < -MIN_POINTER_VALUE) &&
+            std::abs(x[i] - x[0]) < POINTER_LOCALITY_THRESHOLD) {
+#if 0
+        VG_(printf)("x[%2d]=%ld\n", i, x[i]);
+#endif
+        ++i;
+    }
+#if 0
+    VG_(printf)("x[%2d]=%ld; STOP\n", i, x[i]);
+    VG_(printf)("End vtable search\n");
+#endif
+
+    return i;
+}
+
 VTable *getVtable(Addr vtable) {
     if (g_vtables->find(vtable) != g_vtables->end()) {
         return (*g_vtables)[vtable];
     } else {
-        VTable *result = new VTable(vtable);
+        Addr real_vtable = FindVtableBeginning(vtable);
+        int functions_count = GetVTableSize(vtable);
+        VTable *result = new VTable(vtable, functions_count);
+
+        if (real_vtable != vtable) {
+            VTable *real_vt = getVtable(real_vtable);
+            real_vt->addChild(result);
+        }
+
         g_vtables->insert(std::make_pair(vtable, result));
         return result;
     }
@@ -303,10 +377,8 @@ void GenerateVtablesLayout() {
         const VTableSet &callees = call_site->second->callees();
         for (VTableSet::const_iterator vtable = callees.begin();
                 vtable != callees.end(); ++vtable) {
-            if (call_site->second->timesInherited() == 0) {
                 VG_(printf)("\"%p\" -> \"%p\";\n",
                         (*vtable)->start(), call_site->first);
-            }
         }
 
         VG_(printf)("\"%p\" [ label=\"%s\", shape=rectangle ];\n",

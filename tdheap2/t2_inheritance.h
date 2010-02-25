@@ -7,16 +7,17 @@ extern "C" {
 }
 
 #include "m_stl/tr1/unordered_map"
-#include "m_stl/tr1/unordered_set"
 #include "m_stl/std/string"
+#include "m_stl/std/set"
 
 class VTable;
 
-typedef std::tr1::unordered_set<VTable *> VTableSet;
+typedef std::set<VTable *> VTableSet;
 
 class VTable {
 public:
-    VTable(Addr start) : start_(start), parent_(0)
+    VTable(Addr start, int functions_count) :
+        start_(start), functions_count_(functions_count), parent_(0)
     {}
 
     void addChild(VTable *child);
@@ -24,12 +25,15 @@ public:
 
     Addr start() const;
 
+    int functionsCount() const { return functions_count_; }
+
     VTable *parent() const { return parent_; }
 
     std::string label() const;
 
 private:
     Addr start_;
+    int functions_count_;
     // FIXME: Add int function_count_;
     VTableSet children_;
     VTable *parent_;
@@ -50,6 +54,9 @@ public:
      * @return true iff at least one new callee has been optained.
      */
     bool copyCalleesFrom(const CallSite *site);
+
+    void subtractCallees(const VTableSet &callees);
+    void subtractCalleesFromParents();
 
     Addr ip() const { return ip_; }
 
