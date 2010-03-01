@@ -63,12 +63,9 @@ ULong IRConstToULong(IRConst *c) {
 
 static
 void VG_REGPARM(3) VCallHook(Addr addr, Addr vtable, Addr offset) {
-    Addr real_vtable = FindVtableBeginning(vtable);
-    Addr real_addr = FindObjectBeginning(addr, real_vtable);
     Addr ip = GetCurrentIp();
     int function_number = offset/sizeof(void *);
     VTable *vt = getVtable(vtable);
-
 
     if (g_callSites->find(ip) == g_callSites->end()) {
         g_callSites->insert(std::make_pair(
@@ -79,8 +76,11 @@ void VG_REGPARM(3) VCallHook(Addr addr, Addr vtable, Addr offset) {
     }
 
 #if 0
-    VG_(printf)("Virtual call(ip=%p, object=%p, real_object=%p, vtable=%p, real_vtable=%p, offset=%ld)\n",
-            ip, addr, real_addr, vtable, real_vtable, offset/sizeof(void *));
+    char buffer[1024];
+
+    VG_(describe_IP)(ip, (Char *)buffer, 1024);
+
+    VG_(printf)("Call: %s: %s\n", buffer, vt->label().c_str());
 #endif
 }
 

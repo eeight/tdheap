@@ -10,6 +10,8 @@ extern "C" {
 #include "m_stl/std/algorithm"
 #include "m_stl/tr1/functional"
 
+#include <typeinfo>
+
 CallSites *g_callSites;
 VTables *g_vtables;
 
@@ -221,6 +223,15 @@ std::string VTable::label() const {
     }
 
     result += "\\n// Functions count " + int2string(functions_count_);
+
+    if (result.find("libc") == std::string::npos) {
+        std::type_info *info = ((std::type_info **)start_)[-1];
+        if (info != 0) {
+            result += "\\n// Class name: ";
+            result += info->name();
+        }
+    }
+
     return result;
 }
 
