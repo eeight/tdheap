@@ -12,6 +12,10 @@ endif
 if BUILD_SSSE3_TESTS
  INSN_TESTS += insn_ssse3
 endif
+if BUILD_SSE4A_TESTS
+ INSN_TESTS += insn_sse4a test_sse4a_flags
+endif
+
 
 # Explicitly include insn_sse3 even if ! BUILD_SSE3_TESTS, 
 # to avoid packaging screwups if 'make dist' is run on a machine
@@ -96,9 +100,11 @@ insn_sse3_SOURCES	= insn_sse3.def
 insn_sse3_LDADD		= -lm
 insn_ssse3_SOURCES	= insn_ssse3.def
 insn_ssse3_LDADD	= -lm
+insn_sse4a_SOURCES	= insn_sse4a.def
 insn_fpu_SOURCES	= insn_fpu.def
 insn_fpu_LDADD		= -lm
 fxtract_LDADD		= -lm
+test_sse4a_flags_SOURCES  = test_sse4a_flags.c
 
 .def.c: $(srcdir)/gen_insn_test.pl
 	$(PERL) $(srcdir)/gen_insn_test.pl < $< > $@

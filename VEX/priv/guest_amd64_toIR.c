@@ -7325,6 +7325,120 @@ ULong dis_bt_G_E ( VexAbiInfo* vbi,
 
 
 
+/* Handle LZCNT in terms of BSR */
+static
+ULong dis_LZCNT ( VexAbiInfo* vbi,
+		  Prefix pfx, Int sz, Long delta)
+{
+   Bool   isReg;
+   UChar  modrm;
+   HChar  dis_buf[50];
+
+   IRType ty    = szToITy(sz);
+   IRTemp src   = newTemp(ty);
+   IRTemp dst   = newTemp(ty);
+   IRTemp src64 = newTemp(Ity_I64);
+   IRTemp dst64 = newTemp(Ity_I64);
+   IRTemp src8  = newTemp(Ity_I8);
+   IRTemp dst8  = newTemp(Ity_I8);
+
+   vassert(sz == 8 || sz == 4 || sz == 2);
+
+   ULong maxbit = 8 * sz -1;  
+
+   modrm = getUChar(delta);
+   isReg = epartIsReg(modrm);
+   if (isReg) {
+      delta++;
+      assign( src, getIRegE(sz, pfx, modrm) );
+   } else {
+      Int    len;
+      IRTemp addr = disAMode( &len, vbi, pfx, delta, dis_buf, 0 );
+      delta += len;
+      assign( src, loadLE(ty, mkexpr(addr)) );
+   }
+
+   DIP("lzcnt %s, %s\n",
+       ( isReg ? nameIRegE(sz, pfx, modrm) : dis_buf ), 
+       nameIRegG(sz, pfx, modrm));
+
+   /* First, widen src to 64 bits if it is not already. */
+   assign( src64, widenUto64(mkexpr(src)) );
+
+   /* make a zero expression iff src64 is zero */
+   assign( src8,
+           unop(Iop_1Uto8, 
+                binop(Iop_CmpNE64,
+                      mkexpr(src64), mkU64(0))) );
+
+   /* clean all flags */ 
+   stmt( IRStmt_Put( OFFB_CC_OP,   mkU64(AMD64G_CC_OP_COPY) ));
+   stmt( IRStmt_Put( OFFB_CC_DEP2, mkU64(0) ));
+
+
+   /* Hack: Execute the operation by using BSR 
+      Iff the input value is zero, store the size of 
+      the operant in the 
+      result. otherwise store sieof(src)-1-BSR(src).  
+    */
+   assign( dst64,
+           IRExpr_Mux0X( 
+              mkexpr(src8),
+              /* src == 0 -- set result to width of src */
+              mkU64(8 * sz),
+              /* src != 0 */
+	      binop(Iop_Sub64, 
+		    mkU64(maxbit), 
+		    binop(Iop_Sub64, 
+                         mkU64(63), 
+			  unop(Iop_Clz64, mkexpr(src64)))
+		      )
+		   )
+         );
+
+   assign( dst8,
+           unop(Iop_1Uto8, 
+                binop(Iop_CmpNE64,
+                      mkexpr(dst64), mkU64(0))) );
+
+   /* set c flag if src is zero and z flag if dst is zero */
+   stmt( IRStmt_Put( 
+            OFFB_CC_DEP1, 
+	    binop(Iop_Or64, 
+		  IRExpr_Mux0X( 
+                       mkexpr(src8),
+                          /* src==0 */
+                          mkU64(AMD64G_CC_MASK_C),
+                          /* src!=0 */
+                          mkU64(0)
+                       ),
+		  IRExpr_Mux0X( 
+                        mkexpr(dst8),
+                        /* dst==0 */
+                        mkU64(AMD64G_CC_MASK_Z),
+                        /* dst!=0 */
+                        mkU64(0)
+                       )
+               )
+          )
+      );  
+
+
+   if (sz == 2)
+      assign( dst, unop(Iop_64to16, mkexpr(dst64)) );
+   else
+   if (sz == 4)
+      assign( dst, unop(Iop_64to32, mkexpr(dst64)) );
+   else
+      assign( dst, mkexpr(dst64) );
+
+   /* dump result back */
+   putIRegG( sz, pfx, modrm, mkexpr(dst) );
+
+   return delta;
+}
+
+
 /* Handle BSF/BSR.  Only v-size seems necessary. */
 static
 ULong dis_bs_E_G ( VexAbiInfo* vbi,
@@ -15348,9 +15462,14 @@ DisResult disInstr_AMD64_WRK (
          if (haveF2orF3(pfx)) goto decode_failure;
          delta = dis_bs_E_G ( vbi, pfx, sz, delta, True );
          break;
-      case 0xBD: /* BSR Gv,Ev */
-         if (haveF2orF3(pfx)) goto decode_failure;
-         delta = dis_bs_E_G ( vbi, pfx, sz, delta, False );
+      case 0xBD: 
+	 if (haveF3(pfx)) 
+           delta = dis_LZCNT ( vbi, pfx, sz, delta );
+         else if (haveF2(pfx)) 
+           goto decode_failure;
+         else
+            /* BSR Gv,Ev */
+           delta = dis_bs_E_G ( vbi, pfx, sz, delta, False );
          break;
 
       /* =-=-=-=-=-=-=-=-=- BSWAP -=-=-=-=-=-=-=-=-=-=-= */
