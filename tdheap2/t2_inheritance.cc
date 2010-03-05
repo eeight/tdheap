@@ -7,6 +7,8 @@ extern "C" {
 #include "pub_tool_libcprint.h"
 }
 
+#include "t2_procmap.h"
+
 #include "m_stl/std/algorithm"
 #include "m_stl/tr1/functional"
 
@@ -224,9 +226,10 @@ std::string VTable::label() const {
 
     result += "\\n// Functions count " + int2string(functions_count_);
 
-    if (result.find("libc") == std::string::npos) {
+    if (result.find("libc") == std::string::npos &&
+            result.find("unknown") == std::string::npos) {
         std::type_info *info = ((std::type_info **)start_)[-1];
-        if (info != 0) {
+        if (isAddressReadable((Addr)info)) {
             result += "\\n// Class name: ";
             result += info->name();
         }
@@ -303,6 +306,10 @@ std::string CallSite::label() const {
 
 Addr FindVtableBeginning(Addr addr) {
     Addr *x = (Addr *)addr;
+    if (!isAddressReadable((Addr)&x[-1]) ||
+            !isAddressReadable((Addr)&x[-2])) {
+        return addr;
+    }
     Addr top_offset = x[-2];
     Addr ptr_to_typeinfo = x[-1];
 
@@ -317,7 +324,13 @@ Addr FindVtableBeginning(Addr addr) {
          */
         do {
             --x;
+            if (!isAddressReadable((Addr)&x[-1])) {
+                return addr;
+            }
         } while (x[-1] != ptr_to_typeinfo);
+        if (!isAddressReadable((Addr)&x[-2])) {
+            return addr;
+        }
         top_offset = x[-2];
     }
 
@@ -338,12 +351,13 @@ Addr FindObjectBeginning(Addr addr, Addr real_vtable) {
 int GetVTableSize(Addr addr) {
     // sizeof(Long) == sizeof(void *) should hold for this thing to work!
     Long *x = (Long *)addr;
-    int i;
+    int i = 0;
 
 #if 0
     VG_(printf)("Begin vtable search\n");
 #endif
     while ((x[i] > MIN_POINTER_VALUE || x[i] < -MIN_POINTER_VALUE) &&
+            isAddressReadable((Addr)&x[i]) &&
             std::abs(x[i] - x[0]) < POINTER_LOCALITY_THRESHOLD) {
 #if 0
         VG_(printf)("x[%2d]=%ld\n", i, x[i]);

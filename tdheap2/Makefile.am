@@ -9,7 +9,7 @@ if VGCONF_HAVE_PLATFORM_SEC
 noinst_PROGRAMS += tdheap2-@VGCONF_ARCH_SEC@-@VGCONF_OS@
 endif
 
-tdheap2_SOURCES_COMMON = t2_main.cc t2_malloc.cc t2_mem_tracer.cc t2_inheritance.cc
+tdheap2_SOURCES_COMMON = t2_main.cc t2_malloc.cc t2_mem_tracer.cc t2_inheritance.cc t2_procmap.cc
 
 tdheap2_@VGCONF_ARCH_PRI@_@VGCONF_OS@_SOURCES      = $(tdheap2_SOURCES_COMMON)
 tdheap2_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CPPFLAGS     = \

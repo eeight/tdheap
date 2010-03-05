@@ -21,6 +21,7 @@ extern "C" {
 
 #include "t2_malloc.h"
 #include "t2_mem_tracer.h"
+#include "t2_procmap.h"
 #include "t2_inheritance.h"
 
 namespace {
@@ -197,6 +198,7 @@ static void t2_fini(Int exitcode) {
             "(%d call sites, %d vtables)...\n",
             g_callSites->size(), g_vtables->size());
     generateVtablesLayout();
+    shutdownProcmap();
     shutdownInheritanceTracker();
     shutdownMemTracer();
 }
@@ -223,6 +225,7 @@ static void t2_pre_clo_init() {
                                 &t2_realloc,
                                 &t2_usable_size,
                                 0);
+  initProcmap();
   initMemTracer();
   initInheritanceTracker();
 }
