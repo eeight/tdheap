@@ -376,7 +376,7 @@ VTable *getVtable(Addr vtable) {
     }
 }
 
-void GenerateVtablesLayout() {
+void generateVtablesLayout() {
     PropagateCallees();
     MergeCallSites();
     SortInterfaces();
@@ -411,12 +411,12 @@ void GenerateVtablesLayout() {
     VG_(printf)("}\n");
 }
 
-void InitInheritanceTracker() {
+void initInheritanceTracker() {
     g_callSites = new CallSites();
     g_vtables = new VTables();
 }
 
-void ShutdownInheritanceTracker() {
+void shutdownInheritanceTracker() {
     delete g_callSites;
     delete g_vtables;
 }

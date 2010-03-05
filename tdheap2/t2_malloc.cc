@@ -31,7 +31,7 @@ void *t2_malloc_common(SizeT align, SizeT n) {
         result = VG_(cli_malloc)(VG_(clo_alignment), n);
     }
 
-    theMemTracer->RegisterMemoryBlock((Addr)result, n);
+    g_memTracer->RegisterMemoryBlock((Addr)result, n);
 
 #if 0
     VG_(printf)("Allocated %d = %p\n", n, result); #endif
@@ -44,7 +44,7 @@ void t2_free_common(void *p) {
     VG_(printf)("Begin free %p\n");
 #endif
     ++clo_frees_count;
-    theMemTracer->UnregisterMemoryBlock((Addr)p);
+    g_memTracer->UnregisterMemoryBlock((Addr)p);
     VG_(cli_free)(p);
 #if 0
     VG_(printf)("Free %p\n", p);
@@ -93,7 +93,7 @@ void *t2_realloc(ThreadId tid, void *p, SizeT new_size) {
 #endif
     SizeT old_size;
 
-    const MemoryBlock *block = theMemTracer->FindBlockByAddress((Addr)p);
+    const MemoryBlock *block = g_memTracer->FindBlockByAddress((Addr)p);
     if (block == NULL) {
         VG_(tool_panic)((Char *)"Cannot realloc not malloc'd block");
     } else {
@@ -115,14 +115,14 @@ void *t2_realloc(ThreadId tid, void *p, SizeT new_size) {
 #if 0
         VG_(printf)("\nRealloc'd %d->%d %p->%p\n", old_size, new_size, p, result);
 #endif
-        theMemTracer->HandleRealloc(*block, (Addr)result, new_size);
+        g_memTracer->HandleRealloc(*block, (Addr)result, new_size);
 
         return result;
     }
 }
 
 SizeT t2_usable_size(ThreadId tid, void *p) {
-    const MemoryBlock *block = theMemTracer->FindBlockByAddress((Addr)p);
+    const MemoryBlock *block = g_memTracer->FindBlockByAddress((Addr)p);
     if (block != 0) {
         return block->size();
     } else {

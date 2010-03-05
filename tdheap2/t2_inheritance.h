@@ -99,17 +99,17 @@ typedef std::tr1::unordered_map<Addr, VTable *> VTables;
  * <ptr to typeinfo>
  * first method
  */
-Addr FindVtableBeginning(Addr addr);
-Addr FindObjectBeginning(Addr addr, Addr real_vtable);
+Addr findVtableBeginning(Addr addr);
+Addr findObjectBeginning(Addr addr, Addr real_vtable);
 
 VTable *getVtable(Addr vtable);
 
-void GenerateVtablesLayout();
+void generateVtablesLayout();
 
 extern CallSites *g_callSites;
 extern VTables *g_vtables;
 
-void InitInheritanceTracker();
-void ShutdownInheritanceTracker();
+void initInheritanceTracker();
+void shutdownInheritanceTracker();
 
 #endif

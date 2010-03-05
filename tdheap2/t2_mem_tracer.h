@@ -81,9 +81,9 @@ private:
     MemoryTable memory_table_;
 };
 
-extern MemTracer *theMemTracer;
+extern MemTracer *g_memTracer;
 
-void InitMemTracer();
-void ShutdownMemTracer();
+void initMemTracer();
+void shutdownMemTracer();
 
 #endif

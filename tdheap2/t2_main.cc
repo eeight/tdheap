@@ -196,9 +196,9 @@ static void t2_fini(Int exitcode) {
     VG_(printf)("Reconstructing inheritance relations "
             "(%d call sites, %d vtables)...\n",
             g_callSites->size(), g_vtables->size());
-    GenerateVtablesLayout();
-    ShutdownInheritanceTracker();
-    ShutdownMemTracer();
+    generateVtablesLayout();
+    shutdownInheritanceTracker();
+    shutdownMemTracer();
 }
 
 static void t2_pre_clo_init() {
@@ -223,8 +223,8 @@ static void t2_pre_clo_init() {
                                 &t2_realloc,
                                 &t2_usable_size,
                                 0);
-  InitMemTracer();
-  InitInheritanceTracker();
+  initMemTracer();
+  initInheritanceTracker();
 }
 
 VG_DETERMINE_INTERFACE_VERSION(t2_pre_clo_init)

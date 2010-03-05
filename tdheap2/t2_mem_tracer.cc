@@ -15,12 +15,14 @@ const Addr kBucketMask = ~(kBucketSize - 1);
 
 } // namespace
 
-MemTracer *theMemTracer;
-void InitMemTracer() { theMemTracer = new MemTracer();
+MemTracer *g_memTracer;
+
+void initMemTracer() {
+    g_memTracer = new MemTracer();
 }
 
-void ShutdownMemTracer() {
-    delete theMemTracer;
+void shutdownMemTracer() {
+    delete g_memTracer;
 }
 
 MemTracer::MemTracer()
