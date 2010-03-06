@@ -16,9 +16,7 @@ typedef std::set<VTable *> VTableSet;
 
 class VTable {
 public:
-    VTable(Addr start, int functions_count) :
-        start_(start), functions_count_(functions_count), parent_(0)
-    {}
+    VTable(Addr start, int functions_count);
 
     void addChild(VTable *child);
     const VTableSet &children() { return children_; }
@@ -31,12 +29,15 @@ public:
 
     std::string label() const;
 
+    bool fake() const { return fake_; }
+
 private:
     Addr start_;
     int functions_count_;
     // FIXME: Add int function_count_;
     VTableSet children_;
     VTable *parent_;
+    bool fake_;
 };
 
 class CallSite {

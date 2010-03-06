@@ -52,13 +52,26 @@ bool DoIntersect(const VTableSet &lhs, const VTableSet &rhs) {
     return false;
 }
 
+void dropFakeVtables() {
+    VTables vtables;
+
+    for (VTables::iterator vtable = g_vtables->begin();
+            vtable != g_vtables->end(); ++vtable) {
+        if (!vtable->second->fake()) {
+            vtables.insert(*vtable);
+        }
+    }
+
+    std::swap(*g_vtables, vtables);
+}
+
 /**
  * Propagates callees.
  * Suppose we have two call sites intersecting by used vtables with
  * function numbers n and m, n < m. The we say that everythig used
  * through the second one might be used through the first one.
  */
-void PropagateCallees() {
+void propagateCallees() {
     bool has_been_propagaged;
 
     do { 
@@ -87,7 +100,7 @@ void PropagateCallees() {
  * Two call sites are merged if they have the same function
  * number and there is a vtable used by both.
  */
-void MergeCallSites() {
+void mergeCallSites() {
     if (g_callSites->size() < 2) {
         return;
     }
@@ -114,7 +127,7 @@ void MergeCallSites() {
  * First of them refers to nth furction, second refers to mth function and n < m.
  * Then we say second call site interface inherits the fist call site interface.
  */
-void SortInterfaces() {
+void sortInterfaces() {
     if (g_callSites->size() < 2) {
         return;
     }
@@ -162,7 +175,7 @@ void SortInterfaces() {
  * Collapses chains of inheritance.
  * A -> B -> C
  */
-void CollapseChains() {
+void collapseChains() {
     next_iter:
     for (CallSites::iterator i = g_callSites->begin();
             i != g_callSites->end(); ++i) {
@@ -201,6 +214,18 @@ std::string codeReference(Addr addr) {
 }
 
 } // namespace
+
+VTable::VTable(Addr start, int functions_count) :
+    start_(start), functions_count_(functions_count), parent_(0), fake_(false)
+{
+    if (!isAddressReadable(start)) {
+#if 0
+        VG_(printf)(
+                "Warning: supposed vtable %p is not within static memory maps\n", start);
+#endif
+        fake_ = true;
+    }
+}
 
 Addr VTable::start() const {
     if (parent_ != 0) {
@@ -391,10 +416,11 @@ VTable *getVtable(Addr vtable) {
 }
 
 void generateVtablesLayout() {
-    PropagateCallees();
-    MergeCallSites();
-    SortInterfaces();
-    CollapseChains();
+    dropFakeVtables();
+    propagateCallees();
+    mergeCallSites();
+    sortInterfaces();
+    collapseChains();
 
     VG_(printf)("digraph hierarchy {\n");
     for (CallSites::const_iterator call_site = g_callSites->begin();

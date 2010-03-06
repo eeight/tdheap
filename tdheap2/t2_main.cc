@@ -1,33 +1,37 @@
 extern "C" {
 #include "pub_tool_basics.h"
 #include "pub_tool_debuginfo.h"
-#include "pub_tool_tooliface.h"
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcprint.h"
-#include "pub_tool_mallocfree.h"
+#include "pub_tool_libcproc.h"
 #include "pub_tool_machine.h" // VG_(fnptr_to_fnentry)
+#include "pub_tool_mallocfree.h"
 #include "pub_tool_stacktrace.h"
 #include "pub_tool_threadstate.h"
+#include "pub_tool_tooliface.h"
 }
+
 #include "pub_tool_cplusplus.h"
 
-#include "m_stl/std/vector"
-#include "m_stl/std/string"
+#include "m_stl/std/algorithm"
 #include "m_stl/std/map"
 #include "m_stl/std/set"
-#include "m_stl/std/algorithm"
+#include "m_stl/std/string"
+#include "m_stl/std/vector"
 #include "m_stl/tr1/unordered_map"
 #include "m_stl/tr1/unordered_set"
 
+#include "t2_inheritance.h"
 #include "t2_malloc.h"
 #include "t2_mem_tracer.h"
 #include "t2_procmap.h"
-#include "t2_inheritance.h"
 
 namespace {
 
 const IRType kPointerType = sizeof(void *) == 8 ? Ity_I64 : Ity_I32;
 const IROp kPointerAddOp = sizeof(void *) == 8 ? Iop_Add64 : Iop_Add32;
+
+IRSB *last_code_out;
 
 Addr GetCurrentIp() {
     Addr ip, sp, fp;
@@ -68,12 +72,19 @@ void VG_REGPARM(3) VCallHook(Addr addr, Addr vtable, Addr offset) {
     int function_number = offset/sizeof(void *);
     VTable *vt = getVtable(vtable);
 
-    if (g_callSites->find(ip) == g_callSites->end()) {
-        g_callSites->insert(std::make_pair(
-                    ip, new CallSite(ip, function_number))).
-            first->second->addCallee(vt);
+    if (!vt->fake()) {
+        if (g_callSites->find(ip) == g_callSites->end()) {
+            g_callSites->insert(std::make_pair(
+                        ip, new CallSite(ip, function_number))).
+                first->second->addCallee(vt);
+        } else {
+            (*g_callSites)[ip]->addCallee(vt);
+        }
     } else {
-        (*g_callSites)[ip]->addCallee(vt);
+#if 0
+        VG_(printf)("Warninig: false-positive on vfcall, IR code follows\n");
+        ppIRSB(last_code_out);
+#endif
     }
 
 #if 0
@@ -188,6 +199,7 @@ IRSB* t2_instrument(VgCallbackClosure* closure,
     }
   }
 
+  last_code_out = code_out;
   //ppIRSB(code_out);
 
   return code_out;
