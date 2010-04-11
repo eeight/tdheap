@@ -6,7 +6,7 @@ extern "C" {
 #include "pub_tool_libcfile.h"
 #include "pub_tool_libcprint.h"
 #include "pub_tool_libcproc.h"
-#include "pub_tool_vki.h"
+//#include "pub_tool_vki.h"
 
 #include "fcntl.h"
 }

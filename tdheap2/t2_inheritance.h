@@ -31,6 +31,8 @@ public:
 
     bool fake() const { return fake_; }
 
+    bool operator==(const VTable &other) const;
+
 private:
     Addr start_;
     int functions_count_;

@@ -22,8 +22,8 @@ VTables *g_vtables;
 
 namespace {
 
-const Long MIN_POINTER_VALUE = 0xffff;
-const Long POINTER_LOCALITY_THRESHOLD = 0xfffffff;
+const Word MIN_POINTER_VALUE = 0xffff;
+const Word POINTER_LOCALITY_THRESHOLD = 0xfffffff;
 
 std::string int2string(int n) {
     char buffer[1024];
@@ -63,6 +63,18 @@ void dropFakeVtables() {
     }
 
     std::swap(*g_vtables, vtables);
+}
+
+void checkForDuplicateVtables() {
+    for (VTables::iterator i = g_vtables->begin();
+            next(i) != g_vtables->end(); ++i) {
+        for (VTables::iterator ii = next(i);
+                ii != g_vtables->end(); ++ii) {
+            if (*i->second == *ii->second) {
+                VG_(printf)("Duplicate vtable!\n");
+            }
+        }
+    }
 }
 
 /**
@@ -263,6 +275,27 @@ std::string VTable::label() const {
     return result;
 }
 
+bool VTable::operator ==(const VTable &other) const {
+    if (functions_count_ != other.functions_count_) {
+        return false;
+    } else {
+        Addr *x = (Addr *)start_;
+        Addr *y = (Addr *)other.start_;
+
+        for (int i = 0; i < functions_count_; ++i) {
+            if (x[i] != y[i]) {
+                VG_(printf)("Mismatch at %d out of %d\n", i, functions_count_);
+                break;
+            }
+        }
+
+        return VG_(memcmp)(
+                (void *)start_,
+                (void *)other.start_,
+                sizeof(void *)*functions_count_) == 0;
+    }
+}
+
 void CallSite::mergeWith(const CallSite *site) {
     if (function_number_ != site->function_number_) {
         VG_(tool_panic)((Char *)"CallSite::mergeWith: function numbers don't match");
@@ -374,8 +407,7 @@ Addr FindObjectBeginning(Addr addr, Addr real_vtable) {
 }
 
 int GetVTableSize(Addr addr) {
-    // sizeof(Long) == sizeof(void *) should hold for this thing to work!
-    Long *x = (Long *)addr;
+    Word *x = (Word *)addr;
     int i = 0;
 
 #if 0
@@ -385,12 +417,21 @@ int GetVTableSize(Addr addr) {
             isAddressReadable((Addr)&x[i]) &&
             std::abs(x[i] - x[0]) < POINTER_LOCALITY_THRESHOLD) {
 #if 0
-        VG_(printf)("x[%2d]=%ld\n", i, x[i]);
+        VG_(printf)("%p[%2d]=%ld\n", x, i, x[i]);
 #endif
         ++i;
     }
 #if 0
     VG_(printf)("x[%2d]=%ld; STOP\n", i, x[i]);
+    if (!((x[i] > MIN_POINTER_VALUE || x[i] < -MIN_POINTER_VALUE))) {
+        VG_(printf)("Too small value\n");
+    }
+    if (!isAddressReadable((Addr)&x[i])) {
+        VG_(printf)("Address is not readable\n");
+    }
+    if (!(std::abs(x[i] - x[0]) < POINTER_LOCALITY_THRESHOLD)) {
+        VG_(printf)("Non-local by %p\n", abs(x[i] - x[0]));
+    }
     VG_(printf)("End vtable search\n");
 #endif
 
@@ -417,6 +458,7 @@ VTable *getVtable(Addr vtable) {
 
 void generateVtablesLayout() {
     dropFakeVtables();
+    checkForDuplicateVtables();
     propagateCallees();
     mergeCallSites();
     sortInterfaces();

@@ -163,7 +163,7 @@ IRSB* t2_instrument(VgCallbackClosure* closure,
               left->tag == Iex_RdTmp) {
             a_vtable_address = left->Iex.RdTmp.tmp;
             a_vtable_address_value = tmp_values[left->Iex.RdTmp.tmp];
-            
+
             offset = right->Iex.Const.con;
           }
         }
