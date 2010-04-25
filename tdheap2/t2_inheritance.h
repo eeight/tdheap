@@ -13,7 +13,6 @@ extern "C" {
 class VTable;
 
 typedef std::set<VTable *> VTableSet;
-
 class VTable {
 public:
     VTable(Addr start, int functions_count);

@@ -120,6 +120,7 @@ AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@ = \
  	-I$(top_srcdir)/include \
 	-I$(top_srcdir)/VEX/pub \
   -I$(top_srcdir)/include/m_stl \
+  -I$(top_srcdir)/include/m_stl/c_std \
 	-DVGA_@VGCONF_ARCH_PRI@=1 \
 	-DVGO_@VGCONF_OS@=1 \
 	-DVGP_@VGCONF_ARCH_PRI@_@VGCONF_OS@=1
