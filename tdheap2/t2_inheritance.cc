@@ -458,7 +458,7 @@ VTable *getVtable(Addr vtable) {
 
 void generateVtablesLayout() {
     dropFakeVtables();
-    checkForDuplicateVtables();
+    // checkForDuplicateVtables();
     propagateCallees();
     mergeCallSites();
     sortInterfaces();
