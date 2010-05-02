@@ -106,7 +106,8 @@ Addr findObjectBeginning(Addr addr, Addr real_vtable);
 
 VTable *getVtable(Addr vtable);
 
-void generateVtablesLayout();
+void generateVtablesLayoutDot();
+void generateVtablesLayoutCpp();
 
 extern CallSites *g_callSites;
 extern VTables *g_vtables;

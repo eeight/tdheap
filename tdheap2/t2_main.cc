@@ -206,10 +206,14 @@ IRSB* t2_instrument(VgCallbackClosure* closure,
 }
 
 static void t2_fini(Int exitcode) {
-    VG_(printf)("Reconstructing inheritance relations "
-            "(%d call sites, %d vtables)...\n",
-            g_callSites->size(), g_vtables->size());
-    generateVtablesLayout();
+    if (g_callSites->size() > 0) {
+        VG_(printf)("Reconstructing inheritance relations "
+                "(%d call sites, %d vtables)...\n",
+                g_callSites->size(), g_vtables->size());
+        generateVtablesLayoutCpp();
+    } else {
+        VG_(printf)("No virtual calls have been made.\n");
+    }
     shutdownProcmap();
     shutdownInheritanceTracker();
     shutdownMemTracer();

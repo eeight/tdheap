@@ -10,6 +10,7 @@ extern "C" {
 #include "t2_procmap.h"
 
 #include "m_stl/std/algorithm"
+#include "m_stl/std/map"
 #include "m_stl/tr1/functional"
 
 #include <typeinfo>
@@ -29,6 +30,15 @@ std::string int2string(int n) {
     char buffer[1024];
     VG_(snprintf)((Char *)buffer, 1024, "%d", n);
     return buffer;
+}
+
+std::string unescapeNewlines(const std::string &s) {
+    size_t p = s.find("\\n");
+    if (p == std::string::npos) {
+        return s;
+    } else {
+        return s.substr(0, p) + "\n" + unescapeNewlines(s.substr(p + 2));
+    }
 }
 
 template <class Iterator>
@@ -223,6 +233,15 @@ std::string codeReference(Addr addr) {
 
     VG_(snprintf)((Char *)buffer, 1024, "%p@%s", addr, objname);
     return buffer;
+}
+
+void finalizeVtables() {
+    dropFakeVtables();
+    // checkForDuplicateVtables();
+    propagateCallees();
+    mergeCallSites();
+    sortInterfaces();
+    collapseChains();
 }
 
 } // namespace
@@ -456,22 +475,16 @@ VTable *getVtable(Addr vtable) {
     }
 }
 
-void generateVtablesLayout() {
-    dropFakeVtables();
-    // checkForDuplicateVtables();
-    propagateCallees();
-    mergeCallSites();
-    sortInterfaces();
-    collapseChains();
-
+void generateVtablesLayoutDot() {
+    finalizeVtables();
     VG_(printf)("digraph hierarchy {\n");
     for (CallSites::const_iterator call_site = g_callSites->begin();
             call_site != g_callSites->end(); ++call_site) {
         const VTableSet &callees = call_site->second->callees();
         for (VTableSet::const_iterator vtable = callees.begin();
                 vtable != callees.end(); ++vtable) {
-                VG_(printf)("\"%p\" -> \"%p\";\n",
-                        (*vtable)->start(), call_site->first);
+            VG_(printf)("\"%p\" -> \"%p\";\n",
+                    (*vtable)->start(), call_site->first);
         }
 
         VG_(printf)("\"%p\" [ label=\"%s\", shape=rectangle ];\n",
@@ -491,6 +504,53 @@ void generateVtablesLayout() {
         }
     }
     VG_(printf)("}\n");
+}
+
+void generateVtablesLayoutCpp() {
+    finalizeVtables();
+    std::multimap<Addr, Addr> hier;
+    typedef std::multimap<Addr, Addr>::const_iterator MIter;
+
+    for (CallSites::const_iterator call_site = g_callSites->begin();
+            call_site != g_callSites->end(); ++call_site) {
+        const VTableSet &callees = call_site->second->callees();
+        for (VTableSet::const_iterator vtable = callees.begin();
+                vtable != callees.end(); ++vtable) {
+            hier.insert(std::make_pair(
+                        (*vtable)->start(), call_site->first));
+        }
+
+        VG_(printf)("class %p ");
+        if (call_site->second->parent() != 0) {
+            VG_(printf)(": public %p ", call_site->second->parent()->ip());
+        }
+        VG_(printf)("{\n//Interface ");
+        VG_(printf)("%s", unescapeNewlines(
+                    call_site->second->label()).c_str());
+        VG_(printf)("\n};\n");
+    }
+    for (VTables::const_iterator vtable = g_vtables->begin();
+            vtable != g_vtables->end(); ++vtable) {
+        if (vtable->second->parent() == 0) {
+            VG_(printf)("class %p");
+            std::pair<MIter, MIter> range =
+                    hier.equal_range(vtable->second->start());
+            bool first = true;
+            for (MIter parent = range.first; parent != range.second; ++parent) {
+                if (!first) {
+                    VG_(printf)(", ");
+                } else {
+                    VG_(printf)(" : public ");
+                }
+                VG_(printf)("%p", parent->second);
+                first = false;
+            }
+            VG_(printf)(" {\n// ");
+            VG_(printf)("%s", unescapeNewlines(
+                        vtable->second->label()).c_str());
+            VG_(printf)("\n};\n");
+        }
+    }
 }
 
 void initInheritanceTracker() {
