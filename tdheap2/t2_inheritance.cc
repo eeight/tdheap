@@ -520,7 +520,7 @@ void generateVtablesLayoutCpp() {
                         (*vtable)->start(), call_site->first));
         }
 
-        VG_(printf)("class %p ");
+        VG_(printf)("class _%p ", call_site->first);
         if (call_site->second->parent() != 0) {
             VG_(printf)(": public %p ", call_site->second->parent()->ip());
         }
@@ -532,7 +532,7 @@ void generateVtablesLayoutCpp() {
     for (VTables::const_iterator vtable = g_vtables->begin();
             vtable != g_vtables->end(); ++vtable) {
         if (vtable->second->parent() == 0) {
-            VG_(printf)("class %p");
+            VG_(printf)("class _%p", vtable->second->start());
             std::pair<MIter, MIter> range =
                     hier.equal_range(vtable->second->start());
             bool first = true;
