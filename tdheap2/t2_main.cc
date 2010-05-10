@@ -6,6 +6,7 @@ extern "C" {
 #include "pub_tool_libcproc.h"
 #include "pub_tool_machine.h" // VG_(fnptr_to_fnentry)
 #include "pub_tool_mallocfree.h"
+#include "pub_tool_options.h"
 #include "pub_tool_stacktrace.h"
 #include "pub_tool_threadstate.h"
 #include "pub_tool_tooliface.h"
@@ -32,6 +33,8 @@ const IRType kPointerType = sizeof(void *) == 8 ? Ity_I64 : Ity_I32;
 const IROp kPointerAddOp = sizeof(void *) == 8 ? Iop_Add64 : Iop_Add32;
 
 IRSB *last_code_out;
+
+Char *outputFormat = (Char *)"dot";
 
 Addr GetCurrentIp() {
     Addr ip, sp, fp;
@@ -210,13 +213,40 @@ static void t2_fini(Int exitcode) {
         VG_(printf)("Reconstructing inheritance relations "
                 "(%d call sites, %d vtables)...\n",
                 g_callSites->size(), g_vtables->size());
-        generateVtablesLayoutCpp();
+        if (VG_(strcasecmp)(outputFormat, (Char *)"cpp") == 0) {
+            generateVtablesLayoutCpp();
+        } else {
+            generateVtablesLayoutDot();
+        }
     } else {
         VG_(printf)("No virtual calls have been made.\n");
     }
     shutdownProcmap();
     shutdownInheritanceTracker();
     shutdownMemTracer();
+}
+
+static Bool t2_process_cmd_line_option(Char* arg) {
+    if (!VG_STR_CLO(arg, (Char *)"--output", outputFormat)) {
+        return False;
+    }
+
+    if (VG_(strcasecmp)(outputFormat, (Char *)"dot") != 0 &&
+            VG_(strcasecmp)(outputFormat, (Char *)"cpp") != 0) {
+        return False;
+    }
+    return True;
+}
+
+static void t2_print_usage() {
+    VG_(printf)(
+"    --output=dot|cpp          Whether to output hierarchy in dot \n"
+"                              format or as C++ header [dot]\n"
+    );
+}
+
+static void t2_print_debug_usage() {
+    VG_(printf)("    (none)\n");
 }
 
 static void t2_pre_clo_init() {
@@ -241,6 +271,9 @@ static void t2_pre_clo_init() {
                                 &t2_realloc,
                                 &t2_usable_size,
                                 0);
+   VG_(needs_command_line_options)(t2_process_cmd_line_option,
+                                   t2_print_usage,
+                                   t2_print_debug_usage);
   initProcmap();
   initMemTracer();
   initInheritanceTracker();
